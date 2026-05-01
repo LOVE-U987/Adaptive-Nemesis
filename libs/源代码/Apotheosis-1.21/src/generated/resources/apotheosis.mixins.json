@@ -1,0 +1,35 @@
+{
+    "required": true,
+    "package": "dev.shadowsoffire.apotheosis.mixin",
+    "compatibilityLevel": "JAVA_21",
+    "refmap": "apotheosis.refmap.json",
+    "maxShiftBy": 5,
+    "mixins": [
+        "AbstractSkeletonMixin",
+        "AnyHolderSetMixin",
+        "BaseSpawnerAccessor",
+        "DamageSourceMixin",
+        "EnchantmentHelperMixin",
+        "EndDragonFightMixin",
+        "EntityMixin",
+        "GLMProviderMixin",
+        "GoldToolsHaveFortuneModuleMixin",
+        "ItemStackMixin",
+        "LivingEntityInvoker",
+        "LivingEntityMixin",
+        "MHFMixinLivingEntity",
+        "MobMixin",
+        "SmithingMenuMixin",
+        "WandererSpawnerMixin",
+        "WitherSkullBlockMixin"
+    ],
+    "client": [
+        "client.EntityRendererMixin",
+        "client.GuiGraphicsAccessor",
+        "client.GuiMixin",
+        "client.MultiPlayerGameModeMixin",
+        "client.SkeletonModelMixin"
+    ],
+    "minVersion": "0.8",
+    "maxShiftBy": 5
+}

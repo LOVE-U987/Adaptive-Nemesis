@@ -1,0 +1,20 @@
+{
+	"replace": false,
+	"values": [
+		{
+			"id": "apotheosis:reforging_table"
+		},
+		{
+			"id": "apotheosis:simple_reforging_table"
+		},
+		{
+			"id": "apotheosis:augmenting_table"
+        },
+        {
+            "id": "apotheosis:gem_case"
+        },
+        {
+            "id": "apotheosis:ender_gem_case"
+        }
+	]
+}

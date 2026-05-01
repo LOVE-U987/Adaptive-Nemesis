@@ -1,0 +1,1 @@
+com.adaptive_nemesis.adaptive_nemesismod.kubejs.AdaptiveNemesisKubeJSPlugin

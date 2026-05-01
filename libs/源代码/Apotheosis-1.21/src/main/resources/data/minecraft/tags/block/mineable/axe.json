@@ -1,0 +1,11 @@
+{
+	"replace": false,
+	"values": [
+		{
+			"id": "apotheosis:salvaging_table"
+		},
+		{
+			"id": "apotheosis:gem_cutting_table"
+		}
+	]
+}
