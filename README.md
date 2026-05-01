@@ -1,181 +1,253 @@
 <!-- 
-Adaptive Nemesis / 自适应宿敌
-动态难度平衡模组 - 专为整合包设计
+Adaptive Nemesis
+Dynamic Difficulty Balancing Mod - Designed for Modpacks
+English Version
 -->
 
 <div align="center">
-<br><br>
-
-<pre style="font-family: 'Courier New', monospace; line-height: 1.2; color: #ff4444; text-shadow: 0 0 15px #ff0000;">
- █████╗ ██████╗  █████╗ ██████╗ ████████╗██╗██╗   ██╗███████╗    ███╗   ██╗███████╗███╗   ███╗███████╗███████╗██╗███████╗
-██╔══██╗██╔══██╗██╔══██╗██╔══██╗╚══██╔══╝██║██║   ██║██╔════╝    ████╗  ██║██╔════╝████╗ ████║██╔════╝██╔════╝██║██╔════╝
-███████║██║  ██║███████║██║  ██║   ██║   ██║██║   ██║█████╗      ██╔██╗ ██║█████╗  ██╔████╔██║███████╗███████╗██║███████╗
-██╔══██║██║  ██║██╔══██║██║  ██║   ██║   ██║╚██╗ ██╔╝██╔══╝      ██║╚██╗██║██╔══╝  ██║╚██╔╝██║╚════██║╚════██║██║╚════██║
-██║  ██║██████╔╝██║  ██║██████╔╝   ██║   ██║ ╚████╔╝ ███████╗    ██║ ╚████║███████╗██║ ╚═╝ ██║███████╗███████╗██║███████║
-╚═╝  ╚═╝╚═════╝ ╚═╝  ╚═╝╚═════╝    ╚═╝   ╚═╝  ╚═══╝  ╚══════╝    ╚═╝  ╚═══╝╚══════╝╚═╝     ╚═╝╚══════╝╚══════╝╚═╝╚══════╝
-</pre>
 
 <h1>
   ⚔️
-  <span style="color: #ff4444; text-shadow: 0 0 20px #ff0000;">Adaptive Nemesis</span>
-  <span style="color: #888888; font-size: 0.6em;">自适应宿敌</span>
+  <span style="color: #ff4444; text-shadow: 0 0 20px #ff0000;">Adaptive Nemesis / 自适应宿敌</span>
   ⚔️
 </h1>
 
-<p><i>你的强大，是敌人进化的养料 —— Your power feeds their evolution</i></p>
+<p><i>"Your power feeds their evolution"</i></p>
 
-<img src="https://img.shields.io/badge/🎯_动态难度-FF6B6B?style=flat-square">
-<img src="https://img.shields.io/badge/⚖️_智能平衡-9B59B6?style=flat-square">
-<img src="https://img.shields.io/badge/📦_KubeJS支持-2ECC71?style=flat-square">
+<img src="https://img.shields.io/badge/🎯_Dynamic_Difficulty-FF6B6B?style=flat-square">
+<img src="https://img.shields.io/badge/⚖️_Smart_Balance-9B59B6?style=flat-square">
+<img src="https://img.shields.io/badge/📦_KubeJS_Support-2ECC71?style=flat-square">
 
 </div>
 
 ---
 
-## 📖 模组简介 / Overview
+## 📖 Overview
 
-**Adaptive Nemesis / 自适应宿敌** 是一款专为整合包设计的**动态难度平衡模组**，旨在解决当下主流整合包"前期刮痧、后期秒天秒地秒空气"的难度失衡问题。
+**Adaptive Nemesis** is a **NeoForge 1.21.1** dynamic difficulty balancing mod designed specifically for Minecraft modpacks.
 
-> 🛡️ **铁乌龟终结者**：针对"叠甲到无敌"的极端build，自动将部分伤害转化为**真实伤害**，确保战斗始终存在风险。
+It solves the common modpack problem where early game feels like "scratching with a toothpick" while late game becomes "one-shotting everything." By intelligently evaluating player strength and dynamically adjusting enemy attributes, combat always maintains that "a bit hard, but not too much" thrilling tension.
 
 ---
 
-## ⚔️ 核心机制 / Core Mechanics
+## ⚔️ Core Mechanics
 
-### 1. 多维强度评估
+### 1. Player Strength Evaluation System
+
+The mod continuously monitors each player's comprehensive combat power, assessing based on multi-dimensional data:
 
 <div align="center">
 
-| 评估维度 | 数据来源 | 影响权重 |
-|:---:|:---|:---:|
-| 🛡️ **防御能力** | 护甲值、血量上限 | 高 |
-| ⚔️ **输出能力** | 伤害数值 | 高 |
-| ✨ **神话词条** | 品质与等级 | 中 |
-| 🔮 **铁魔法** | 法力值、法术强度 | 中 |
-| 🗡️ **史诗战斗** | 耐力值 | 中 |
+| Dimension | Description | Weight |
+|---------|------|:---:|
+| 🛡️ **Defense** | Armor value, max health, armor toughness | High |
+| ⚔️ **Offense** | Attack damage, attack speed, weapon enchantment level | High |
+| ✨ **Mythic Affixes** | [Apotheosis](https://www.curseforge.com/minecraft/mc-mods/apotheosis) equipment quality and tier | Medium |
+| 🔮 **Iron's Spells** | [Iron's Spells 'n Spellbooks](https://www.curseforge.com/minecraft/mc-mods/irons-spells-n-spellbooks) mana pool, spell power | Medium |
+| 🗡️ **Epic Fight** | [Epic Fight](https://www.curseforge.com/minecraft/mc-mods/epic-fight-mod) stamina value, combat style | Medium |
 
 </div>
 
-### 2. 动态敌人强化
+> All weights can be customized via configuration files, with KubeJS script support for extended evaluation logic!
 
-基于玩家综合强度，敌人获得自适应加成：
+### 2. Dynamic Enemy Scaling
 
-```
-基础加成 = 玩家综合强度 × 难度系数
-浮动调整 = 基础加成 × (0.8 ~ 1.2)  // 根据死亡/击杀记录微调
-```
+When hostile mobs spawn, the mod provides adaptive attribute bonuses based on the **average strength of nearby players**:
 
-敌人的加成涵盖以下属性：
-
-| 加成类型 | 说明 |
-|:---|:---|
-| **血量** | 生命值上限提升 |
-| **伤害** | 攻击力提升 |
-| **护甲** | 物理防御提升 |
-| **铁魔法 - 法术强度** | 敌人施法伤害提升 |
-| **铁魔法 - 法术抗性** | 敌人魔法防御提升 |
-| **史诗战斗 - 受击抗性** | 受击硬直减免 |
-| **史诗战斗 - 击倒抗性** | 被击倒概率降低 |
-| **史诗战斗 - 耐力值** | 敌人耐力上限提升 |
-
-### 3. 真实伤害转化
-
-> 避免"铁乌龟"现象：将敌人 **X%** 伤害强制转化为**真实伤害**
-
-| 玩家护甲阈值 | 真实伤害比例 |
-|:---:|:---:|
-| 低护甲 (< 20) | 5% |
-| 中护甲 (20-50) | 15% |
-| 高护甲 (50-100) | 25% |
-| 铁乌龟 (> 100) | 35% |
-
-### 4. Boss 特殊机制
-
-- ✅ **伤害上限**：玩家对 Boss 的单次伤害存在上限，防止秒杀
-- ✅ **属性增幅**：Boss 生命与伤害获得额外倍率加成
-- ✅ **阶段进化**：Boss 根据战斗时长动态调整攻击模式
-
----
-
-## 🧠 智能浮动系统 / Adaptive Float
-
-真正的动态难度不在于固定倍数，而在于**感知你的体验**：
-
-| 玩家行为 | 系统响应 |
-|:---|:---|
-| 连续击杀 | 浮动倍数 **+10%** |
-| 频繁死亡 | 浮动倍数 **-15%** |
-| 长时间未战斗 | 浮动倍数 **重置基准** |
-
-> 💡 **目标**：让玩家始终感到"有点难，但不多"——恰到好处的挑战感
-
----
-
-## 🧬 宿敌记忆系统 / Nemesis Memory
-
-> 每个玩家拥有独立的宿敌档案，敌人会记住你的战斗方式并针对性进化
-
-### 记忆维度
-
-| 记忆类型 | 记录内容 | 敌人进化方向 |
-|:---|:---|:---|
-| **击杀偏好** | 玩家常用的击杀手段 | 敌人获得对应抗性 |
-| **死亡记录** | 玩家死亡时的伤害来源 | 敌人学会对应攻击方式 |
-| **装备历史** | 玩家曾使用过的装备组合 | 敌人针对性进化反制策略 |
-| **行为模式** | 玩家的战斗习惯（近战/远程/法术） | 敌人调整AI行为 |
-
-
----
-
-## 👥 多人联机支持
-
-- ✅ **独立计算**：每位玩家拥有独立的难度系数
-- ✅ **区域同步**：同一区域的敌人取**在线玩家平均值**
-- ✅ **动态平衡**：可自定义的**新手保护**
-
----
-
-## 🛡️ 新手保护机制
-
-| 触发条件 | 效果 | 持续时间 |
+| Scaling Type | Description | Cap |
 |:---|:---|:---:|
-| 玩家综合强度 < 阈值 | 怪物属性 **-30%** | 可配置（默认 30分钟） |
-| 首次死亡 | 保护时间 **+10分钟** | 累积上限 |
-| 连续死亡 3 次 | 强制开启保护 | 直至击杀任一敌人 |
+| **Health** | Max health increase | 500% |
+| **Damage** | Attack damage increase | 500% |
+| **Armor** | Physical defense increase | 300% |
+| **Attack Speed** | Prevents infinite stunlock | - |
+| **Spell Power** | Iron's Spells compatibility | - |
+| **Spell Resistance** | Iron's Spells compatibility | - |
+| **Hit Resistance** | Epic Fight compatibility | - |
+| **Knockdown Resistance** | Epic Fight compatibility | - |
+| **Stamina** | Epic Fight compatibility | - |
+
+**Attribute Random Distribution**: Each spawned enemy's attributes will fluctuate around the base value (70%~130%), making every battle unpredictable!
+
+```
+Base Scaling = Player Comprehensive Strength × Difficulty Coefficient
+Float Adjustment = Base Scaling × (0.7 ~ 1.3)  // Attribute random distribution
+```
+
+### 3. True Damage Conversion (Iron Turtle Terminator)
+
+For high-armor players, the mod forcibly converts a portion of damage into **armor-ignoring true damage**:
+
+| Armor Level | True Damage Ratio |
+|---------|------------|
+| Standard Armor (≤20) | 5% |
+| Enhanced Armor (20~50) | 15% |
+| High Armor (50~100) | 25% |
+| Iron Turtle (>100) | 35% |
+
+> Never fear becoming invincible with god gear! Enemies will find your weakness 🔥
+
+### 4. Adaptive Float System
+
+Dynamically adjusts difficulty based on real-time player performance:
+
+| Player Behavior | System Response |
+|:---|:---|
+| **Consecutive Kills** | Float multiplier **+10%** (enemies grow stronger) |
+| **Frequent Deaths** | Float multiplier **-15%** (giving you breathing room) |
+| **Long Inactivity** | Float multiplier **resets to baseline** |
+
+> 💡 **Goal**: Always make players feel "a bit hard, but not too much" — just the right challenge
+
+### 5. Nemesis Memory System
+
+Each player has an independent **Nemesis profile**. Enemies remember your combat style and evolve accordingly:
+
+| Memory Type | Records | Enemy Evolution Direction |
+|:---|:---|:---|
+| **Kill Preference** | Player's common kill methods | Enemies gain corresponding resistances |
+| **Death Records** | Damage sources when player dies | Enemies learn corresponding attack patterns |
+| **Equipment History** | Equipment combinations player has used | Enemies evolve targeted counter-strategies |
+| **Behavior Patterns** | Melee/ranged/magic preferences | Enemies adjust AI behavior |
+
+### 6. Newbie Protection Mechanism
+
+
+Provides thoughtful protection for low-strength players:
+
+| Trigger Condition | Effect | Duration |
+|:---|:---|:---:|
+| Player Comprehensive Strength < Threshold | Monster attributes **-30%** | Configurable |
+| First Death | Protection time **+10 minutes** | Cumulative cap |
+| 3 Consecutive Deaths | Force enable protection | Until any enemy is killed |
+
+### 7. Boss Mechanics
+
+Prevents players from one-shotting Bosses, extending epic combat experiences:
+
+- ✅ **Damage Cap**: Single-hit damage has an upper limit (default 100), which increases as Boss health decreases
+- ✅ **Attribute Amplification**: Boss health ×5, damage ×3
+- ✅ **Combat Tracking**: Records combat duration and cumulative damage
+- ✅ **Phase Evolution**: Bosses dynamically adjust attack patterns based on combat duration
 
 ---
 
-## ⚙️ 配置系统
+## 🔗 Mod Compatibility
 
-### 全动态数据
+Adaptive Nemesis natively supports the following popular mods:
 
-所有数值均可**热更新**，无需重启：
+<div align="center">
 
-- 难度系数基准
-- 真实伤害转化开关与比例
-- Boss 伤害上限
-- 浮动范围最小/最大值
-- 新手保护开关、强度阈值、保护时长
-- 敌人加成上限开关
-- 各属性加成上限倍率（血量、伤害、护甲、法术强度、法术抗性、受击抗性、击倒抗性、耐力值）
+| Mod | Compatible Content |
+|:-----|:---------|
+| 🔮 **Iron's Spells 'n Spellbooks** | Spell power, mana pool, cooldown reduction, magic resistance |
+| ⚔️ **Epic Fight** | Hit resistance, impact, armor breaking, combos, stamina |
+| ✨ **Apotheosis** | Equipment quality, mythic affix tier evaluation |
+| 📦 **KubeJS** | Custom events, script extensions, config hot reload |
 
-### 加成上限控制
-
-可开关是否启用最高敌人加成。当敌人的加成到达一定数值后，将不再增加敌人的加成。
+</div>
 
 ---
 
-## 🔧 KubeJS 集成
+## ⌨️ Commands
 
-通过脚本自动化配置：
+All commands use `/an` prefix, requiring OP permission (level 2):
 
-- 自定义难度曲线
-- 特定职业额外加成
-- 特定维度难度调整
-- 监听玩家评估事件
+| Command | Description |
+|-----|------|
+| `/an status` | View mod current running status |
+| `/an strength [player]` | View specified player's strength evaluation data |
+| `/an difficulty` | View/adjust difficulty settings |
+| `/an protection [player]` | View/manage newbie protection status |
+| `/an memory [player]` | View Nemesis memory profile |
+| `/an scan [range]` | Scan surrounding enemies' scaling data |
+| `/an nemesis [type]` | Summon Nemesis |
+| `/an test [module]` | Test mod module functions |
+| `/an reload` | Reload configuration files |
+| `/an help` | Display help information |
 
 ---
 
-## 📦 数据包支持 / Datapack Support
+## ⚙️ Configuration System
 
-无需编写代码，通过数据包即可扩展模组内容：
+All mod mechanisms can be finely adjusted through configuration files
+
+- Config file path: `config/adaptive_nemesis-common.toml`
+
+---
+
+## 🔧 KubeJS Integration
+
+Automate mod configuration through scripts:
+
+### Available Events
+
+| Event Name | Trigger Timing | Purpose |
+|:---|:---|:---|
+| `adaptive_nemesis.entity_scale` | When entity attributes are scaled | Customize specific entity scaling multipliers |
+| `adaptive_nemesis.damage_calculation` | When true damage is calculated | Adjust damage values or cancel conversion |
+| `adaptive_nemesis.player_strength_evaluation` | When player strength is evaluated | Modify final strength calculation |
+| `adaptive_nemesis.nemesis_memory_update` | When Nemesis memory updates | Listen for milestones or custom rewards |
+
+### Practical Scenarios
+
+| Scenario | Implementation |
+|:---|:---|
+| Extra zombie scaling | Check entity ID, multiply scaling |
+| Boss double scaling | Check boss type, multiply scaling |
+| High-level player difficulty | Add strength based on player level |
+| Milestone rewards | Listen for every-10-kills event, grant rewards |
+| Global difficulty adjustment | Define global coefficient, unified multiplication |
+
+---
+
+## 📦 Datapack Support（In the Plan）
+
+Extend mod content through datapacks without writing code:
+
+- Custom Nemesis types
+- Define entity transformation rules
+- Configure special scaling effects
+- Override default difficulty parameters
+
+---
+
+## 🚀 Performance Optimization
+
+| Optimization | Solution | Effect |
+|:---|:---|:---|
+| **Entity Calculation** | Regional caching + async update | Reduce real-time calculation overhead |
+| **Multiplayer Server TPS** | Client prediction + server validation | Reduce server load |
+| **Config Hot-Update** | Incremental sync, not full reload | Avoid lag spikes |
+| **Memory System Storage** | On-demand loading, periodic archiving | Control save file size |
+
+
+
+---
+
+## 📖 Design Philosophy
+
+> *"Your power feeds their evolution"*
+
+Adaptive Nemesis's core concept is **dynamic balance**:
+
+1. **Never weaken players** — Players can still enjoy the thrill of growing stronger
+2. **Match enemies to strength** — Enemies always scale with player power
+3. **Learn and counter** — Enemies learn player combat styles and evolve targeted counters
+4. **Protect newbies** — Give new players enough room to grow
+5. **Challenge veterans** — Keep experienced players constantly challenged
+
+- Whether you're a newcomer just starting a modpack or a veteran in full god gear, Adaptive Nemesis provides just the right combat experience!
+
+
+
+---
+
+<div align="center">
+
+**⚔️ Every time you grow stronger, your Nemesis evolves ⚔️**
+
+[![CurseForge](https://img.shields.io/badge/CurseForge-Download-F16436?style=for-the-badge&logo=curseforge&logoColor=white)](https://curseforge.com)
+[![Modrinth](https://img.shields.io/badge/Modrinth-Download-00AF5C?style=for-the-badge&logo=modrinth&logoColor=white)](https://modrinth.com)
+[![GitHub](https://img.shields.io/badge/GitHub-Source-181717?style=for-the-badge&logo=github&logoColor=white)](https://github.com)
+
+</div>
