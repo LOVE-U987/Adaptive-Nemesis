@@ -90,6 +90,11 @@ public class Config {
      */
     public static final ModConfigSpec.DoubleValue BOSS_DAMAGE_MULTIPLIER;
 
+    /**
+     * Boss限伤排除实体列表（按实体ID，逗号分隔）
+     */
+    public static final ModConfigSpec.ConfigValue<String> BOSS_DAMAGE_CAP_EXCLUSIONS;
+
     // ==================== 智能浮动系统配置 ====================
     
     /**
@@ -252,6 +257,40 @@ public class Config {
      */
     public static final ModConfigSpec.BooleanValue FIX_SPEED_BONUS_TO_ZERO;
 
+    // ==================== 难度缓动配置 ====================
+    
+    /**
+     * 是否启用难度缓动
+     */
+    public static final ModConfigSpec.BooleanValue ENABLE_DIFFICULTY_SMOOTHING;
+    
+    /**
+     * 难度缓动因子 (0.0-1.0)，越大越快对齐
+     */
+    public static final ModConfigSpec.DoubleValue DIFFICULTY_SMOOTHING_FACTOR;
+    
+    /**
+     * 难度缓动更新间隔（tick数，20tick=1秒）
+     */
+    public static final ModConfigSpec.IntValue DIFFICULTY_SMOOTHING_TICK_INTERVAL;
+
+    // ==================== 世界阶段配置 ====================
+    
+    /**
+     * 是否启用世界阶段系统
+     */
+    public static final ModConfigSpec.BooleanValue ENABLE_WORLD_STAGE;
+    
+    /**
+     * 每个世界阶段的难度倍率增量
+     */
+    public static final ModConfigSpec.DoubleValue WORLD_STAGE_MULTIPLIER_PER_STAGE;
+    
+    /**
+     * 最大世界阶段数
+     */
+    public static final ModConfigSpec.IntValue WORLD_STAGE_MAX_STAGE;
+
     // ==================== 调试配置 ====================
     
     /**
@@ -345,6 +384,11 @@ public class Config {
         BOSS_DAMAGE_MULTIPLIER = BUILDER
             .comment("Boss 伤害额外倍率")
             .defineInRange("bossDamageMultiplier", 3.0, 1.0, 20.0);
+        
+        BOSS_DAMAGE_CAP_EXCLUSIONS = BUILDER
+            .comment("不受Boss限伤影响的实体ID列表（逗号分隔），例如：minecraft:zombie,minecraft:skeleton")
+            .comment("Entity IDs excluded from boss damage cap (comma-separated), e.g.: minecraft:zombie,minecraft:skeleton")
+            .define("bossDamageCapExclusions", "");
         
         BUILDER.pop();
 
@@ -499,6 +543,46 @@ public class Config {
             .comment("是否固定移动速度加成为0 - 防止怪物跑得太快")
             .comment("Fix movement speed bonus to zero - prevents mobs from running too fast")
             .define("fixSpeedBonusToZero", true);
+        
+        BUILDER.pop();
+
+        // 难度缓动配置
+        BUILDER.push("difficultySmoothing");
+        
+        ENABLE_DIFFICULTY_SMOOTHING = BUILDER
+            .comment("是否启用难度缓动 - 让怪物强度平滑变化，不会瞬间对齐玩家强度")
+            .comment("Enable difficulty smoothing - let monster strength change smoothly instead of instantly matching player strength")
+            .define("enableDifficultySmoothing", true);
+        
+        DIFFICULTY_SMOOTHING_FACTOR = BUILDER
+            .comment("难度缓动因子 (0.01-0.5)，越大对齐越快。推荐0.05：约8秒对齐；0.1：约4秒对齐")
+            .comment("Difficulty smoothing factor (0.01-0.5), higher = faster alignment. 0.05 ~8s, 0.1 ~4s")
+            .defineInRange("difficultySmoothingFactor", 0.05, 0.01, 0.5);
+        
+        DIFFICULTY_SMOOTHING_TICK_INTERVAL = BUILDER
+            .comment("难度缓动更新间隔（tick数，20tick=1秒）。默认5tick（0.25秒更新一次）")
+            .comment("Smoothing update interval in ticks (20 ticks = 1s). Default 5 ticks")
+            .defineInRange("difficultySmoothingTickInterval", 5, 1, 40);
+        
+        BUILDER.pop();
+
+        // 世界阶段配置
+        BUILDER.push("worldStage");
+        
+        ENABLE_WORLD_STAGE = BUILDER
+            .comment("是否启用世界阶段系统 - 击杀Boss后永久提升世界难度")
+            .comment("Enable world stage system - permanently increase difficulty after boss kills")
+            .define("enableWorldStage", true);
+        
+        WORLD_STAGE_MULTIPLIER_PER_STAGE = BUILDER
+            .comment("每个世界阶段的难度倍率增量 (0.5 = 每个阶段+50%怪物强度)")
+            .comment("Multiplier increment per world stage (0.5 = +50% enemy strength per stage)")
+            .defineInRange("worldStageMultiplierPerStage", 0.5, 0.0, 5.0);
+        
+        WORLD_STAGE_MAX_STAGE = BUILDER
+            .comment("最大世界阶段数 - 防止无限增长")
+            .comment("Maximum world stage - prevents infinite growth")
+            .defineInRange("worldStageMaxStage", 10, 1, 100);
         
         BUILDER.pop();
 

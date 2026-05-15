@@ -3,13 +3,19 @@ package com.adaptive_nemesis.adaptive_nemesismod.boss;
 import com.adaptive_nemesis.adaptive_nemesismod.AdaptiveNemesisMod;
 import com.adaptive_nemesis.adaptive_nemesismod.Config;
 
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.boss.enderdragon.EnderDragon;
 import net.minecraft.world.entity.boss.wither.WitherBoss;
 import net.minecraft.world.entity.monster.warden.Warden;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.neoforge.event.entity.living.LivingIncomingDamageEvent;
+
+import java.util.Arrays;
+import java.util.HashSet;
+import java.util.Set;
 
 /**
  * Boss伤害上限处理器
@@ -33,11 +39,21 @@ public class BossDamageCapHandler {
      * Boss战斗数据NBT标签键
      */
     public static final String BOSS_FIGHT_START_TAG = "adaptive_nemesis_boss_fight_start";
-    
+
     /**
      * Boss已受伤害NBT标签键
      */
     public static final String BOSS_DAMAGE_TAKEN_TAG = "adaptive_nemesis_boss_damage_taken";
+
+    /**
+     * 缓存的排除实体ID集合
+     */
+    private Set<String> cachedExclusions = null;
+
+    /**
+     * 上次缓存更新的配置值
+     */
+    private String cachedExclusionConfigValue = "";
     
     /**
      * 私有构造函数 - 单例模式
@@ -72,6 +88,17 @@ public class BossDamageCapHandler {
         
         // 检查目标是否是Boss
         if (!isBoss(target)) {
+            return;
+        }
+
+        // 检查该Boss是否在排除列表中（配置中指定的实体不受限伤影响）
+        if (isExcludedFromCap(target)) {
+            if (Config.ENABLE_DEBUG_LOG.get()) {
+                AdaptiveNemesisMod.LOGGER.debug(
+                    "Boss {} 在限伤排除列表中，跳过伤害限制",
+                    target.getName().getString()
+                );
+            }
             return;
         }
         
@@ -128,7 +155,45 @@ public class BossDamageCapHandler {
                entityName.contains("warden") ||
                entity.getMaxHealth() >= 200; // 血量超过200的也视为Boss
     }
-    
+
+    /**
+     * 检查实体是否在限伤排除列表中
+     *
+     * @param entity 目标实体
+     * @return 如果在排除列表中返回true，跳过限伤
+     */
+    public boolean isExcludedFromCap(LivingEntity entity) {
+        String configValue = Config.BOSS_DAMAGE_CAP_EXCLUSIONS.get();
+        if (configValue == null || configValue.trim().isEmpty()) {
+            return false;
+        }
+
+        // 更新缓存
+        if (cachedExclusions == null || !configValue.equals(cachedExclusionConfigValue)) {
+            cachedExclusions = new HashSet<>();
+            for (String id : configValue.split(",")) {
+                String trimmed = id.trim();
+                if (!trimmed.isEmpty()) {
+                    cachedExclusions.add(trimmed);
+                }
+            }
+            cachedExclusionConfigValue = configValue;
+        }
+
+        // 获取实体的注册ID
+        EntityType<?> entityType = entity.getType();
+        ResourceLocation entityId = EntityType.getKey(entityType);
+        String fullId = entityId.toString();
+
+        if (cachedExclusions.contains(fullId)) {
+            return true;
+        }
+
+        // 也检查短名称（不含命名空间）
+        String shortId = entityId.getPath();
+        return cachedExclusions.contains(shortId);
+    }
+
     /**
      * 初始化Boss战斗数据
      * 

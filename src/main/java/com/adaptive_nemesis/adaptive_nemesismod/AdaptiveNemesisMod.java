@@ -6,6 +6,8 @@ import com.adaptive_nemesis.adaptive_nemesismod.boss.BossDamageCapHandler;
 import com.adaptive_nemesis.adaptive_nemesismod.command.ModCommands;
 import com.adaptive_nemesis.adaptive_nemesismod.damage.TrueDamageHandler;
 import com.adaptive_nemesis.adaptive_nemesismod.enemy.EnemyScalingHandler;
+import com.adaptive_nemesis.adaptive_nemesismod.enemy.DifficultyTracker;
+import com.adaptive_nemesis.adaptive_nemesismod.enemy.WorldStageManager;
 import com.adaptive_nemesis.adaptive_nemesismod.event.ModEventHandler;
 import com.adaptive_nemesis.adaptive_nemesismod.memory.NemesisMemorySystem;
 import com.adaptive_nemesis.adaptive_nemesismod.network.ModNetworking;
@@ -124,7 +126,13 @@ public class AdaptiveNemesisMod {
         
         // 注册宿敌记忆系统
         eventBus.register(NemesisMemorySystem.getInstance());
-        
+
+        // 注册难度缓动跟踪器
+        eventBus.register(DifficultyTracker.getInstance());
+
+        // 注册世界阶段管理器
+        eventBus.register(WorldStageManager.getInstance());
+
         // 注册通用事件处理器
         eventBus.register(ModEventHandler.getInstance());
         

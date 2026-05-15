@@ -50,6 +50,8 @@
   "adaptive_nemesis.config.tooltip.boss_health_multiplier": "Boss相对于普通敌人的额外血量倍率",
   "adaptive_nemesis.config.boss_damage_multiplier": "Boss伤害倍率",
   "adaptive_nemesis.config.tooltip.boss_damage_multiplier": "Boss相对于普通敌人的额外伤害倍率",
+  "adaptive_nemesis.config.boss_damage_cap_exclusions": "限伤排除实体",
+  "adaptive_nemesis.config.tooltip.boss_damage_cap_exclusions": "不受Boss限伤影响的实体ID列表（逗号分隔），例如：minecraft:zombie,minecraft:skeleton",
 
   "adaptive_nemesis.config.enable_newbie_protection": "启用新手保护",
   "adaptive_nemesis.config.tooltip.enable_newbie_protection": "为游戏时间较短的玩家提供保护",
@@ -64,6 +66,22 @@
   "adaptive_nemesis.config.tooltip.random_min_factor": "属性随机分布的最小因子",
   "adaptive_nemesis.config.random_max_factor": "随机最大因子",
   "adaptive_nemesis.config.tooltip.random_max_factor": "属性随机分布的最大因子",
+
+  "adaptive_nemesis.config.category.smoothing": "难度缓动",
+  "adaptive_nemesis.config.enable_difficulty_smoothing": "启用难度缓动",
+  "adaptive_nemesis.config.tooltip.enable_difficulty_smoothing": "让怪物强度平滑变化，不会瞬间对齐玩家强度，享受升级后的碾压快感",
+  "adaptive_nemesis.config.difficulty_smoothing_factor": "缓动因子",
+  "adaptive_nemesis.config.tooltip.difficulty_smoothing_factor": "数值越大对齐越快（0.01~0.5）。推荐0.05(约8秒)，0.1(约4秒)",
+  "adaptive_nemesis.config.difficulty_smoothing_tick_interval": "缓动更新间隔(tick)",
+  "adaptive_nemesis.config.tooltip.difficulty_smoothing_tick_interval": "每多少tick更新一次缓动（20tick=1秒）",
+
+  "adaptive_nemesis.config.category.world_stage": "世界阶段",
+  "adaptive_nemesis.config.enable_world_stage": "启用世界阶段",
+  "adaptive_nemesis.config.tooltip.enable_world_stage": "击杀Boss（末影龙/凋零/坚守者）后永久提升世界难度",
+  "adaptive_nemesis.config.world_stage_multiplier_per_stage": "每阶段倍率增量",
+  "adaptive_nemesis.config.tooltip.world_stage_multiplier_per_stage": "每个世界阶段的难度倍率增量（0.5=+50%）",
+  "adaptive_nemesis.config.world_stage_max_stage": "最大阶段数",
+  "adaptive_nemesis.config.tooltip.world_stage_max_stage": "世界阶段的最大上限，防止无限增长",
 
   "adaptive_nemesis.config.defense_weight": "防御权重",
   "adaptive_nemesis.config.tooltip.defense_weight": "防御属性在强度评估中的权重",

@@ -197,6 +197,11 @@ public class AdaptiveNemesisConfigScreen extends Screen {
             createDoubleEditBox(Config.BOSS_DAMAGE_MULTIPLIER.get(), 1.0, 20.0,
                 value -> { Config.BOSS_DAMAGE_MULTIPLIER.set(value); markChanged(); }),
             widgetX);
+        currentY = addConfigEntry(currentY, "adaptive_nemesis.config.boss_damage_cap_exclusions",
+            "adaptive_nemesis.config.tooltip.boss_damage_cap_exclusions",
+            createStringEditBox(Config.BOSS_DAMAGE_CAP_EXCLUSIONS.get(),
+                value -> { Config.BOSS_DAMAGE_CAP_EXCLUSIONS.set(value); markChanged(); }),
+            widgetX);
 
         // ===== 新手保护 =====
         currentY = addCategoryEntry(currentY, "adaptive_nemesis.config.category.newbie", 0xFF55FF55);
@@ -232,6 +237,42 @@ public class AdaptiveNemesisConfigScreen extends Screen {
             "adaptive_nemesis.config.tooltip.random_max_factor",
             createDoubleEditBox(Config.RANDOM_MAX_FACTOR.get(), 1.0, 2.0,
                 value -> { Config.RANDOM_MAX_FACTOR.set(value); markChanged(); }),
+            widgetX);
+
+        // ===== 难度缓动 =====
+        currentY = addCategoryEntry(currentY, "adaptive_nemesis.config.category.smoothing", 0xFF55CCFF);
+        currentY = addConfigEntry(currentY, "adaptive_nemesis.config.enable_difficulty_smoothing",
+            "adaptive_nemesis.config.tooltip.enable_difficulty_smoothing",
+            createBooleanButton(Config.ENABLE_DIFFICULTY_SMOOTHING.get(),
+                value -> { Config.ENABLE_DIFFICULTY_SMOOTHING.set(value); markChanged(); }),
+            widgetX);
+        currentY = addConfigEntry(currentY, "adaptive_nemesis.config.difficulty_smoothing_factor",
+            "adaptive_nemesis.config.tooltip.difficulty_smoothing_factor",
+            createDoubleEditBox(Config.DIFFICULTY_SMOOTHING_FACTOR.get(), 0.01, 0.5,
+                value -> { Config.DIFFICULTY_SMOOTHING_FACTOR.set(value); markChanged(); }),
+            widgetX);
+        currentY = addConfigEntry(currentY, "adaptive_nemesis.config.difficulty_smoothing_tick_interval",
+            "adaptive_nemesis.config.tooltip.difficulty_smoothing_tick_interval",
+            createIntEditBox(Config.DIFFICULTY_SMOOTHING_TICK_INTERVAL.get(), 1, 40,
+                value -> { Config.DIFFICULTY_SMOOTHING_TICK_INTERVAL.set(value); markChanged(); }),
+            widgetX);
+
+        // ===== 世界阶段 =====
+        currentY = addCategoryEntry(currentY, "adaptive_nemesis.config.category.world_stage", 0xFFFF8855);
+        currentY = addConfigEntry(currentY, "adaptive_nemesis.config.enable_world_stage",
+            "adaptive_nemesis.config.tooltip.enable_world_stage",
+            createBooleanButton(Config.ENABLE_WORLD_STAGE.get(),
+                value -> { Config.ENABLE_WORLD_STAGE.set(value); markChanged(); }),
+            widgetX);
+        currentY = addConfigEntry(currentY, "adaptive_nemesis.config.world_stage_multiplier_per_stage",
+            "adaptive_nemesis.config.tooltip.world_stage_multiplier_per_stage",
+            createDoubleEditBox(Config.WORLD_STAGE_MULTIPLIER_PER_STAGE.get(), 0.0, 5.0,
+                value -> { Config.WORLD_STAGE_MULTIPLIER_PER_STAGE.set(value); markChanged(); }),
+            widgetX);
+        currentY = addConfigEntry(currentY, "adaptive_nemesis.config.world_stage_max_stage",
+            "adaptive_nemesis.config.tooltip.world_stage_max_stage",
+            createIntEditBox(Config.WORLD_STAGE_MAX_STAGE.get(), 1, 100,
+                value -> { Config.WORLD_STAGE_MAX_STAGE.set(value); markChanged(); }),
             widgetX);
 
         // ===== 权重配置 =====

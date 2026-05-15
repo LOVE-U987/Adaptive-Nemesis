@@ -227,7 +227,16 @@ public class EnemyScalingHandler {
         // 应用浮动调整
         double floatMultiplier = AdaptiveFloatSystem.getInstance().getFloatMultiplier();
 
-        double finalMultiplier = baseMultiplier * floatMultiplier;
+        // 应用难度缓动
+        double easedMultiplier = DifficultyTracker.getInstance().getEasedMultiplier(baseMultiplier * floatMultiplier);
+
+        // 应用世界阶段加成
+        double worldStageMultiplier = 1.0;
+        if (Config.ENABLE_WORLD_STAGE.get()) {
+            worldStageMultiplier = WorldStageManager.getInstance().getWorldStageMultiplier();
+        }
+
+        double finalMultiplier = easedMultiplier * worldStageMultiplier;
 
         // 应用上限
         if (Config.ENABLE_ENEMY_BONUS_CAP.get()) {
@@ -342,7 +351,19 @@ public class EnemyScalingHandler {
             double effectiveMultiplier = multiplier * randomFactor;
             double newMax = originalMax * Math.min(effectiveMultiplier, Config.MAX_HEALTH_MULTIPLIER.get());
             healthAttr.setBaseValue(newMax);
-            mob.setHealth((float) newMax);
+
+            // 立即尝试设置满血
+            mob.setHealth(mob.getMaxHealth());
+
+            // 延迟1tick再填满血量（关键！）
+            // 解决 setBaseValue 后属性未立即传播，setHealth 被 clamp 在旧最大值的问题
+            if (!mob.level().isClientSide() && mob.level() instanceof ServerLevel serverLevel) {
+                serverLevel.getServer().execute(() -> {
+                    if (!mob.isRemoved() && mob.isAlive()) {
+                        mob.setHealth(mob.getMaxHealth());
+                    }
+                });
+            }
 
             if (Config.ENABLE_DEBUG_LOG.get() && randomFactor != 1.0) {
                 AdaptiveNemesisMod.LOGGER.debug(

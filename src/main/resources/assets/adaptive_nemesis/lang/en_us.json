@@ -50,6 +50,8 @@
   "adaptive_nemesis.config.tooltip.boss_health_multiplier": "Extra health multiplier for Boss relative to normal enemies",
   "adaptive_nemesis.config.boss_damage_multiplier": "Boss Damage Multiplier",
   "adaptive_nemesis.config.tooltip.boss_damage_multiplier": "Extra damage multiplier for Boss relative to normal enemies",
+  "adaptive_nemesis.config.boss_damage_cap_exclusions": "Damage Cap Exclusions",
+  "adaptive_nemesis.config.tooltip.boss_damage_cap_exclusions": "Entity IDs excluded from boss damage cap (comma-separated), e.g.: minecraft:zombie,minecraft:skeleton",
 
   "adaptive_nemesis.config.enable_newbie_protection": "Enable Newbie Protection",
   "adaptive_nemesis.config.tooltip.enable_newbie_protection": "Provide protection for players with short playtime",
@@ -64,6 +66,22 @@
   "adaptive_nemesis.config.tooltip.random_min_factor": "Minimum factor for attribute random distribution",
   "adaptive_nemesis.config.random_max_factor": "Random Max Factor",
   "adaptive_nemesis.config.tooltip.random_max_factor": "Maximum factor for attribute random distribution",
+
+  "adaptive_nemesis.config.category.smoothing": "Difficulty Smoothing",
+  "adaptive_nemesis.config.enable_difficulty_smoothing": "Enable Smoothing",
+  "adaptive_nemesis.config.tooltip.enable_difficulty_smoothing": "Let monster strength change smoothly instead of instantly matching player power. Enjoy the power trip after upgrades!",
+  "adaptive_nemesis.config.difficulty_smoothing_factor": "Smoothing Factor",
+  "adaptive_nemesis.config.tooltip.difficulty_smoothing_factor": "Higher = faster alignment (0.01~0.5). Recommended: 0.05(~8s), 0.1(~4s)",
+  "adaptive_nemesis.config.difficulty_smoothing_tick_interval": "Update Interval (ticks)",
+  "adaptive_nemesis.config.tooltip.difficulty_smoothing_tick_interval": "How many ticks between smoothing updates (20 ticks = 1s)",
+
+  "adaptive_nemesis.config.category.world_stage": "World Stage",
+  "adaptive_nemesis.config.enable_world_stage": "Enable World Stage",
+  "adaptive_nemesis.config.tooltip.enable_world_stage": "Killing bosses (Ender Dragon/Wither/Warden) permanently increases world difficulty",
+  "adaptive_nemesis.config.world_stage_multiplier_per_stage": "Multiplier per Stage",
+  "adaptive_nemesis.config.tooltip.world_stage_multiplier_per_stage": "Difficulty multiplier increment per world stage (0.5 = +50%)",
+  "adaptive_nemesis.config.world_stage_max_stage": "Max Stage",
+  "adaptive_nemesis.config.tooltip.world_stage_max_stage": "Maximum world stage cap to prevent infinite growth",
 
   "adaptive_nemesis.config.defense_weight": "Defense Weight",
   "adaptive_nemesis.config.tooltip.defense_weight": "Weight of defense attribute in strength evaluation",
