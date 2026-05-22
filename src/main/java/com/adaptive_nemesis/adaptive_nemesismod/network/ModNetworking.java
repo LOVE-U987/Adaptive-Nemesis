@@ -29,8 +29,7 @@ public class ModNetworking {
      */
     public static void register(IEventBus modEventBus) {
         modEventBus.addListener(ModNetworking::registerPayloadHandlers);
-        
-        AdaptiveNemesisMod.LOGGER.info("📡 网络系统已注册");
+                AdaptiveNemesisMod.LOGGER.debug("📡 网络系统已注册");
     }
     
     /**

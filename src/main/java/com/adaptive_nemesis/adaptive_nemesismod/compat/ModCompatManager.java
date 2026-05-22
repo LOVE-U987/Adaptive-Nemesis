@@ -96,7 +96,7 @@ public class ModCompatManager {
         if (epicFightLoaded == null) {
             epicFightLoaded = ModList.get().isLoaded(EPIC_FIGHT_MODID);
             if (epicFightLoaded) {
-                AdaptiveNemesisMod.LOGGER.info("✅ 检测到史诗战斗模组 (Epic Fight)，已启用兼容支持");
+                AdaptiveNemesisMod.LOGGER.debug("✅ 检测到史诗战斗模组 (Epic Fight)，已启用兼容支持");
                 try {
                     epicFightCompat = new EpicFightCompat();
                 } catch (Exception e) {

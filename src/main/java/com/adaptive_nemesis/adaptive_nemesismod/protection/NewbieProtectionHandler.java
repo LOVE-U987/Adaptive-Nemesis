@@ -118,8 +118,7 @@ public class NewbieProtectionHandler {
         if (data.getDeathCount() == 1) {
             long bonusTime = Config.DEATH_PROTECTION_BONUS.get() * 60 * 1000; // 转毫秒
             data.extendProtection(bonusTime);
-            
-            AdaptiveNemesisMod.LOGGER.info(
+            AdaptiveNemesisMod.LOGGER.debug(
                 "玩家 {} 首次死亡，新手保护时间增加 {} 分钟",
                 player.getName().getString(),
                 Config.DEATH_PROTECTION_BONUS.get()
@@ -130,8 +129,7 @@ public class NewbieProtectionHandler {
         if (data.getDeathCount() >= Config.DEATH_STREAK_THRESHOLD.get()) {
             data.forceEnableProtection();
             
-            AdaptiveNemesisMod.LOGGER.info(
-                "玩家 {} 连续死亡 {} 次，强制开启新手保护",
+            AdaptiveNemesisMod.LOGGER.debug(
                 player.getName().getString(),
                 data.getDeathCount()
             );
@@ -165,10 +163,7 @@ public class NewbieProtectionHandler {
                 data.setForceProtected(false);
                 data.setProtected(false);
                 
-                AdaptiveNemesisMod.LOGGER.info(
-                    "玩家 {} 击杀了敌人，强制保护已解除",
-                    player.getName().getString()
-                );
+                AdaptiveNemesisMod.LOGGER.info("玩家击杀怪物，强制保护已解除");
             }
         }
     }

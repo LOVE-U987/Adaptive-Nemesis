@@ -1,5 +1,7 @@
 package com.adaptive_nemesis.adaptive_nemesismod.kubejs;
 
+import org.slf4j.Logger;
+
 import com.adaptive_nemesis.adaptive_nemesismod.AdaptiveNemesisMod;
 
 import dev.latvian.mods.kubejs.event.EventGroup;
@@ -16,8 +18,11 @@ import dev.latvian.mods.kubejs.script.ScriptType;
  * - 暴露模组 API 给 KubeJS 脚本使用
  * - 提供配置和热重载支持
  *
+ * 注意：此类由 KubeJS 自动加载，仅在安装 KubeJS 时才会被加载。
+ * KubeJSEventTrigger 通过 KubeJSLoader 安全检测此类的可用性。
+ *
  * @author Adaptive Nemesis Team
- * @version 1.0.0
+ * @version 1.1.0
  */
 public class AdaptiveNemesisKubeJSPlugin implements KubeJSPlugin {
 
@@ -63,19 +68,6 @@ public class AdaptiveNemesisKubeJSPlugin implements KubeJSPlugin {
     @Override
     public void registerEvents(EventGroupRegistry registry) {
         registry.register(ADAPTIVE_NEMESIS_EVENTS);
-    }
-
-    /**
-     * 检查 KubeJS 是否已加载
-     *
-     * @return 如果 KubeJS 模组已加载返回 true
-     */
-    public static boolean isKubeJSLoaded() {
-        try {
-            Class.forName("dev.latvian.mods.kubejs.plugin.KubeJSPlugin");
-            return true;
-        } catch (ClassNotFoundException e) {
-            return false;
-        }
+        AdaptiveNemesisMod.LOGGER.info("Adaptive Nemesis KubeJS 事件已注册");
     }
 }

@@ -1,5 +1,6 @@
 package com.adaptive_nemesis.adaptive_nemesismod.compat;
 
+import com.adaptive_nemesis.adaptive_nemesismod.Config;
 import com.adaptive_nemesis.adaptive_nemesismod.AdaptiveNemesisMod;
 
 import net.minecraft.server.level.ServerPlayer;
@@ -94,112 +95,128 @@ public class EpicFightCompat {
      */
     public void applyMobBuffs(Mob mob, double multiplier) {
         try {
+            // 确保倍率不低于 1.0，防止随机因子导致属性变负数
+            double effectiveMultiplier = Math.max(1.0, multiplier);
+
             // 1. 增加受击抗性 (Stun Armor) - 防止被无限硬直
             // NeoForge 1.21.1: DeferredHolder可以直接作为Holder<Attribute>传入
             AttributeInstance stunArmorAttr = mob.getAttribute(EpicFightAttributes.STUN_ARMOR);
             if (stunArmorAttr != null) {
                 double originalStunArmor = stunArmorAttr.getBaseValue();
                 // 受击抗性随倍率增加，最高增加大量
-                double newStunArmor = originalStunArmor + (multiplier - 1.0) * 5.0;
-                stunArmorAttr.setBaseValue(newStunArmor);
+                double newStunArmor = originalStunArmor + (effectiveMultiplier - 1.0) * 5.0;
+                stunArmorAttr.setBaseValue(Math.max(originalStunArmor, newStunArmor));
 
-                AdaptiveNemesisMod.LOGGER.debug(
-                    "怪物 {} 受击抗性: {} -> {}",
-                    mob.getName().getString(),
-                    String.format("%.2f", originalStunArmor),
-                    String.format("%.2f", newStunArmor)
-                );
+                if (Config.ENABLE_DEBUG_LOG.get()) {
+                    AdaptiveNemesisMod.LOGGER.debug(
+                        "怪物 {} 受击抗性: {} -> {}",
+                        mob.getName().getString(),
+                        String.format("%.2f", originalStunArmor),
+                        String.format("%.2f", newStunArmor)
+                    );
+                }
             }
 
             // 2. 增加冲击值 (Impact) - 更容易打断玩家攻击
             AttributeInstance impactAttr = mob.getAttribute(EpicFightAttributes.IMPACT);
             if (impactAttr != null) {
                 double originalImpact = impactAttr.getBaseValue();
-                double newImpact = originalImpact * (1.0 + (multiplier - 1.0) * 0.3);
-                impactAttr.setBaseValue(newImpact);
+                double newImpact = originalImpact * (1.0 + (effectiveMultiplier - 1.0) * 0.3);
+                impactAttr.setBaseValue(Math.max(originalImpact, newImpact));
 
-                AdaptiveNemesisMod.LOGGER.debug(
-                    "怪物 {} 冲击值: {} -> {}",
-                    mob.getName().getString(),
-                    String.format("%.2f", originalImpact),
-                    String.format("%.2f", newImpact)
-                );
+                if (Config.ENABLE_DEBUG_LOG.get()) {
+                    AdaptiveNemesisMod.LOGGER.debug(
+                        "怪物 {} 冲击值: {} -> {}",
+                        mob.getName().getString(),
+                        String.format("%.2f", originalImpact),
+                        String.format("%.2f", newImpact)
+                    );
+                }
             }
 
             // 3. 增加护甲穿透 (Armor Negation) - 无视部分护甲
             AttributeInstance armorNegationAttr = mob.getAttribute(EpicFightAttributes.ARMOR_NEGATION);
             if (armorNegationAttr != null) {
                 double originalNegation = armorNegationAttr.getBaseValue();
-                double newNegation = originalNegation + (multiplier - 1.0) * 2.0;
+                double newNegation = originalNegation + (effectiveMultiplier - 1.0) * 2.0;
                 armorNegationAttr.setBaseValue(Math.min(newNegation, 100.0)); // 最高100%
 
-                AdaptiveNemesisMod.LOGGER.debug(
-                    "怪物 {} 护甲穿透: {} -> {}",
-                    mob.getName().getString(),
-                    String.format("%.2f", originalNegation),
-                    String.format("%.2f", newNegation)
-                );
+                if (Config.ENABLE_DEBUG_LOG.get()) {
+                    AdaptiveNemesisMod.LOGGER.debug(
+                        "怪物 {} 护甲穿透: {} -> {}",
+                        mob.getName().getString(),
+                        String.format("%.2f", originalNegation),
+                        String.format("%.2f", newNegation)
+                    );
+                }
             }
 
             // 4. 增加最大连击数 (Max Strikes) - 可以连续攻击更多次
             AttributeInstance maxStrikesAttr = mob.getAttribute(EpicFightAttributes.MAX_STRIKES);
             if (maxStrikesAttr != null) {
                 double originalStrikes = maxStrikesAttr.getBaseValue();
-                double newStrikes = originalStrikes + (multiplier - 1.0) * 0.5;
-                maxStrikesAttr.setBaseValue(newStrikes);
+                double newStrikes = originalStrikes + (effectiveMultiplier - 1.0) * 0.5;
+                maxStrikesAttr.setBaseValue(Math.max(originalStrikes, newStrikes));
 
-                AdaptiveNemesisMod.LOGGER.debug(
-                    "怪物 {} 最大连击: {} -> {}",
-                    mob.getName().getString(),
-                    String.format("%.2f", originalStrikes),
-                    String.format("%.2f", newStrikes)
-                );
+                if (Config.ENABLE_DEBUG_LOG.get()) {
+                    AdaptiveNemesisMod.LOGGER.debug(
+                        "怪物 {} 最大连击: {} -> {}",
+                        mob.getName().getString(),
+                        String.format("%.2f", originalStrikes),
+                        String.format("%.2f", newStrikes)
+                    );
+                }
             }
 
-            // 5. 增加重量 (Weight) - 更难被击退
+            // 5. 增加重量 (Weight) - 更难被击退，至少保证基础抗性
             AttributeInstance weightAttr = mob.getAttribute(EpicFightAttributes.WEIGHT);
             if (weightAttr != null) {
                 double originalWeight = weightAttr.getBaseValue();
-                double newWeight = originalWeight + (multiplier - 1.0) * 10.0;
-                weightAttr.setBaseValue(newWeight);
+                double minWeight = originalWeight + Config.WEIGHT_MIN_BONUS.get();
+                double newWeight = originalWeight + (effectiveMultiplier - 1.0) * Config.WEIGHT_PER_MULTIPLIER.get();
+                weightAttr.setBaseValue(Math.max(minWeight, newWeight));
 
-                AdaptiveNemesisMod.LOGGER.debug(
-                    "怪物 {} 重量: {} -> {}",
-                    mob.getName().getString(),
-                    String.format("%.2f", originalWeight),
-                    String.format("%.2f", newWeight)
-                );
+                if (Config.ENABLE_DEBUG_LOG.get()) {
+                    AdaptiveNemesisMod.LOGGER.debug(
+                        "怪物 {} 重量: {} -> {}",
+                        mob.getName().getString(),
+                        String.format("%.2f", originalWeight),
+                        String.format("%.2f", newWeight)
+                    );
+                }
             }
 
             // 6. 增加耐力值 (Stamina) - 更多耐力进行战斗
             AttributeInstance maxStaminaAttr = mob.getAttribute(EpicFightAttributes.MAX_STAMINA);
             if (maxStaminaAttr != null) {
                 double originalStamina = maxStaminaAttr.getBaseValue();
-                double newStamina = originalStamina * multiplier;
-                maxStaminaAttr.setBaseValue(newStamina);
+                double newStamina = originalStamina * effectiveMultiplier;
+                maxStaminaAttr.setBaseValue(Math.max(originalStamina, newStamina));
 
-                AdaptiveNemesisMod.LOGGER.debug(
-                    "怪物 {} 耐力: {} -> {}",
-                    mob.getName().getString(),
-                    String.format("%.2f", originalStamina),
-                    String.format("%.2f", newStamina)
-                );
+                if (Config.ENABLE_DEBUG_LOG.get()) {
+                    AdaptiveNemesisMod.LOGGER.debug(
+                        "怪物 {} 耐力: {} -> {}",
+                        mob.getName().getString(),
+                        String.format("%.2f", originalStamina),
+                        String.format("%.2f", newStamina)
+                    );
+                }
             }
 
             // 7. 增加耐力恢复 (Stamina Regen)
             AttributeInstance staminaRegenAttr = mob.getAttribute(EpicFightAttributes.STAMINA_REGEN);
             if (staminaRegenAttr != null) {
                 double originalRegen = staminaRegenAttr.getBaseValue();
-                double newRegen = originalRegen * (1.0 + (multiplier - 1.0) * 0.5);
-                staminaRegenAttr.setBaseValue(newRegen);
+                double newRegen = originalRegen * (1.0 + (effectiveMultiplier - 1.0) * 0.5);
+                staminaRegenAttr.setBaseValue(Math.max(originalRegen, newRegen));
             }
 
             // 8. 增加处决抗性 (Execution Resistance) - 防止被处决
             AttributeInstance executionResistAttr = mob.getAttribute(EpicFightAttributes.ASSASSINATION_RESISTANCE);
             if (executionResistAttr != null) {
                 double originalResist = executionResistAttr.getBaseValue();
-                double newResist = originalResist + (multiplier - 1.0) * 1.0;
-                executionResistAttr.setBaseValue(newResist);
+                double newResist = originalResist + (effectiveMultiplier - 1.0) * 1.0;
+                executionResistAttr.setBaseValue(Math.max(originalResist, newResist));
             }
 
         } catch (Exception e) {

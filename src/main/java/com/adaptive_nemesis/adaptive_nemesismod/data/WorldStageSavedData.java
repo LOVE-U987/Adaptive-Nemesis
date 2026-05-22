@@ -17,7 +17,7 @@ public class WorldStageSavedData {
      */
     public static void load(ServerLevel level) {
         // 暂不实现持久化加载
-        AdaptiveNemesisMod.LOGGER.info("World stage data loading skipped (persistence not fully implemented yet)");
+        AdaptiveNemesisMod.LOGGER.debug("World stage data loading skipped (persistence not fully implemented yet)");
     }
 
     /**
@@ -25,6 +25,6 @@ public class WorldStageSavedData {
      */
     public static void save(ServerLevel level) {
         // 暂不实现持久化保存
-        AdaptiveNemesisMod.LOGGER.info("World stage data saving skipped (persistence not fully implemented yet)");
+        AdaptiveNemesisMod.LOGGER.debug("World stage data saving skipped (persistence not fully implemented yet)");
     }
 }

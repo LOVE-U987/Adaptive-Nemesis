@@ -12,9 +12,10 @@ import net.minecraft.world.entity.Mob;
  *
  * 负责在模组的关键位置触发 KubeJS 事件。
  * 提供静态方法供其他系统调用，自动处理 KubeJS 是否加载的检查。
+ * 使用安全加载机制，即使 KubeJS 未安装也不会崩溃。
  *
  * @author Adaptive Nemesis Team
- * @version 1.0.0
+ * @version 1.1.0
  */
 public class KubeJSEventTrigger {
 
@@ -26,7 +27,7 @@ public class KubeJSEventTrigger {
      * @return 事件处理后的倍率，如果取消则返回 -1
      */
     public static double triggerEntityScale(Mob entity, double multiplier) {
-        if (!AdaptiveNemesisKubeJSPlugin.isKubeJSLoaded()) {
+        if (!KubeJSLoader.isKubeJSLoaded()) {
             return multiplier;
         }
 
@@ -58,7 +59,7 @@ public class KubeJSEventTrigger {
     public static float triggerDamageCalculation(LivingEntity attacker, LivingEntity target,
                                                   float originalDamage, float calculatedDamage,
                                                   double armorMultiplier) {
-        if (!AdaptiveNemesisKubeJSPlugin.isKubeJSLoaded()) {
+        if (!KubeJSLoader.isKubeJSLoaded()) {
             return calculatedDamage;
         }
 
@@ -93,7 +94,7 @@ public class KubeJSEventTrigger {
     public static double triggerPlayerStrengthEvaluation(ServerPlayer player, double baseStrength,
                                                           double defenseStrength, double attackStrength,
                                                           double magicStrength, double combatStrength) {
-        if (!AdaptiveNemesisKubeJSPlugin.isKubeJSLoaded()) {
+        if (!KubeJSLoader.isKubeJSLoaded()) {
             return baseStrength;
         }
 
@@ -119,7 +120,7 @@ public class KubeJSEventTrigger {
      */
     public static void triggerNemesisMemoryUpdate(java.util.UUID playerUUID, String playerName,
                                                    NemesisProfile profile) {
-        if (!AdaptiveNemesisKubeJSPlugin.isKubeJSLoaded()) {
+        if (!KubeJSLoader.isKubeJSLoaded()) {
             return;
         }
 
@@ -146,6 +147,6 @@ public class KubeJSEventTrigger {
      * @return 如果 KubeJS 已加载返回 true
      */
     public static boolean isKubeJSActive() {
-        return AdaptiveNemesisKubeJSPlugin.isKubeJSLoaded();
+        return KubeJSLoader.isKubeJSLoaded();
     }
 }

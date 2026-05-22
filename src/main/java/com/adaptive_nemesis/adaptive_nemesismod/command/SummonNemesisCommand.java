@@ -136,7 +136,7 @@ public class SummonNemesisCommand {
             "§c⚔️ 宿敌 " + nemesisName + " 已降临！"
         ), true);
 
-        AdaptiveNemesisMod.LOGGER.info(
+        AdaptiveNemesisMod.LOGGER.debug(
             "玩家 {} 召唤了宿敌: {}",
             player.getName().getString(),
             nemesisName

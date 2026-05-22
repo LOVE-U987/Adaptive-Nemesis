@@ -40,7 +40,7 @@ public class ClientEventHandler {
                         (container, parent) -> new AdaptiveNemesisConfigScreen(parent)
                     );
 
-                    AdaptiveNemesisMod.LOGGER.info("✅ 配置界面已注册到模组列表");
+                    AdaptiveNemesisMod.LOGGER.debug("✅ 配置界面已注册到模组列表");
                 });
         });
     }

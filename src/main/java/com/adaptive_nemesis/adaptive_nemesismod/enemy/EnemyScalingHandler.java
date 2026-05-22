@@ -12,10 +12,13 @@ import com.adaptive_nemesis.adaptive_nemesismod.memory.NemesisMemorySystem;
 import com.adaptive_nemesis.adaptive_nemesismod.player.PlayerStrengthData;
 import com.adaptive_nemesis.adaptive_nemesismod.player.PlayerStrengthEvaluator;
 
+import net.minecraft.core.Holder;
+import net.minecraft.nbt.CompoundTag;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.Mob;
+import net.minecraft.world.entity.ai.attributes.Attribute;
 import net.minecraft.world.entity.ai.attributes.AttributeInstance;
 import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.monster.Enemy;
@@ -57,6 +60,24 @@ public class EnemyScalingHandler {
      * 强化倍率NBT标签键
      */
     public static final String SCALE_MULTIPLIER_TAG = "adaptive_nemesis_multiplier";
+
+    /**
+     * 原始属性值前缀 - 用于防重复缩放
+     * 存储缩放前的原始值，确保每次缩放都从原始值开始
+     */
+    private static final String ORIGINAL_PREFIX = "an_original_";
+    private static final String ORIGINAL_HEALTH_TAG = ORIGINAL_PREFIX + "health";
+    private static final String ORIGINAL_DAMAGE_TAG = ORIGINAL_PREFIX + "damage";
+    private static final String ORIGINAL_ARMOR_TAG = ORIGINAL_PREFIX + "armor";
+    private static final String ORIGINAL_TOUGHNESS_TAG = ORIGINAL_PREFIX + "toughness";
+    private static final String ORIGINAL_SPEED_TAG = ORIGINAL_PREFIX + "speed";
+    private static final String ORIGINAL_ATTACK_SPEED_TAG = ORIGINAL_PREFIX + "attack_speed";
+
+    /**
+     * 总倍率上限 - 防止属性爆炸
+     * 在应用各属性独立上限前的总关卡
+     */
+    private static final double MAX_TOTAL_MULTIPLIER = 20.0;
 
     /**
      * 随机数生成器 - 用于属性随机分布
@@ -220,15 +241,16 @@ public class EnemyScalingHandler {
      * @return 强化倍率
      */
     private double calculateMultiplier(double playerStrength) {
-        // 基础倍率 = 1 + (玩家强度 * 难度系数 / 50)
-        // 将除数从100改为50，使加成更强
-        double baseMultiplier = 1.0 + (playerStrength * Config.DIFFICULTY_BASE_MULTIPLIER.get() / 50.0);
+        // 基础倍率 = 1 + (玩家强度 * 难度系数 / 100)
+        double baseMultiplier = 1.0 + (playerStrength * Config.DIFFICULTY_BASE_MULTIPLIER.get() / 100.0);
 
         // 应用浮动调整
         double floatMultiplier = AdaptiveFloatSystem.getInstance().getFloatMultiplier();
 
+        double preEase = baseMultiplier * floatMultiplier;
+
         // 应用难度缓动
-        double easedMultiplier = DifficultyTracker.getInstance().getEasedMultiplier(baseMultiplier * floatMultiplier);
+        double easedMultiplier = DifficultyTracker.getInstance().getEasedMultiplier(preEase);
 
         // 应用世界阶段加成
         double worldStageMultiplier = 1.0;
@@ -236,14 +258,43 @@ public class EnemyScalingHandler {
             worldStageMultiplier = WorldStageManager.getInstance().getWorldStageMultiplier();
         }
 
-        double finalMultiplier = easedMultiplier * worldStageMultiplier;
+        double preCap = easedMultiplier * worldStageMultiplier;
 
-        // 应用上限
+        // 硬上限
+        double afterHardCap = Math.min(preCap, MAX_TOTAL_MULTIPLIER);
+
+        // 应用配置上限
+        double finalMultiplier = afterHardCap;
         if (Config.ENABLE_ENEMY_BONUS_CAP.get()) {
             finalMultiplier = Math.min(finalMultiplier, Config.MAX_HEALTH_MULTIPLIER.get());
         }
 
-        return Math.max(1.0, finalMultiplier);
+        finalMultiplier = Math.max(1.0, finalMultiplier);
+
+        if (Config.ENABLE_DEBUG_LOG.get()) {
+            AdaptiveNemesisMod.LOGGER.debug(
+                "📊 [缩放日志] playerStrength={}, DIFFICULTY_BASE_MULTIPLIER={}, " +
+                "baseMultiplier={}, floatMultiplier={}, preEase={}, " +
+                "easedMultiplier={}, worldStageMultiplier={}, preCap={}, " +
+                "afterHardCap={}, MAX_TOTAL_MULTIPLIER={}, ENABLE_BONUS_CAP={}, " +
+                "MAX_HEALTH_MULTIPLIER={}, finalMultiplier={}",
+                String.format("%.2f", playerStrength),
+                String.format("%.2f", Config.DIFFICULTY_BASE_MULTIPLIER.get()),
+                String.format("%.2f", baseMultiplier),
+                String.format("%.2f", floatMultiplier),
+                String.format("%.2f", preEase),
+                String.format("%.2f", easedMultiplier),
+                String.format("%.2f", worldStageMultiplier),
+                String.format("%.2f", preCap),
+                String.format("%.2f", afterHardCap),
+                MAX_TOTAL_MULTIPLIER,
+                Config.ENABLE_ENEMY_BONUS_CAP.get(),
+                String.format("%.2f", Config.MAX_HEALTH_MULTIPLIER.get()),
+                String.format("%.2f", finalMultiplier)
+            );
+        }
+
+        return finalMultiplier;
     }
 
     /**
@@ -253,6 +304,29 @@ public class EnemyScalingHandler {
      * @param multiplier 强化倍率
      */
     private void applyAttributeBonuses(Mob mob, double multiplier) {
+        if (Config.ENABLE_DEBUG_LOG.get()) {
+            CompoundTag data = mob.getPersistentData();
+            boolean alreadyScaled = data.contains(ORIGINAL_HEALTH_TAG);
+            double currentHealth = mob.getAttribute(Attributes.MAX_HEALTH) != null ?
+                mob.getAttribute(Attributes.MAX_HEALTH).getBaseValue() : -1;
+            double originalHealth = alreadyScaled ? data.getDouble(ORIGINAL_HEALTH_TAG) : currentHealth;
+            String mobName = mob.getName().getString();
+            String mobType = mob.getType().getDescriptionId();
+
+            AdaptiveNemesisMod.LOGGER.debug(
+                "🔍 [缩放入口] mob={}({}), UUID={}, alreadyScaled={}, " +
+                "currentHealth={}, originalHealth={}, multiplier={}, " +
+                "SCALED_TAG={}, dim={}",
+                mobName, mobType, mob.getUUID(),
+                alreadyScaled,
+                String.format("%.2f", currentHealth),
+                String.format("%.2f", originalHealth),
+                String.format("%.2f", multiplier),
+                data.getBoolean(SCALED_TAG),
+                mob.level().dimension().location()
+            );
+        }
+
         // 计算各属性的随机分布因子
         double healthRandomFactor = getRandomFactor();
         double damageRandomFactor = getRandomFactor();
@@ -320,6 +394,104 @@ public class EnemyScalingHandler {
 
         // 应用宿敌记忆加成（如果有玩家档案）
         applyNemesisBonuses(mob);
+
+        if (Config.ENABLE_DEBUG_LOG.get()) {
+            AttributeInstance finalHealth = mob.getAttribute(Attributes.MAX_HEALTH);
+            AttributeInstance finalDamage = mob.getAttribute(Attributes.ATTACK_DAMAGE);
+            AttributeInstance finalArmor = mob.getAttribute(Attributes.ARMOR);
+            CompoundTag data = mob.getPersistentData();
+            double origH = data.contains(ORIGINAL_HEALTH_TAG) ? data.getDouble(ORIGINAL_HEALTH_TAG) : -1;
+
+            AdaptiveNemesisMod.LOGGER.debug(
+                "✅ [缩放结果] mob={}, origHealth={}, finalHealth={}, " +
+                "finalDamage={}, finalArmor={}, healthRF={}, damageRF={}, " +
+                "armorRF={}, hasOriginalValues={}",
+                mob.getName().getString(),
+                String.format("%.2f", origH),
+                finalHealth != null ? String.format("%.2f", finalHealth.getBaseValue()) : "N/A",
+                finalDamage != null ? String.format("%.2f", finalDamage.getBaseValue()) : "N/A",
+                finalArmor != null ? String.format("%.2f", finalArmor.getBaseValue()) : "N/A",
+                String.format("%.2f", healthRandomFactor),
+                String.format("%.2f", damageRandomFactor),
+                String.format("%.2f", armorRandomFactor),
+                data.contains(ORIGINAL_HEALTH_TAG)
+            );
+        }
+    }
+
+    /**
+     * 获取或存储原始属性值
+     * 确保每次缩放都从原始值开始，防止重复缩放导致属性爆炸
+     */
+    private double getOrStoreOriginal(CompoundTag data, String tagKey, double currentValue) {
+        if (data.contains(tagKey)) {
+            return data.getDouble(tagKey);
+        }
+        data.putDouble(tagKey, currentValue);
+        return currentValue;
+    }
+
+    /**
+     * 属性计算器函数式接口
+     * 用于自定义属性加成的计算逻辑
+     */
+    @FunctionalInterface
+    private interface AttributeCalculator {
+        /**
+         * 计算新的属性值
+         *
+         * @param originalValue 原始属性值
+         * @param effectiveMultiplier 有效倍率（基础倍率 * 随机因子）
+         * @return 新的属性值
+         */
+        double calculate(double originalValue, double effectiveMultiplier);
+    }
+
+    /**
+     * 通用的属性加成方法
+     *
+     * @param mob 目标生物
+     * @param attribute 属性类型
+     * @param multiplier 基础倍率
+     * @param randomFactor 随机因子
+     * @param maxMultiplier 上限倍率（null 表示无上限）
+     * @param calculator 属性计算器（null 表示使用默认的乘法计算）
+     * @param originalTag 原始值存储的NBT标签键
+     */
+    private void applyAttributeBonus(
+        Mob mob,
+        Holder<Attribute> attribute,
+        double multiplier,
+        double randomFactor,
+        Double maxMultiplier,
+        AttributeCalculator calculator,
+        String originalTag
+    ) {
+        AttributeInstance attrInstance = mob.getAttribute(attribute);
+        if (attrInstance == null) {
+            return;
+        }
+
+        CompoundTag data = mob.getPersistentData();
+        double originalValue = getOrStoreOriginal(data, originalTag, attrInstance.getBaseValue());
+        double effectiveMultiplier = multiplier * randomFactor;
+
+        if (maxMultiplier != null) {
+            effectiveMultiplier = Math.min(effectiveMultiplier, maxMultiplier);
+        }
+
+        double newValue;
+        if (calculator != null) {
+            newValue = calculator.calculate(originalValue, effectiveMultiplier);
+        } else {
+            newValue = originalValue * effectiveMultiplier;
+        }
+
+        if (newValue < originalValue) {
+            newValue = originalValue;
+        }
+
+        attrInstance.setBaseValue(newValue);
     }
 
     /**
@@ -339,17 +511,18 @@ public class EnemyScalingHandler {
 
     /**
      * 应用血量加成（带随机分布）
-     *
-     * @param mob 目标生物
-     * @param multiplier 强化倍率
-     * @param randomFactor 随机分布因子
+     * 使用原始值确保幂等性 - 防止重复缩放
      */
     private void applyHealthBonus(Mob mob, double multiplier, double randomFactor) {
         AttributeInstance healthAttr = mob.getAttribute(Attributes.MAX_HEALTH);
         if (healthAttr != null) {
-            double originalMax = healthAttr.getBaseValue();
-            double effectiveMultiplier = multiplier * randomFactor;
-            double newMax = originalMax * Math.min(effectiveMultiplier, Config.MAX_HEALTH_MULTIPLIER.get());
+            CompoundTag data = mob.getPersistentData();
+            double originalBase = getOrStoreOriginal(data, ORIGINAL_HEALTH_TAG, healthAttr.getBaseValue());
+            double effectiveMultiplier = Math.min(multiplier * randomFactor, Config.MAX_HEALTH_MULTIPLIER.get());
+            double newMax = originalBase * effectiveMultiplier;
+            if (newMax < originalBase) {
+                newMax = originalBase;
+            }
             healthAttr.setBaseValue(newMax);
 
             // 立即尝试设置满血
@@ -379,87 +552,90 @@ public class EnemyScalingHandler {
 
     /**
      * 应用伤害加成（带随机分布）
-     *
-     * @param mob 目标生物
-     * @param multiplier 强化倍率
-     * @param randomFactor 随机分布因子
+     * 使用原始值确保幂等性 - 防止重复缩放
      */
     private void applyDamageBonus(Mob mob, double multiplier, double randomFactor) {
-        AttributeInstance damageAttr = mob.getAttribute(Attributes.ATTACK_DAMAGE);
-        if (damageAttr != null) {
-            double originalDamage = damageAttr.getBaseValue();
-            double effectiveMultiplier = multiplier * randomFactor;
-            double damageMultiplier = Math.min(effectiveMultiplier, Config.MAX_DAMAGE_MULTIPLIER.get());
-            damageAttr.setBaseValue(originalDamage * damageMultiplier);
-        }
+        applyAttributeBonus(
+            mob,
+            Attributes.ATTACK_DAMAGE,
+            multiplier,
+            randomFactor,
+            Config.MAX_DAMAGE_MULTIPLIER.get(),
+            null,
+            ORIGINAL_DAMAGE_TAG
+        );
     }
 
     /**
      * 应用护甲加成（带随机分布）
-     *
-     * @param mob 目标生物
-     * @param multiplier 强化倍率
-     * @param randomFactor 随机分布因子
+     * 使用原始值确保幂等性 - 防止重复缩放
      */
     private void applyArmorBonus(Mob mob, double multiplier, double randomFactor) {
-        AttributeInstance armorAttr = mob.getAttribute(Attributes.ARMOR);
-        if (armorAttr != null) {
-            double originalArmor = armorAttr.getBaseValue();
-            double effectiveMultiplier = multiplier * randomFactor;
-            double armorMultiplier = Math.min(effectiveMultiplier, Config.MAX_ARMOR_MULTIPLIER.get());
-            armorAttr.setBaseValue(originalArmor * armorMultiplier);
-        }
+        applyAttributeBonus(
+            mob,
+            Attributes.ARMOR,
+            multiplier,
+            randomFactor,
+            Config.MAX_ARMOR_MULTIPLIER.get(),
+            null,
+            ORIGINAL_ARMOR_TAG
+        );
     }
 
     /**
      * 应用护甲韧性加成（带随机分布）
-     *
-     * @param mob 目标生物
-     * @param multiplier 强化倍率
-     * @param randomFactor 随机分布因子
+     * 使用原始值确保幂等性 - 防止重复缩放
      */
     private void applyToughnessBonus(Mob mob, double multiplier, double randomFactor) {
-        AttributeInstance toughnessAttr = mob.getAttribute(Attributes.ARMOR_TOUGHNESS);
-        if (toughnessAttr != null) {
-            double originalToughness = toughnessAttr.getBaseValue();
-            double effectiveMultiplier = multiplier * randomFactor;
-            toughnessAttr.setBaseValue(originalToughness * effectiveMultiplier);
-        }
+        applyAttributeBonus(
+            mob,
+            Attributes.ARMOR_TOUGHNESS,
+            multiplier,
+            randomFactor,
+            null,
+            null,
+            ORIGINAL_TOUGHNESS_TAG
+        );
     }
 
     /**
      * 应用移动速度加成（原版，不带随机分布）
-     *
-     * @param mob 目标生物
-     * @param multiplier 强化倍率
+     * 使用原始值确保幂等性
      */
     private void applySpeedBonus(Mob mob, double multiplier) {
-        AttributeInstance speedAttr = mob.getAttribute(Attributes.MOVEMENT_SPEED);
-        if (speedAttr != null) {
-            double originalSpeed = speedAttr.getBaseValue();
-            // 速度加成：基础 + (倍率-1) * 0.3
-            double speedMultiplier = 1.0 + (multiplier - 1.0) * 0.3;
-            speedAttr.setBaseValue(originalSpeed * Math.min(speedMultiplier, 2.0));
-        }
+        applyAttributeBonus(
+            mob,
+            Attributes.MOVEMENT_SPEED,
+            multiplier,
+            1.0,
+            2.0,
+            (original, effective) -> {
+                // 速度加成：基础 + (倍率-1) * 0.3
+                double speedMultiplier = 1.0 + (effective - 1.0) * 0.3;
+                return original * speedMultiplier;
+            },
+            ORIGINAL_SPEED_TAG
+        );
     }
 
     /**
      * 应用攻击速度加成 - 防止史诗战斗无限硬直（带随机分布）
-     *
-     * @param mob 目标生物
-     * @param multiplier 强化倍率
-     * @param randomFactor 随机分布因子
+     * 使用原始值确保幂等性
      */
     private void applyAttackSpeedBonus(Mob mob, double multiplier, double randomFactor) {
-        // 攻击速度加成，让敌人能更快反击，防止被玩家无限硬直
-        AttributeInstance attackSpeedAttr = mob.getAttribute(Attributes.ATTACK_SPEED);
-        if (attackSpeedAttr != null) {
-            double originalSpeed = attackSpeedAttr.getBaseValue();
-            double effectiveMultiplier = multiplier * randomFactor;
-            // 攻击速度随倍率增加，最高增加100%
-            double attackSpeedMultiplier = 1.0 + (effectiveMultiplier - 1.0) * 0.25;
-            attackSpeedAttr.setBaseValue(originalSpeed * Math.min(attackSpeedMultiplier, 2.0));
-        }
+        applyAttributeBonus(
+            mob,
+            Attributes.ATTACK_SPEED,
+            multiplier,
+            randomFactor,
+            2.0,
+            (original, effective) -> {
+                // 攻击速度随倍率增加，最高增加100%
+                double attackSpeedMultiplier = 1.0 + (effective - 1.0) * 0.25;
+                return original * attackSpeedMultiplier;
+            },
+            ORIGINAL_ATTACK_SPEED_TAG
+        );
     }
 
     /**

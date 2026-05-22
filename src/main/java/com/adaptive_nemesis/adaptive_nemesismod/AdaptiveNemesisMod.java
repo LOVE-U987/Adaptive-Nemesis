@@ -7,6 +7,7 @@ import com.adaptive_nemesis.adaptive_nemesismod.command.ModCommands;
 import com.adaptive_nemesis.adaptive_nemesismod.damage.TrueDamageHandler;
 import com.adaptive_nemesis.adaptive_nemesismod.enemy.EnemyScalingHandler;
 import com.adaptive_nemesis.adaptive_nemesismod.enemy.DifficultyTracker;
+import com.adaptive_nemesis.adaptive_nemesismod.enemy.EnchantmentScalingHandler;
 import com.adaptive_nemesis.adaptive_nemesismod.enemy.WorldStageManager;
 import com.adaptive_nemesis.adaptive_nemesismod.event.ModEventHandler;
 import com.adaptive_nemesis.adaptive_nemesismod.memory.NemesisMemorySystem;
@@ -20,6 +21,7 @@ import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.common.Mod;
 import net.neoforged.fml.config.ModConfig;
 import net.neoforged.fml.ModContainer;
+import net.neoforged.fml.event.config.ModConfigEvent;
 import net.neoforged.fml.event.lifecycle.FMLCommonSetupEvent;
 import net.neoforged.fml.loading.FMLEnvironment;
 import net.neoforged.neoforge.common.NeoForge;
@@ -61,6 +63,9 @@ public class AdaptiveNemesisMod {
         // 注册通用设置监听器
         modEventBus.addListener(this::commonSetup);
         
+        // 注册配置事件监听器（用于保存引用）
+        modEventBus.addListener(this::onModConfigEvent);
+        
         // 注册网络系统
         ModNetworking.register(modEventBus);
         
@@ -71,6 +76,16 @@ public class AdaptiveNemesisMod {
         registerEventHandlers();
         
         LOGGER.info("🛡️ Adaptive Nemesis (自适应宿敌) 模组已加载");
+    }
+
+    /**
+     * 配置加载/重载事件处理
+     * 保存ModConfig引用用于后续保存操作
+     */
+    private void onModConfigEvent(ModConfigEvent event) {
+        if (event.getConfig().getSpec() == Config.SPEC) {
+            Config.MOD_CONFIG = event.getConfig();
+        }
     }
 
     /**
@@ -132,6 +147,9 @@ public class AdaptiveNemesisMod {
 
         // 注册世界阶段管理器
         eventBus.register(WorldStageManager.getInstance());
+
+        // 注册装备附魔强化处理器
+        eventBus.register(EnchantmentScalingHandler.getInstance());
 
         // 注册通用事件处理器
         eventBus.register(ModEventHandler.getInstance());

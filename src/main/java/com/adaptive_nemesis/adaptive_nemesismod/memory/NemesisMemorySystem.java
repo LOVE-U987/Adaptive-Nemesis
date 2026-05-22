@@ -61,7 +61,7 @@ public class NemesisMemorySystem {
      * 初始化宿敌记忆系统
      */
     public void initialize() {
-        AdaptiveNemesisMod.LOGGER.info("🧬 宿敌记忆系统已初始化");
+        AdaptiveNemesisMod.LOGGER.debug("🧬 宿敌记忆系统已初始化");
     }
 
     /**

@@ -1,5 +1,6 @@
 package com.adaptive_nemesis.adaptive_nemesismod.compat;
 
+import com.adaptive_nemesis.adaptive_nemesismod.Config;
 import com.adaptive_nemesis.adaptive_nemesismod.AdaptiveNemesisMod;
 
 import io.redspace.ironsspellbooks.api.magic.MagicData;
@@ -113,42 +114,49 @@ public class IronsSpellsCompat {
      */
     public void applyMobBuffs(Mob mob, double multiplier) {
         try {
+            // 确保倍率不低于 1.0，防止随机因子导致属性降低
+            double effectiveMultiplier = Math.max(1.0, multiplier);
+
             // 1. 增加法术强度 (Spell Power) - 如果有法术攻击
             // NeoForge 1.21.1: DeferredHolder可以直接作为Holder<Attribute>传入
             AttributeInstance spellPowerAttr = mob.getAttribute(AttributeRegistry.SPELL_POWER);
             if (spellPowerAttr != null) {
                 double originalPower = spellPowerAttr.getBaseValue();
-                double newPower = originalPower * multiplier;
+                double newPower = Math.max(originalPower, originalPower * effectiveMultiplier);
                 spellPowerAttr.setBaseValue(newPower);
 
-                AdaptiveNemesisMod.LOGGER.debug(
-                    "怪物 {} 法术强度: {} -> {}",
-                    mob.getName().getString(),
-                    String.format("%.2f", originalPower),
-                    String.format("%.2f", newPower)
-                );
+                if (Config.ENABLE_DEBUG_LOG.get()) {
+                    AdaptiveNemesisMod.LOGGER.debug(
+                        "怪物 {} 法术强度: {} -> {}",
+                        mob.getName().getString(),
+                        String.format("%.2f", originalPower),
+                        String.format("%.2f", newPower)
+                    );
+                }
             }
 
             // 2. 增加法力值 (Max Mana)
             AttributeInstance maxManaAttr = mob.getAttribute(AttributeRegistry.MAX_MANA);
             if (maxManaAttr != null) {
                 double originalMana = maxManaAttr.getBaseValue();
-                double newMana = originalMana * multiplier;
+                double newMana = Math.max(originalMana, originalMana * effectiveMultiplier);
                 maxManaAttr.setBaseValue(newMana);
 
-                AdaptiveNemesisMod.LOGGER.debug(
-                    "怪物 {} 法力值: {} -> {}",
-                    mob.getName().getString(),
-                    String.format("%.2f", originalMana),
-                    String.format("%.2f", newMana)
-                );
+                if (Config.ENABLE_DEBUG_LOG.get()) {
+                    AdaptiveNemesisMod.LOGGER.debug(
+                        "怪物 {} 法力值: {} -> {}",
+                        mob.getName().getString(),
+                        String.format("%.2f", originalMana),
+                        String.format("%.2f", newMana)
+                    );
+                }
             }
 
             // 3. 增加法力恢复 (Mana Regen)
             AttributeInstance manaRegenAttr = mob.getAttribute(AttributeRegistry.MANA_REGEN);
             if (manaRegenAttr != null) {
                 double originalRegen = manaRegenAttr.getBaseValue();
-                double newRegen = originalRegen * (1.0 + (multiplier - 1.0) * 0.5);
+                double newRegen = Math.max(originalRegen, originalRegen * (1.0 + (effectiveMultiplier - 1.0) * 0.5));
                 manaRegenAttr.setBaseValue(newRegen);
             }
 
@@ -156,7 +164,7 @@ public class IronsSpellsCompat {
             AttributeInstance cooldownAttr = mob.getAttribute(AttributeRegistry.COOLDOWN_REDUCTION);
             if (cooldownAttr != null) {
                 double originalCooldown = cooldownAttr.getBaseValue();
-                double newCooldown = originalCooldown * (1.0 + (multiplier - 1.0) * 0.3);
+                double newCooldown = Math.max(originalCooldown, originalCooldown * (1.0 + (effectiveMultiplier - 1.0) * 0.3));
                 cooldownAttr.setBaseValue(newCooldown);
             }
 
@@ -164,15 +172,15 @@ public class IronsSpellsCompat {
             AttributeInstance castTimeAttr = mob.getAttribute(AttributeRegistry.CAST_TIME_REDUCTION);
             if (castTimeAttr != null) {
                 double originalCastTime = castTimeAttr.getBaseValue();
-                double newCastTime = originalCastTime * (1.0 + (multiplier - 1.0) * 0.3);
+                double newCastTime = Math.max(originalCastTime, originalCastTime * (1.0 + (effectiveMultiplier - 1.0) * 0.3));
                 castTimeAttr.setBaseValue(newCastTime);
             }
 
             // 6. 增加各系魔法抗性
-            applyMagicResistance(mob, multiplier);
+            applyMagicResistance(mob, effectiveMultiplier);
 
             // 7. 增加各系法术强度
-            applySpellPower(mob, multiplier);
+            applySpellPower(mob, effectiveMultiplier);
 
         } catch (Exception e) {
             AdaptiveNemesisMod.LOGGER.error("应用铁魔法属性加成失败: {}", e.getMessage());
@@ -190,55 +198,64 @@ public class IronsSpellsCompat {
             // 火焰抗性
             AttributeInstance fireResist = mob.getAttribute(AttributeRegistry.FIRE_MAGIC_RESIST);
             if (fireResist != null) {
-                fireResist.setBaseValue(fireResist.getBaseValue() + (multiplier - 1.0) * 5.0);
+                double original = fireResist.getBaseValue();
+                fireResist.setBaseValue(Math.max(original, original + (multiplier - 1.0) * 5.0));
             }
 
             // 冰霜抗性
             AttributeInstance iceResist = mob.getAttribute(AttributeRegistry.ICE_MAGIC_RESIST);
             if (iceResist != null) {
-                iceResist.setBaseValue(iceResist.getBaseValue() + (multiplier - 1.0) * 5.0);
+                double original = iceResist.getBaseValue();
+                iceResist.setBaseValue(Math.max(original, original + (multiplier - 1.0) * 5.0));
             }
 
             // 闪电抗性
             AttributeInstance lightningResist = mob.getAttribute(AttributeRegistry.LIGHTNING_MAGIC_RESIST);
             if (lightningResist != null) {
-                lightningResist.setBaseValue(lightningResist.getBaseValue() + (multiplier - 1.0) * 5.0);
+                double original = lightningResist.getBaseValue();
+                lightningResist.setBaseValue(Math.max(original, original + (multiplier - 1.0) * 5.0));
             }
 
             // 神圣抗性
             AttributeInstance holyResist = mob.getAttribute(AttributeRegistry.HOLY_MAGIC_RESIST);
             if (holyResist != null) {
-                holyResist.setBaseValue(holyResist.getBaseValue() + (multiplier - 1.0) * 5.0);
+                double original = holyResist.getBaseValue();
+                holyResist.setBaseValue(Math.max(original, original + (multiplier - 1.0) * 5.0));
             }
 
             // 末影抗性
             AttributeInstance enderResist = mob.getAttribute(AttributeRegistry.ENDER_MAGIC_RESIST);
             if (enderResist != null) {
-                enderResist.setBaseValue(enderResist.getBaseValue() + (multiplier - 1.0) * 5.0);
+                double original = enderResist.getBaseValue();
+                enderResist.setBaseValue(Math.max(original, original + (multiplier - 1.0) * 5.0));
             }
 
             // 血魔法抗性
             AttributeInstance bloodResist = mob.getAttribute(AttributeRegistry.BLOOD_MAGIC_RESIST);
             if (bloodResist != null) {
-                bloodResist.setBaseValue(bloodResist.getBaseValue() + (multiplier - 1.0) * 5.0);
+                double original = bloodResist.getBaseValue();
+                bloodResist.setBaseValue(Math.max(original, original + (multiplier - 1.0) * 5.0));
             }
 
             // 召唤抗性
             AttributeInstance evocationResist = mob.getAttribute(AttributeRegistry.EVOCATION_MAGIC_RESIST);
             if (evocationResist != null) {
-                evocationResist.setBaseValue(evocationResist.getBaseValue() + (multiplier - 1.0) * 5.0);
+                double original = evocationResist.getBaseValue();
+                evocationResist.setBaseValue(Math.max(original, original + (multiplier - 1.0) * 5.0));
             }
 
             // 自然抗性
             AttributeInstance natureResist = mob.getAttribute(AttributeRegistry.NATURE_MAGIC_RESIST);
             if (natureResist != null) {
-                natureResist.setBaseValue(natureResist.getBaseValue() + (multiplier - 1.0) * 5.0);
+                double original = natureResist.getBaseValue();
+                natureResist.setBaseValue(Math.max(original, original + (multiplier - 1.0) * 5.0));
             }
 
             // 远古抗性
             AttributeInstance eldritchResist = mob.getAttribute(AttributeRegistry.ELDRITCH_MAGIC_RESIST);
             if (eldritchResist != null) {
-                eldritchResist.setBaseValue(eldritchResist.getBaseValue() + (multiplier - 1.0) * 5.0);
+                double original = eldritchResist.getBaseValue();
+                eldritchResist.setBaseValue(Math.max(original, original + (multiplier - 1.0) * 5.0));
             }
 
         } catch (Exception e) {
@@ -257,55 +274,64 @@ public class IronsSpellsCompat {
             // 火焰法术强度
             AttributeInstance firePower = mob.getAttribute(AttributeRegistry.FIRE_SPELL_POWER);
             if (firePower != null) {
-                firePower.setBaseValue(firePower.getBaseValue() * multiplier);
+                double original = firePower.getBaseValue();
+                firePower.setBaseValue(Math.max(original, original * multiplier));
             }
 
             // 冰霜法术强度
             AttributeInstance icePower = mob.getAttribute(AttributeRegistry.ICE_SPELL_POWER);
             if (icePower != null) {
-                icePower.setBaseValue(icePower.getBaseValue() * multiplier);
+                double original = icePower.getBaseValue();
+                icePower.setBaseValue(Math.max(original, original * multiplier));
             }
 
             // 闪电法术强度
             AttributeInstance lightningPower = mob.getAttribute(AttributeRegistry.LIGHTNING_SPELL_POWER);
             if (lightningPower != null) {
-                lightningPower.setBaseValue(lightningPower.getBaseValue() * multiplier);
+                double original = lightningPower.getBaseValue();
+                lightningPower.setBaseValue(Math.max(original, original * multiplier));
             }
 
             // 神圣法术强度
             AttributeInstance holyPower = mob.getAttribute(AttributeRegistry.HOLY_SPELL_POWER);
             if (holyPower != null) {
-                holyPower.setBaseValue(holyPower.getBaseValue() * multiplier);
+                double original = holyPower.getBaseValue();
+                holyPower.setBaseValue(Math.max(original, original * multiplier));
             }
 
             // 末影法术强度
             AttributeInstance enderPower = mob.getAttribute(AttributeRegistry.ENDER_SPELL_POWER);
             if (enderPower != null) {
-                enderPower.setBaseValue(enderPower.getBaseValue() * multiplier);
+                double original = enderPower.getBaseValue();
+                enderPower.setBaseValue(Math.max(original, original * multiplier));
             }
 
             // 血魔法法术强度
             AttributeInstance bloodPower = mob.getAttribute(AttributeRegistry.BLOOD_SPELL_POWER);
             if (bloodPower != null) {
-                bloodPower.setBaseValue(bloodPower.getBaseValue() * multiplier);
+                double original = bloodPower.getBaseValue();
+                bloodPower.setBaseValue(Math.max(original, original * multiplier));
             }
 
             // 召唤法术强度
             AttributeInstance evocationPower = mob.getAttribute(AttributeRegistry.EVOCATION_SPELL_POWER);
             if (evocationPower != null) {
-                evocationPower.setBaseValue(evocationPower.getBaseValue() * multiplier);
+                double original = evocationPower.getBaseValue();
+                evocationPower.setBaseValue(Math.max(original, original * multiplier));
             }
 
             // 自然法术强度
             AttributeInstance naturePower = mob.getAttribute(AttributeRegistry.NATURE_SPELL_POWER);
             if (naturePower != null) {
-                naturePower.setBaseValue(naturePower.getBaseValue() * multiplier);
+                double original = naturePower.getBaseValue();
+                naturePower.setBaseValue(Math.max(original, original * multiplier));
             }
 
             // 远古法术强度
             AttributeInstance eldritchPower = mob.getAttribute(AttributeRegistry.ELDRITCH_SPELL_POWER);
             if (eldritchPower != null) {
-                eldritchPower.setBaseValue(eldritchPower.getBaseValue() * multiplier);
+                double original = eldritchPower.getBaseValue();
+                eldritchPower.setBaseValue(Math.max(original, original * multiplier));
             }
 
         } catch (Exception e) {

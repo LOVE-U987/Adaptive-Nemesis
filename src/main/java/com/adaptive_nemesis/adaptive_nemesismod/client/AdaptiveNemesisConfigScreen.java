@@ -275,6 +275,57 @@ public class AdaptiveNemesisConfigScreen extends Screen {
                 value -> { Config.WORLD_STAGE_MAX_STAGE.set(value); markChanged(); }),
             widgetX);
 
+        // ===== 装备附魔 =====
+        currentY = addCategoryEntry(currentY, "adaptive_nemesis.config.category.enchantment", 0xFF88FF55);
+        currentY = addConfigEntry(currentY, "adaptive_nemesis.config.enable_enchantment_scaling",
+            "adaptive_nemesis.config.tooltip.enable_enchantment_scaling",
+            createBooleanButton(Config.ENABLE_ENCHANTMENT_SCALING.get(),
+                value -> { Config.ENABLE_ENCHANTMENT_SCALING.set(value); markChanged(); }),
+            widgetX);
+        currentY = addConfigEntry(currentY, "adaptive_nemesis.config.enchantment_chance_base",
+            "adaptive_nemesis.config.tooltip.enchantment_chance_base",
+            createDoubleEditBox(Config.ENCHANTMENT_CHANCE_BASE.get(), 0.0, 1.0,
+                value -> { Config.ENCHANTMENT_CHANCE_BASE.set(value); markChanged(); }),
+            widgetX);
+        currentY = addConfigEntry(currentY, "adaptive_nemesis.config.enchantment_chance_per_difficulty",
+            "adaptive_nemesis.config.tooltip.enchantment_chance_per_difficulty",
+            createDoubleEditBox(Config.ENCHANTMENT_CHANCE_PER_DIFFICULTY.get(), 0.0, 0.5,
+                value -> { Config.ENCHANTMENT_CHANCE_PER_DIFFICULTY.set(value); markChanged(); }),
+            widgetX);
+        currentY = addConfigEntry(currentY, "adaptive_nemesis.config.enchantment_level_per_difficulty",
+            "adaptive_nemesis.config.tooltip.enchantment_level_per_difficulty",
+            createDoubleEditBox(Config.ENCHANTMENT_LEVEL_PER_DIFFICULTY.get(), 0.0, 5.0,
+                value -> { Config.ENCHANTMENT_LEVEL_PER_DIFFICULTY.set(value); markChanged(); }),
+            widgetX);
+        currentY = addConfigEntry(currentY, "adaptive_nemesis.config.enchantment_max_level",
+            "adaptive_nemesis.config.tooltip.enchantment_max_level",
+            createIntEditBox(Config.ENCHANTMENT_MAX_LEVEL.get(), 1, 10,
+                value -> { Config.ENCHANTMENT_MAX_LEVEL.set(value); markChanged(); }),
+            widgetX);
+
+        // ===== 装备生成 =====
+        currentY = addCategoryEntry(currentY, "adaptive_nemesis.config.category.equipment", 0xFF44FFAA);
+        currentY = addConfigEntry(currentY, "adaptive_nemesis.config.equipment_base_chance",
+            "adaptive_nemesis.config.tooltip.equipment_base_chance",
+            createDoubleEditBox(Config.EQUIPMENT_BASE_CHANCE.get(), 0.0, 1.0,
+                value -> { Config.EQUIPMENT_BASE_CHANCE.set(value); markChanged(); }),
+            widgetX);
+        currentY = addConfigEntry(currentY, "adaptive_nemesis.config.equipment_chance_per_difficulty",
+            "adaptive_nemesis.config.tooltip.equipment_chance_per_difficulty",
+            createDoubleEditBox(Config.EQUIPMENT_CHANCE_PER_DIFFICULTY.get(), 0.0, 1.0,
+                value -> { Config.EQUIPMENT_CHANCE_PER_DIFFICULTY.set(value); markChanged(); }),
+            widgetX);
+        currentY = addConfigEntry(currentY, "adaptive_nemesis.config.equipment_tier_upgrade_chance",
+            "adaptive_nemesis.config.tooltip.equipment_tier_upgrade_chance",
+            createDoubleEditBox(Config.EQUIPMENT_TIER_UPGRADE_CHANCE.get(), 0.0, 1.0,
+                value -> { Config.EQUIPMENT_TIER_UPGRADE_CHANCE.set(value); markChanged(); }),
+            widgetX);
+        currentY = addConfigEntry(currentY, "adaptive_nemesis.config.equipment_mod_compat_chance",
+            "adaptive_nemesis.config.tooltip.equipment_mod_compat_chance",
+            createDoubleEditBox(Config.EQUIPMENT_MOD_COMPAT_CHANCE.get(), 0.0, 1.0,
+                value -> { Config.EQUIPMENT_MOD_COMPAT_CHANCE.set(value); markChanged(); }),
+            widgetX);
+
         // ===== 权重配置 =====
         currentY = addCategoryEntry(currentY, "adaptive_nemesis.config.category.weights", 0xFFFFAA55);
         currentY = addConfigEntry(currentY, "adaptive_nemesis.config.defense_weight",
@@ -301,6 +352,19 @@ public class AdaptiveNemesisConfigScreen extends Screen {
             "adaptive_nemesis.config.tooltip.epic_fight_weight",
             createDoubleEditBox(Config.EPIC_FIGHT_WEIGHT.get(), 0.0, 5.0,
                 value -> { Config.EPIC_FIGHT_WEIGHT.set(value); markChanged(); }),
+            widgetX);
+
+        // ===== 史诗战斗缩放 =====
+        currentY = addCategoryEntry(currentY, "adaptive_nemesis.config.category.epic_fight", 0xFFFF6644);
+        currentY = addConfigEntry(currentY, "adaptive_nemesis.config.weight_min_bonus",
+            "adaptive_nemesis.config.tooltip.weight_min_bonus",
+            createDoubleEditBox(Config.WEIGHT_MIN_BONUS.get(), 0.0, 100.0,
+                value -> { Config.WEIGHT_MIN_BONUS.set(value); markChanged(); }),
+            widgetX);
+        currentY = addConfigEntry(currentY, "adaptive_nemesis.config.weight_per_multiplier",
+            "adaptive_nemesis.config.tooltip.weight_per_multiplier",
+            createDoubleEditBox(Config.WEIGHT_PER_MULTIPLIER.get(), 0.0, 200.0,
+                value -> { Config.WEIGHT_PER_MULTIPLIER.set(value); markChanged(); }),
             widgetX);
 
         // ===== 调试选项 =====
@@ -368,6 +432,8 @@ public class AdaptiveNemesisConfigScreen extends Screen {
     /** 标记配置已修改 */
     private void markChanged() {
         this.configChanged = true;
+        // 每次修改立即保存到文件
+        Config.saveToFile();
     }
 
     /** 创建布尔值切换按钮 */

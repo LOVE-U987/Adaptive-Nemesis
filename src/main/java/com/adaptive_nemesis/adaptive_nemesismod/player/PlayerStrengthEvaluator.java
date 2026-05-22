@@ -69,7 +69,7 @@ public class PlayerStrengthEvaluator {
      * 初始化评估系统
      */
     public void initialize() {
-        AdaptiveNemesisMod.LOGGER.info("🧠 玩家强度评估系统已初始化");
+        AdaptiveNemesisMod.LOGGER.debug("🧠 玩家强度评估系统已初始化");
     }
     
     /**

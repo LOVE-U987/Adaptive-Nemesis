@@ -26,7 +26,16 @@ sourceSets.main.resources {
     exclude("src/generated/**/.cache") // datagen cache files
 }
 
+// 让 test 源集继承主源集的 NeoForge/Minecraft 运行时依赖
+sourceSets {
+    test {
+        compileClasspath += sourceSets.main.runtimeClasspath
+        runtimeClasspath += sourceSets.main.runtimeClasspath
+    }
+}
+
 repositories {
+    mavenCentral()
     // 本地libs目录作为flat dir仓库
     flatDir {
         dirs 'libs'
@@ -130,6 +139,10 @@ dependencies {
     localRuntime files("libs/curios-neoforge-9.5.1+1.21.1.jar")
     localRuntime files("libs/player-animation-lib-forge-2.0.4+1.21.1.jar")
     
+    // ==================== 单元测试依赖 ====================
+    testImplementation 'org.junit.jupiter:junit-jupiter:5.10.2'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+    
     // ==================== 史诗战斗 (Epic Fight) - 可选依赖 ====================
     compileOnly files("libs/[史诗战斗] epic-fight-21.16.4-mc1.21.1-neoforge.jar")
     localRuntime files("libs/[史诗战斗] epic-fight-21.16.4-mc1.21.1-neoforge.jar")
@@ -189,6 +202,10 @@ publishing {
 
 tasks.withType(JavaCompile).configureEach {
     options.encoding = 'UTF-8' // Use the UTF-8 charset for Java compilation
+}
+
+tasks.named('test', Test) {
+    useJUnitPlatform()
 }
 
 // IDEA no longer automatically downloads sources/javadoc jars for dependencies, so we need to explicitly enable the behavior.

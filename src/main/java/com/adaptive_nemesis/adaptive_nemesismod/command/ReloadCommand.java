@@ -47,7 +47,7 @@ public class ReloadCommand {
         PlayerStrengthEvaluator.getInstance().clearAllCache();
 
         // 记录日志
-        AdaptiveNemesisMod.LOGGER.info("🔄 通过命令重新加载 Adaptive Nemesis");
+        AdaptiveNemesisMod.LOGGER.debug("🔄 通过命令重新加载 Adaptive Nemesis");
 
         source.sendSuccess(() -> Component.literal(
             "§a✅ 重载完成！"

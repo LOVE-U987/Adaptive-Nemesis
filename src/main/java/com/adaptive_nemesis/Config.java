@@ -1,15 +1,10 @@
 package com.adaptive_nemesis.adaptive_nemesismod;
 
-import java.util.List;
-import java.util.Set;
-import java.util.stream.Collectors;
+import java.io.IOException;
+import java.nio.file.Path;
 
-import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.resources.ResourceLocation;
-import net.minecraft.world.item.Item;
-import net.neoforged.bus.api.SubscribeEvent;
-import net.neoforged.fml.common.EventBusSubscriber;
-import net.neoforged.fml.event.config.ModConfigEvent;
+import net.neoforged.fml.ModContainer;
+import net.neoforged.fml.config.ModConfig;
 import net.neoforged.neoforge.common.ModConfigSpec;
 
 /**
@@ -274,6 +269,67 @@ public class Config {
      */
     public static final ModConfigSpec.IntValue DIFFICULTY_SMOOTHING_TICK_INTERVAL;
 
+    // ==================== 装备附魔强化配置 ====================
+    
+    /**
+     * 是否启用怪物装备/附魔强化
+     */
+    public static final ModConfigSpec.BooleanValue ENABLE_ENCHANTMENT_SCALING;
+    
+    /**
+     * 附魔概率基础值
+     */
+    public static final ModConfigSpec.DoubleValue ENCHANTMENT_CHANCE_BASE;
+    
+    /**
+     * 每单位难度附魔概率增量
+     */
+    public static final ModConfigSpec.DoubleValue ENCHANTMENT_CHANCE_PER_DIFFICULTY;
+    
+    /**
+     * 每单位难度附魔等级增量
+     */
+    public static final ModConfigSpec.DoubleValue ENCHANTMENT_LEVEL_PER_DIFFICULTY;
+    
+    /**
+     * 最高附魔等级
+     */
+    public static final ModConfigSpec.IntValue ENCHANTMENT_MAX_LEVEL;
+
+    // ==================== 装备生成缩放配置 ====================
+
+    /**
+     * 装备生成基础概率
+     */
+    public static final ModConfigSpec.DoubleValue EQUIPMENT_BASE_CHANCE;
+
+    /**
+     * 每单位难度装备生成概率增量
+     */
+    public static final ModConfigSpec.DoubleValue EQUIPMENT_CHANCE_PER_DIFFICULTY;
+
+    /**
+     * 装备品质跳级概率
+     */
+    public static final ModConfigSpec.DoubleValue EQUIPMENT_TIER_UPGRADE_CHANCE;
+
+    /**
+     * 模组装备替换概率
+     */
+    public static final ModConfigSpec.DoubleValue EQUIPMENT_MOD_COMPAT_CHANCE;
+
+    // ==================== 史诗战斗缩放配置 ====================
+
+    /**
+     * 重量最小加值
+     */
+    public static final ModConfigSpec.DoubleValue WEIGHT_MIN_BONUS;
+
+    /**
+     * 每单位难度重量增量
+     */
+    public static final ModConfigSpec.DoubleValue WEIGHT_PER_MULTIPLIER;
+
     // ==================== 世界阶段配置 ====================
     
     /**
@@ -325,7 +381,7 @@ public class Config {
         DIFFICULTY_BASE_MULTIPLIER = BUILDER
             .comment("难度系数基准 - 控制整体难度倍数")
             .comment("Difficulty base multiplier - controls overall difficulty scaling")
-            .defineInRange("difficultyBaseMultiplier", 3.0, 0.1, 20.0);
+            .defineInRange("difficultyBaseMultiplier", 0.5, 0.1, 20.0);
 
         // 真实伤害转化配置
         BUILDER.push("trueDamage");
@@ -566,6 +622,72 @@ public class Config {
         
         BUILDER.pop();
 
+        // 装备附魔强化配置
+        BUILDER.push("enchantmentScaling");
+        
+        ENABLE_ENCHANTMENT_SCALING = BUILDER
+            .comment("是否启用怪物装备/附魔强化 - 难度越高，怪物装备越好、附魔等级越高")
+            .comment("Enable mob equipment/enchantment scaling - higher difficulty = better gear and enchants")
+            .define("enableEnchantmentScaling", true);
+        
+        ENCHANTMENT_CHANCE_BASE = BUILDER
+            .comment("附魔概率基础值 (0.2 = 20%)")
+            .defineInRange("enchantmentChanceBase", 0.2, 0.0, 1.0);
+        
+        ENCHANTMENT_CHANCE_PER_DIFFICULTY = BUILDER
+            .comment("每单位难度倍率增加的附魔概率 (0.05 = 每1倍率+5%)")
+            .defineInRange("enchantmentChancePerDifficulty", 0.05, 0.0, 0.5);
+        
+        ENCHANTMENT_LEVEL_PER_DIFFICULTY = BUILDER
+            .comment("每单位难度倍率增加的附魔等级 (1.0 = 每1倍率+1级)")
+            .defineInRange("enchantmentLevelPerDifficulty", 1.0, 0.0, 5.0);
+        
+        ENCHANTMENT_MAX_LEVEL = BUILDER
+            .comment("最高附魔等级上限")
+            .defineInRange("enchantmentMaxLevel", 5, 1, 10);
+
+        BUILDER.pop();
+
+        // 装备生成缩放配置
+        BUILDER.push("equipmentScaling");
+
+        EQUIPMENT_BASE_CHANCE = BUILDER
+            .comment("装备生成基础概率 (0.15 = 15%) - 怪物空手时自动生成装备的基础概率")
+            .comment("Equipment base spawn chance (0.15 = 15%)")
+            .defineInRange("equipmentBaseChance", 0.15, 0.0, 1.0);
+
+        EQUIPMENT_CHANCE_PER_DIFFICULTY = BUILDER
+            .comment("每单位难度倍率增加的装备生成概率 (0.10 = 每1倍率+10%)")
+            .comment("Equipment chance increase per difficulty multiplier (0.10 = +10% per unit)")
+            .defineInRange("equipmentChancePerDifficulty", 0.10, 0.0, 1.0);
+
+        EQUIPMENT_TIER_UPGRADE_CHANCE = BUILDER
+            .comment("装备品质跳级概率 (0.15 = 15%) - 概率获得高一档品质的装备")
+            .comment("Tier upgrade chance (0.15 = 15%) - chance to get one tier higher equipment")
+            .defineInRange("equipmentTierUpgradeChance", 0.15, 0.0, 1.0);
+
+        EQUIPMENT_MOD_COMPAT_CHANCE = BUILDER
+            .comment("模组装备替换概率 (0.30 = 30%) - 用其他模组的装备替换原版装备的概率")
+            .comment("Mod equipment replacement chance (0.30 = 30%) - chance to replace vanilla gear with modded gear")
+            .defineInRange("equipmentModCompatChance", 0.30, 0.0, 1.0);
+
+        BUILDER.pop();
+
+        // 史诗战斗缩放配置
+        BUILDER.push("epicFightScaling");
+
+        WEIGHT_MIN_BONUS = BUILDER
+            .comment("重量最小加值 (15.0) - 怪物重量至少比原值增加多少，防止史诗战斗模式被击飞")
+            .comment("Minimum weight bonus (15.0) - minimum weight added to prevent knockback in Epic Fight mode")
+            .defineInRange("weightMinBonus", 15.0, 0.0, 100.0);
+
+        WEIGHT_PER_MULTIPLIER = BUILDER
+            .comment("每单位难度倍率增加的重量 (20.0) - 控制怪物抵抗击退的能力")
+            .comment("Weight per difficulty multiplier (20.0) - controls knockback resistance")
+            .defineInRange("weightPerMultiplier", 20.0, 0.0, 200.0);
+
+        BUILDER.pop();
+
         // 世界阶段配置
         BUILDER.push("worldStage");
         
@@ -617,4 +739,43 @@ public class Config {
     }
 
     static final ModConfigSpec SPEC = BUILDER.build();
+
+    /**
+     * ModConfig引用 - 用于保存配置到文件
+     */
+    public static ModConfig MOD_CONFIG;
+
+    /**
+     * 保存配置到文件
+     * 在配置界面修改后调用，确保修改持久化
+     */
+    public static void saveToFile() {
+        try {
+            if (MOD_CONFIG != null) {
+                MOD_CONFIG.getLoadedConfig().save();
+                if (ENABLE_DEBUG_LOG.get()) {
+                    LOGGER.info("配置文件已手动保存到磁盘");
+                }
+            } else {
+                LOGGER.warn("MOD_CONFIG 尚未初始化，无法保存配置文件");
+            }
+        } catch (Exception e) {
+            LOGGER.error("保存配置文件失败", e);
+        }
+    }
+
+    /**
+     * 获取配置文件路径
+     */
+    public static Path getConfigPath() {
+        if (MOD_CONFIG != null) {
+            return MOD_CONFIG.getFullPath();
+        }
+        return null;
+    }
+
+    /**
+     * 日志记录器 - 用于配置保存日志
+     */
+    private static final org.slf4j.Logger LOGGER = org.slf4j.LoggerFactory.getLogger("Config");
 }

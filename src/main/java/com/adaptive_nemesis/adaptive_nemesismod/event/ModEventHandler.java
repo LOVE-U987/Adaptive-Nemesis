@@ -69,7 +69,7 @@ public class ModEventHandler {
      */
     @SubscribeEvent
     public void onServerStarted(ServerStartedEvent event) {
-        AdaptiveNemesisMod.LOGGER.info("🌐 Adaptive Nemesis 服务器端已启动");
+        AdaptiveNemesisMod.LOGGER.debug("🌐 Adaptive Nemesis 服务器端已启动");
 
         // 加载世界阶段数据
         MinecraftServer server = event.getServer();
@@ -77,7 +77,7 @@ public class ModEventHandler {
             try {
                 WorldStageSavedData.load(level);
                 int stage = WorldStageManager.getInstance().getWorldStage();
-                AdaptiveNemesisMod.LOGGER.info("世界阶段数据已加载，当前阶段: {}", stage);
+                AdaptiveNemesisMod.LOGGER.debug("世界阶段数据已加载，当前阶段: {}", stage);
                 
                 // 设置ServerLevel引用用于后续自动保存
                 WorldStageManager.getInstance().setServerLevel(level);
@@ -95,14 +95,14 @@ public class ModEventHandler {
      */
     @SubscribeEvent
     public void onServerStopping(ServerStoppingEvent event) {
-        AdaptiveNemesisMod.LOGGER.info("🛑 Adaptive Nemesis 服务器正在关闭...");
+        AdaptiveNemesisMod.LOGGER.debug("🛑 Adaptive Nemesis 服务器正在关闭...");
 
         // 保存世界阶段数据
         MinecraftServer server = event.getServer();
         for (ServerLevel level : server.getAllLevels()) {
             try {
                 WorldStageSavedData.save(level);
-                AdaptiveNemesisMod.LOGGER.info("世界阶段数据已保存");
+                AdaptiveNemesisMod.LOGGER.debug("世界阶段数据已保存");
             } catch (Exception e) {
                 AdaptiveNemesisMod.LOGGER.error("保存世界阶段数据失败", e);
             }
@@ -142,8 +142,7 @@ public class ModEventHandler {
         if (!(event.getEntity() instanceof ServerPlayer player)) {
             return;
         }
-
-        AdaptiveNemesisMod.LOGGER.info(
+        AdaptiveNemesisMod.LOGGER.debug(
             "👤 玩家 {} 加入游戏",
             player.getName().getString()
         );
@@ -164,8 +163,7 @@ public class ModEventHandler {
         }
 
         UUID playerId = player.getUUID();
-
-        AdaptiveNemesisMod.LOGGER.info(
+        AdaptiveNemesisMod.LOGGER.debug(
             "👋 玩家 {} 离开游戏",
             player.getName().getString()
         );
