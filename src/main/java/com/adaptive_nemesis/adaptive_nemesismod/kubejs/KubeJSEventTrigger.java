@@ -7,17 +7,53 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.Mob;
 
+import java.lang.reflect.Method;
+import java.util.UUID;
+
 /**
  * KubeJS 事件触发器
  *
  * 负责在模组的关键位置触发 KubeJS 事件。
- * 提供静态方法供其他系统调用，自动处理 KubeJS 是否加载的检查。
- * 使用安全加载机制，即使 KubeJS 未安装也不会崩溃。
+ * 通过反射安全调用 KubeJSInitializer，即使 KubeJS 未安装也不会崩溃。
  *
  * @author Adaptive Nemesis Team
- * @version 1.1.0
+ * @version 1.2.0
  */
 public class KubeJSEventTrigger {
+
+    private static final String INITIALIZER_CLASS = "com.adaptive_nemesis.adaptive_nemesismod.kubejs.KubeJSInitializer";
+    private static Boolean initializerAvailable = null;
+
+    /**
+     * 通过反射调用 KubeJSInitializer 的静态方法
+     *
+     * @param methodName 方法名
+     * @param paramTypes 参数类型数组
+     * @param args 参数值数组
+     * @return 方法返回值，失败时返回 null
+     */
+    private static Object invokeStatic(String methodName, Class<?>[] paramTypes, Object[] args) {
+        if (!KubeJSLoader.isKubeJSLoaded()) return null;
+        if (initializerAvailable == null) {
+            try {
+                Class.forName(INITIALIZER_CLASS);
+                initializerAvailable = true;
+            } catch (ClassNotFoundException e) {
+                initializerAvailable = false;
+                return null;
+            }
+        }
+        if (!initializerAvailable) return null;
+
+        try {
+            Class<?> clazz = Class.forName(INITIALIZER_CLASS);
+            Method method = clazz.getMethod(methodName, paramTypes);
+            return method.invoke(null, args);
+        } catch (Exception e) {
+            AdaptiveNemesisMod.LOGGER.warn("反射调用 {} 失败: {}", methodName, e.getMessage());
+            return null;
+        }
+    }
 
     /**
      * 触发实体强化事件
@@ -32,18 +68,16 @@ public class KubeJSEventTrigger {
         }
 
         try {
-            EntityScaleEventJS event = new EntityScaleEventJS(entity, multiplier);
-            var result = AdaptiveNemesisKubeJSPlugin.ENTITY_SCALE.post(event);
-
-            if (event.isEventCancelled()) {
-                return -1; // 表示取消强化
+            Object result = invokeStatic("fireEntityScale",
+                new Class<?>[]{Mob.class, double.class},
+                new Object[]{entity, multiplier});
+            if (result instanceof Double) {
+                return (Double) result;
             }
-
-            return event.getMultiplier();
         } catch (Exception e) {
-            AdaptiveNemesisMod.LOGGER.error("触发 KubeJS 实体强化事件失败: {}", e.getMessage());
-            return multiplier;
+            // fall through
         }
+        return multiplier;
     }
 
     /**
@@ -64,20 +98,16 @@ public class KubeJSEventTrigger {
         }
 
         try {
-            DamageCalculationEventJS event = new DamageCalculationEventJS(
-                attacker, target, originalDamage, calculatedDamage, armorMultiplier
-            );
-            var result = AdaptiveNemesisKubeJSPlugin.DAMAGE_CALCULATION.post(event);
-
-            if (event.isEventCancelled()) {
-                return originalDamage; // 取消真实伤害，返回原始伤害
+            Object result = invokeStatic("fireDamageCalculation",
+                new Class<?>[]{LivingEntity.class, LivingEntity.class, float.class, float.class, double.class},
+                new Object[]{attacker, target, originalDamage, calculatedDamage, armorMultiplier});
+            if (result instanceof Float) {
+                return (Float) result;
             }
-
-            return event.getCalculatedDamage();
         } catch (Exception e) {
-            AdaptiveNemesisMod.LOGGER.error("触发 KubeJS 伤害计算事件失败: {}", e.getMessage());
-            return calculatedDamage;
+            // fall through
         }
+        return calculatedDamage;
     }
 
     /**
@@ -99,16 +129,16 @@ public class KubeJSEventTrigger {
         }
 
         try {
-            PlayerStrengthEvaluationEventJS event = new PlayerStrengthEvaluationEventJS(
-                player, baseStrength, defenseStrength, attackStrength, magicStrength, combatStrength
-            );
-            var result = AdaptiveNemesisKubeJSPlugin.PLAYER_STRENGTH_EVALUATION.post(event);
-
-            return event.getFinalStrength();
+            Object result = invokeStatic("firePlayerStrengthEvaluation",
+                new Class<?>[]{ServerPlayer.class, double.class, double.class, double.class, double.class, double.class},
+                new Object[]{player, baseStrength, defenseStrength, attackStrength, magicStrength, combatStrength});
+            if (result instanceof Double) {
+                return (Double) result;
+            }
         } catch (Exception e) {
-            AdaptiveNemesisMod.LOGGER.error("触发 KubeJS 玩家强度评估事件失败: {}", e.getMessage());
-            return baseStrength;
+            // fall through
         }
+        return baseStrength;
     }
 
     /**
@@ -118,26 +148,18 @@ public class KubeJSEventTrigger {
      * @param playerName 玩家名称
      * @param profile 宿敌档案
      */
-    public static void triggerNemesisMemoryUpdate(java.util.UUID playerUUID, String playerName,
+    public static void triggerNemesisMemoryUpdate(UUID playerUUID, String playerName,
                                                    NemesisProfile profile) {
         if (!KubeJSLoader.isKubeJSLoaded()) {
             return;
         }
 
         try {
-            NemesisMemoryUpdateEventJS event = new NemesisMemoryUpdateEventJS(
-                playerUUID,
-                playerName,
-                profile.getTotalKills(),
-                profile.getTotalDeaths(),
-                profile.getNemesisLevel(),
-                profile.getAttackBonus(),
-                profile.getSpeedBonus(),
-                profile.getHealthBonus()
-            );
-            var result = AdaptiveNemesisKubeJSPlugin.NEMESIS_MEMORY_UPDATE.post(event);
+            invokeStatic("fireNemesisMemoryUpdate",
+                new Class<?>[]{UUID.class, String.class, NemesisProfile.class},
+                new Object[]{playerUUID, playerName, profile});
         } catch (Exception e) {
-            AdaptiveNemesisMod.LOGGER.error("触发 KubeJS 宿敌记忆更新事件失败: {}", e.getMessage());
+            // ignore
         }
     }
 

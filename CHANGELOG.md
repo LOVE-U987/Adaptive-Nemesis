@@ -1,80 +1,260 @@
-# Adaptive Nemesis 更新日志
+## 1. 高层摘要 (TL;DR)
 
-## \[v1.0.3] - 2026-05-23
+*   **影响范围:** **高** - 重构了 KubeJS 集成架构，解决了可选依赖的类加载冲突问题
+*   **核心变更:**
+    *   🔧 将 KubeJS API 调用从主类分离到独立的 `KubeJSInitializer`
+    *   🛡️ 使用反射机制实现安全调用，避免 KubeJS 未安装时的类加载错误
+    *   📦 通过 ServiceLoader 机制自动发现和加载 KubeJS 插件
+    *   🏷️ 版本更新至 `1.0.3hotfix`
 
-### ✨ 新功能
+---
 
-#### 🎯 怪物装备系统全面升级
+## 2. 可视化架构图
 
-- **装备生成概率大幅提升**：基础概率 5% → 15%，每单位难度增量 3% → 10%
-- **装备品质阈值降低**：下界合金从 ×10 倍率降至 ×6 倍率，钻石从 ×6 降至 ×4
-- **品质跳级机制**：15% 概率获得高一档品质的装备，运气好低难度也能见钻石怪
-- **武器多样化**：Tier 0 新增金剑/金斧选择，告别清一色石剑
+### 2.1 重构前后架构对比
 
-#### 🤝 跨模组兼容系统
+```mermaid
+graph TB
+    subgraph "重构前 - 直接依赖"
+        A["AdaptiveNemesisKubeJSPlugin<br/>实现 KubeJSPlugin"]
+        B["EventGroup<br/>EventHandler"]
+        C["KubeJSEventTrigger<br/>直接调用 API"]
+        
+        A -->|直接引用| B
+        C -->|直接引用| B
+        
+        style A fill:#ffcdd2,color:#b71c1c
+        style B fill:#ffcdd2,color:#b71c1c
+        style C fill:#ffcdd2,color:#b71c1c
+    end
+    
+    subgraph "重构后 - 反射隔离"
+        D["AdaptiveNemesisKubeJSPlugin<br/>普通类（桥接）"]
+        E["KubeJSEventTrigger<br/>反射调用"]
+        F["KubeJSInitializer<br/>实现 KubeJSPlugin"]
+        G["EventGroup<br/>EventHandler"]
+        H["ServiceLoader<br/>自动发现"]
+        
+        D -.反射检查.-> F
+        E -.反射调用.-> F
+        F -->|直接引用| G
+        H -->|加载| F
+        
+        style D fill:#c8e6c9,color:#1a5e20
+        style E fill:#c8e6c9,color:#1a5e20
+        style F fill:#bbdefb,color:#0d47a1
+        style G fill:#bbdefb,color:#0d47a1
+        style H fill:#fff3e0,color:#e65100
+    end
+```
 
-- **附魔全兼容**：`tryApplyModCompatibleEnchantments()` 自动扫描附魔注册表，应用其他模组添加的兼容附魔
-- **装备全兼容**：`tryGetModEquipment()` 通过 `ItemTags` 标签系统发现并穿戴其他模组的武器和盔甲
-- **副手智能选择**：优先寻找模组盾牌（`#minecraft:shields`），找不到再退而求其次找单手剑
-- **智能识别**：通过命名空间自动区分原版（`minecraft:`）和模组物品
+### 2.2 事件触发流程
 
-#### 📦 附魔池扩充
+```mermaid
+sequenceDiagram
+    participant Mod as 模组核心代码
+    participant Trigger as KubeJSEventTrigger
+    participant Loader as KubeJSLoader
+    participant Refl as 反射层
+    participant Init as KubeJSInitializer
+    participant KubeJS as KubeJS API
+    
+    Mod->>Trigger: 触发事件<br/>triggerEntityScale()
+    Trigger->>Loader: 检查 KubeJS 是否加载
+    alt KubeJS 未加载
+        Loader-->>Trigger: 返回 false
+        Trigger-->>Mod: 返回默认值
+    else KubeJS 已加载
+        Trigger->>Refl: invokeStatic()<br/>检查初始化器可用性
+        Refl->>Init: Class.forName()
+        Init-->>Refl: 类已加载
+        Refl->>Init: Method.invoke()<br/>fireEntityScale()
+        Init->>KubeJS: ENTITY_SCALE.post()
+        KubeJS-->>Init: 事件处理结果
+        Init-->>Refl: 返回倍率
+        Refl-->>Trigger: 返回结果
+        Trigger-->>Mod: 返回事件处理后的值
+    end
+```
 
-- **武器附魔**：新增 耐久、效率（原 7 种 → 9 种）
-- **防具附魔**：新增 水下呼吸、水下速掘、轻盈、深海探索者（原 6 种 → 10 种）
-- **弓附魔**：新增 耐久（原 4 种 → 5 种）
+---
 
-#### ⚙️ 全新配置项
+## 3. 详细变更分析
 
-新增 **6 个可配置参数** + 2 个配置屏幕分类：
+### 3.1 构建配置变更
 
-| 配置分类 | 配置项                            |  默认值 | 说明       |
-| ---- | ------------------------------ | :--: | :------- |
-| 装备生成 | `equipmentBaseChance`          | 0.15 | 装备生成基础概率 |
-| 装备生成 | `equipmentChancePerDifficulty` | 0.10 | 每倍率概率增量  |
-| 装备生成 | `equipmentTierUpgradeChance`   | 0.15 | 品质跳级概率   |
-| 装备生成 | `equipmentModCompatChance`     | 0.30 | 模组装备替换概率 |
-| 史诗战斗 | `weightMinBonus`               | 15.0 | 重量最小加值   |
-| 史诗战斗 | `weightPerMultiplier`          | 20.0 | 每倍率重量增量  |
+| 文件 | 配置项 | 旧值 | 新值 | 说明 |
+|------|--------|------|------|------|
+| **gradle.properties** | `mod_version` | `1.0.3` | `1.0.3hotfix` | 热修复版本号 |
+| **build.gradle** | 注释格式 | `//` | `//` | 代码格式调整 |
 
-- 所有新配置支持游戏内可视化配置屏幕调节
+### 3.2 核心架构重构
 
-### 🐛 Bug 修复
+#### 📁 **AdaptiveNemesisKubeJSPlugin.java** - 桥接层改造
 
-#### 🦴 史诗战斗击退修复（EpicFightCompat）
+**变更类型:** 架构重构
 
-- **重量公式**：`new = old + (effectiveMultiplier - 1) × 20`，保底 `old + 15`
-- **全面修复 3 处漏网公式**：最大连击、重量、耐力恢复公式改用 `effectiveMultiplier` 替代 `multiplier`
-- **所有 8 处属性公式增加** **`Math.max()`** **保护**：防止随机因子导致属性降为负数
-- 修复前：骷髅重量 5.47（裸装水平）→ 修复后：骷髅重量 21.15（铁套级抗性）
+**变更说明:**
+- 从 `implements KubeJSPlugin` 改为普通类，移除所有 KubeJS API 直接引用
+- 删除了 `EventGroup`、`EventHandler` 等静态常量定义
+- 新增 `ensureInitialized()` 方法：通过反射检查 `KubeJSInitializer` 类是否存在
+- 新增 `isInitialized()` 方法：返回初始化状态
+- 类职责从"插件主类"转变为"桥接标记类"
 
-#### 🛡️ Iron's Spells 属性保护（IronsSpellsCompat）
+**关键代码片段:**
+```java
+// 旧代码：直接实现 KubeJSPlugin 接口
+public class AdaptiveNemesisKubeJSPlugin implements KubeJSPlugin {
+    public static final EventGroup ADAPTIVE_NEMESIS_EVENTS = EventGroup.of("adaptive_nemesis");
+    public static final EventHandler ENTITY_SCALE = ADAPTIVE_NEMESIS_EVENTS.server(...);
+    
+    @Override
+    public void init() { ... }
+    @Override
+    public void registerEvents(EventGroupRegistry registry) { ... }
+}
 
-- **23 处公式全部添加** **`Math.max()`** **保底**：法术强度、法力值、法力恢复等属性不再因低随机因子而变负
+// 新代码：普通类 + 反射检查
+public class AdaptiveNemesisKubeJSPlugin {
+    private static boolean initialized = false;
+    
+    public static void ensureInitialized() {
+        if (initialized) return;
+        if (!KubeJSLoader.isKubeJSLoaded()) return;
+        
+        try {
+            Class.forName("com.adaptive_nemesis.adaptive_nemesismod.kubejs.KubeJSInitializer");
+            initialized = true;
+        } catch (ClassNotFoundException e) {
+            AdaptiveNemesisMod.LOGGER.warn("KubeJSInitializer 类未找到，KubeJS 事件不可用");
+        }
+    }
+}
+```
 
-#### 🎯 装备系统修复
+---
 
-- **修复** **`createEquipmentForSlot`** **空壳问题**：怪物不再裸奔
-- **修复装备生成后不附魔问题**：移除 `continue` 语句，新建装备也能获得附魔
-- **延迟加载修复**：装备数据改为 instance-level lazy init，避免单元测试触发 Minecraft 类加载
+#### 📁 **KubeJSEventTrigger.java** - 反射调用层
 
-#### ⚙️ 配置文件修复
+**变更类型:** 实现重构
 
-- **修复配置重置 Bug**：`saveToFile()` 改为 `MOD_CONFIG.getLoadedConfig().save()`
+**变更说明:**
+- 新增 `invokeStatic()` 私有方法：统一处理反射调用逻辑
+- 新增 `initializerAvailable` 缓存：避免重复类加载检查
+- 所有事件触发方法改为通过反射调用 `KubeJSInitializer` 的静态方法
+- 错误处理从 `LOGGER.error()` 改为静默失败（fall-through）
 
-### 🧪 测试
+**方法映射表:**
 
-- 新增 `EnchantmentScalingHandlerTest`：34 个单元测试用例
-- 覆盖附魔概率、附魔等级、装备生成概率的边界情况
-- JUnit 5 + ParameterizedTest + `@CsvSource`
+| 原方法 | 反射目标方法 | 参数类型 |
+|--------|-------------|----------|
+| `triggerEntityScale()` | `fireEntityScale()` | `Mob.class, double.class` |
+| `triggerDamageCalculation()` | `fireDamageCalculation()` | `LivingEntity.class, LivingEntity.class, float.class, float.class, double.class` |
+| `triggerPlayerStrengthEvaluation()` | `firePlayerStrengthEvaluation()` | `ServerPlayer.class, double.class, double.class, double.class, double.class, double.class` |
+| `triggerNemesisMemoryUpdate()` | `fireNemesisMemoryUpdate()` | `UUID.class, String.class, NemesisProfile.class` |
 
-### 🏗️ 重构 & 优化
+**关键代码片段:**
+```java
+// 新增的反射调用方法
+private static Object invokeStatic(String methodName, Class<?>[] paramTypes, Object[] args) {
+    if (!KubeJSLoader.isKubeJSLoaded()) return null;
+    if (initializerAvailable == null) {
+        try {
+            Class.forName(INITIALIZER_CLASS);
+            initializerAvailable = true;
+        } catch (ClassNotFoundException e) {
+            initializerAvailable = false;
+            return null;
+        }
+    }
+    if (!initializerAvailable) return null;
 
-- **硬编码 → 配置化**：重量公式、装备概率、品质跳级概率全面迁移至 Config
-- **兼容层分离**：`tryGetModEquipment` / `isVanillaItem` / `tryApplyModCompatibleEnchantments` 独立方法
-- **附魔冲突智能检测**：`tryApplyModCompatibleEnchantments` 增加 `Set<Enchantment>` 去重 + `candidates.remove(index)` 防重复选中，try-catch 仅作为兜底
-- **日志增强**：关键缩放节点添加详细 DEBUG 日志，方便排查属性计算问题
-- **禁用 DEBUG 刷屏**：EpicFightCompat 和 IronsSpellsCompat 日志调整为条件输出
+    try {
+        Class<?> clazz = Class.forName(INITIALIZER_CLASS);
+        Method method = clazz.getMethod(methodName, paramTypes);
+        return method.invoke(null, args);
+    } catch (Exception e) {
+        AdaptiveNemesisMod.LOGGER.warn("反射调用 {} 失败: {}", methodName, e.getMessage());
+        return null;
+    }
+}
+```
 
-<br />
+---
 
+#### 📁 **KubeJSInitializer.java** - 新增 KubeJS 插件实现
+
+**变更类型:** 新增文件
+
+**文件说明:**
+- 实现 `KubeJSPlugin` 接口，包含所有 KubeJS API 直接依赖
+- 通过 ServiceLoader 机制自动发现和加载
+- 提供静态方法供反射调用
+- 包含完整的事件注册和触发逻辑
+
+**事件定义表:**
+
+| 事件常量 | 事件名称 | 事件类 |
+|----------|----------|--------|
+| `ENTITY_SCALE` | `entity_scale` | `EntityScaleEventJS.class` |
+| `DAMAGE_CALCULATION` | `damage_calculation` | `DamageCalculationEventJS.class` |
+| `PLAYER_STRENGTH_EVALUATION` | `player_strength_evaluation` | `PlayerStrengthEvaluationEventJS.class` |
+| `NEMESIS_MEMORY_UPDATE` | `nemesis_memory_update` | `NemesisMemoryUpdateEventJS.class` |
+
+**关键方法:**
+
+```java
+@Override
+public void init() {
+    AdaptiveNemesisMod.LOGGER.info("Adaptive Nemesis KubeJS 插件已加载！");
+}
+
+@Override
+public void registerEvents(EventGroupRegistry registry) {
+    registry.register(ADAPTIVE_NEMESIS_EVENTS);
+    AdaptiveNemesisMod.LOGGER.info("Adaptive Nemesis KubeJS 事件已注册");
+}
+
+// 供反射调用的静态方法
+public static double fireEntityScale(Mob entity, double multiplier) { ... }
+public static float fireDamageCalculation(...) { ... }
+public static double firePlayerStrengthEvaluation(...) { ... }
+public static void fireNemesisMemoryUpdate(...) { ... }
+```
+
+---
+
+#### 📁 **META-INF/services/dev.latvian.mods.kubejs.plugin.KubeJSPlugin** - 新增 ServiceLoader 配置
+
+**变更类型:** 新增文件
+
+**内容:**
+```
+com.adaptive_nemesis.adaptive_nemesismod.kubejs.KubeJSInitializer
+```
+
+**说明:** Java ServiceLoader 配置文件，用于 KubeJS 自动发现插件实现。
+
+---
+
+## 4. 影响与风险评估
+
+### ⚠️ 破坏性变更
+
+| 变更类型 | 影响范围 | 说明 |
+|----------|----------|------|
+| **类结构变更** | `AdaptiveNemesisKubeJSPlugin` | 从接口实现类变为普通类，外部代码不应依赖其实现 KubeJSPlugin |
+| **方法签名变更** | `KubeJSEventTrigger` | 内部实现改为反射调用，但公共 API 保持不变 |
+
+### ✅ 向后兼容性
+
+- ✅ 所有公共方法签名保持不变
+- ✅ 事件触发行为保持一致
+- ✅ KubeJS 未安装时的行为保持一致（返回默认值）
+
+
+---
+
+## 5. 总结
+
+本次重构通过**反射隔离 + ServiceLoader** 的架构模式，优雅地解决了 KubeJS 作为可选依赖的类加载问题。核心思想是将 KubeJS API 调用封装在独立的 `KubeJSInitializer` 类中，通过反射安全调用，确保模组在 KubeJS 未安装时也能正常运行。这是一个典型的**延迟加载**和**依赖隔离**设计模式的应用。

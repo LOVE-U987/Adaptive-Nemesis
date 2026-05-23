@@ -1,73 +1,44 @@
 package com.adaptive_nemesis.adaptive_nemesismod.kubejs;
 
-import org.slf4j.Logger;
-
 import com.adaptive_nemesis.adaptive_nemesismod.AdaptiveNemesisMod;
 
-import dev.latvian.mods.kubejs.event.EventGroup;
-import dev.latvian.mods.kubejs.event.EventGroupRegistry;
-import dev.latvian.mods.kubejs.event.EventHandler;
-import dev.latvian.mods.kubejs.plugin.KubeJSPlugin;
-import dev.latvian.mods.kubejs.script.ScriptType;
-
 /**
- * KubeJS 插件主类
+ * KubeJS 插件桥接类
  *
- * 为自适应宿敌模组提供 KubeJS 集成支持：
- * - 注册自定义事件（实体强化、伤害计算等）
- * - 暴露模组 API 给 KubeJS 脚本使用
- * - 提供配置和热重载支持
+ * 此类仅作为桥接标记，不直接引用任何 KubeJS 类以避免类加载冲突。
+ * 实际的 KubeJS 注册逻辑在 {@link KubeJSInitializer} 中实现，
+ * 该类通过 KubeJS 的 ServiceLoader 机制自动发现和加载。
  *
- * 注意：此类由 KubeJS 自动加载，仅在安装 KubeJS 时才会被加载。
- * KubeJSEventTrigger 通过 KubeJSLoader 安全检测此类的可用性。
+ * 当 KubeJS 未安装时，此类始终安全运行，不会触发任何类加载错误。
+ * 当 KubeJS 已安装时，KubeJSInitializer 通过 META-INF/services 自动注册。
  *
  * @author Adaptive Nemesis Team
- * @version 1.1.0
+ * @version 1.2.0
  */
-public class AdaptiveNemesisKubeJSPlugin implements KubeJSPlugin {
+public class AdaptiveNemesisKubeJSPlugin {
+
+    private static boolean initialized = false;
 
     /**
-     * 事件组 - 自适应宿敌模组的所有 KubeJS 事件
+     * 初始化 KubeJS 桥接
+     * 仅在 KubeJS 已加载时通过反射初始化 KubeJSInitializer
      */
-    public static final EventGroup ADAPTIVE_NEMESIS_EVENTS = EventGroup.of("adaptive_nemesis");
+    public static void ensureInitialized() {
+        if (initialized) return;
+        if (!KubeJSLoader.isKubeJSLoaded()) return;
 
-    /**
-     * 实体强化事件 - 当实体被自适应宿敌模组强化时触发
-     * 允许 KubeJS 脚本修改或覆盖强化逻辑
-     */
-    public static final EventHandler ENTITY_SCALE = ADAPTIVE_NEMESIS_EVENTS.server("entity_scale", () -> EntityScaleEventJS.class);
-
-    /**
-     * 伤害计算事件 - 当计算真实伤害时触发
-     * 允许 KubeJS 脚本修改伤害数值
-     */
-    public static final EventHandler DAMAGE_CALCULATION = ADAPTIVE_NEMESIS_EVENTS.server("damage_calculation", () -> DamageCalculationEventJS.class);
-
-    /**
-     * 玩家强度评估事件 - 当评估玩家强度时触发
-     * 允许 KubeJS 脚本添加自定义的强度评估逻辑
-     */
-    public static final EventHandler PLAYER_STRENGTH_EVALUATION = ADAPTIVE_NEMESIS_EVENTS.server("player_strength_evaluation", () -> PlayerStrengthEvaluationEventJS.class);
-
-    /**
-     * 宿敌记忆更新事件 - 当宿敌记忆数据更新时触发
-     */
-    public static final EventHandler NEMESIS_MEMORY_UPDATE = ADAPTIVE_NEMESIS_EVENTS.server("nemesis_memory_update", () -> NemesisMemoryUpdateEventJS.class);
-
-    /**
-     * 初始化插件
-     */
-    @Override
-    public void init() {
-        AdaptiveNemesisMod.LOGGER.info("Adaptive Nemesis KubeJS 插件已加载！");
+        try {
+            Class.forName("com.adaptive_nemesis.adaptive_nemesismod.kubejs.KubeJSInitializer");
+            initialized = true;
+        } catch (ClassNotFoundException e) {
+            AdaptiveNemesisMod.LOGGER.warn("KubeJSInitializer 类未找到，KubeJS 事件不可用");
+        }
     }
 
     /**
-     * 注册事件组
+     * 检查 KubeJS 是否已初始化
      */
-    @Override
-    public void registerEvents(EventGroupRegistry registry) {
-        registry.register(ADAPTIVE_NEMESIS_EVENTS);
-        AdaptiveNemesisMod.LOGGER.info("Adaptive Nemesis KubeJS 事件已注册");
+    public static boolean isInitialized() {
+        return initialized;
     }
 }
