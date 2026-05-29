@@ -367,6 +367,29 @@ public class AdaptiveNemesisConfigScreen extends Screen {
                 value -> { Config.WEIGHT_PER_MULTIPLIER.set(value); markChanged(); }),
             widgetX);
 
+        // ===== 模组兼容性 =====
+        currentY = addCategoryEntry(currentY, "adaptive_nemesis.config.category.mod_compat", 0xFF44BBFF);
+        currentY = addConfigEntry(currentY, "adaptive_nemesis.config.mod_compat_l2hostility",
+            "adaptive_nemesis.config.tooltip.mod_compat_l2hostility",
+            createBooleanButton(Config.MOD_COMPAT_L2HOSTILITY_ENABLED.get(),
+                value -> { Config.MOD_COMPAT_L2HOSTILITY_ENABLED.set(value); markChanged(); }),
+            widgetX);
+        currentY = addConfigEntry(currentY, "adaptive_nemesis.config.mod_compat_epic_fight",
+            "adaptive_nemesis.config.tooltip.mod_compat_epic_fight",
+            createBooleanButton(Config.MOD_COMPAT_EPIC_FIGHT_ENABLED.get(),
+                value -> { Config.MOD_COMPAT_EPIC_FIGHT_ENABLED.set(value); markChanged(); }),
+            widgetX);
+        currentY = addConfigEntry(currentY, "adaptive_nemesis.config.mod_compat_irons_spells",
+            "adaptive_nemesis.config.tooltip.mod_compat_irons_spells",
+            createBooleanButton(Config.MOD_COMPAT_IRONS_SPELLS_ENABLED.get(),
+                value -> { Config.MOD_COMPAT_IRONS_SPELLS_ENABLED.set(value); markChanged(); }),
+            widgetX);
+        currentY = addConfigEntry(currentY, "adaptive_nemesis.config.mod_compat_apotheosis",
+            "adaptive_nemesis.config.tooltip.mod_compat_apotheosis",
+            createBooleanButton(Config.MOD_COMPAT_APOTHEOSIS_ENABLED.get(),
+                value -> { Config.MOD_COMPAT_APOTHEOSIS_ENABLED.set(value); markChanged(); }),
+            widgetX);
+
         // ===== 调试选项 =====
         currentY = addCategoryEntry(currentY, "adaptive_nemesis.config.category.debug", 0xFFAAAAAA);
         currentY = addConfigEntry(currentY, "adaptive_nemesis.config.enable_debug_log",

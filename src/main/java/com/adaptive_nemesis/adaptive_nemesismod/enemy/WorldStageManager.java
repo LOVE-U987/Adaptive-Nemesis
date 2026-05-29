@@ -5,17 +5,13 @@ import java.util.Set;
 
 import com.adaptive_nemesis.adaptive_nemesismod.AdaptiveNemesisMod;
 import com.adaptive_nemesis.adaptive_nemesismod.Config;
+import com.adaptive_nemesis.adaptive_nemesismod.boss.BossIdentificationService;
 import com.adaptive_nemesis.adaptive_nemesismod.data.WorldStageSavedData;
 
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
-import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
-import net.minecraft.world.entity.boss.enderdragon.EnderDragon;
-import net.minecraft.world.entity.boss.wither.WitherBoss;
-import net.minecraft.world.entity.monster.warden.Warden;
-import net.minecraft.resources.ResourceLocation;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.neoforge.event.entity.living.LivingDeathEvent;
 
@@ -38,13 +34,6 @@ import net.neoforged.neoforge.event.entity.living.LivingDeathEvent;
 public class WorldStageManager {
 
     private static WorldStageManager INSTANCE;
-
-    /**
-     * Boss 类型标识
-     */
-    private static final String BOSS_DRAGON = "ender_dragon";
-    private static final String BOSS_WITHER = "wither";
-    private static final String BOSS_WARDEN = "warden";
 
     /**
      * 全服共享的世界阶段数据
@@ -188,33 +177,15 @@ public class WorldStageManager {
 
     /**
      * 识别Boss类型
+     * 
+     * 委托给 BossIdentificationService 进行统一识别，
+     * 通过策略模式组合类型、名称和血量阈值等多种判断方式。
+     * 
+     * @param entity 目标实体
+     * @return Boss类型标识字符串，如非Boss则返回null
      */
     private String identifyBossType(LivingEntity entity) {
-        if (entity instanceof EnderDragon) {
-            return BOSS_DRAGON;
-        }
-        if (entity instanceof WitherBoss) {
-            return BOSS_WITHER;
-        }
-        if (entity instanceof Warden) {
-            return BOSS_WARDEN;
-        }
-
-        EntityType<?> type = entity.getType();
-        ResourceLocation id = EntityType.getKey(type);
-        String path = id.getPath().toLowerCase();
-
-        if (path.contains("ender_dragon") || path.contains("dragon")) {
-            return BOSS_DRAGON;
-        }
-        if (path.contains("wither")) {
-            return BOSS_WITHER;
-        }
-        if (path.contains("warden")) {
-            return BOSS_WARDEN;
-        }
-
-        return null;
+        return BossIdentificationService.getInstance().getBossType(entity);
     }
 
     /**

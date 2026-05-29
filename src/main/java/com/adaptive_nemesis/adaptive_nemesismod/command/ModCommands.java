@@ -37,7 +37,9 @@ public class ModCommands {
     public static final String COMMAND_BASE = "an";
 
     /**
-     * 默认构造函数
+     * 默认构造函数（非空壳）
+     * 此类通过 eventBus.register(new ModCommands()) 注册到 NeoForge 事件总线，
+     * 由 NeoForge 利用此构造实例化并扫描 @SubscribeEvent 方法。构造内无需初始化逻辑。
      */
     public ModCommands() {}
 

@@ -26,9 +26,39 @@ import yesman.epicfight.world.capabilities.entitypatch.player.PlayerPatch;
 public class EpicFightCompat {
 
     /**
-     * 默认构造函数
+     * 默认构造函数（非空壳）
+     * 工具类，方法由外部直接调用（如 EnemyScalingHandler），不持有内部状态，故无需初始化。
+     * 保留 public 构造以允许外部实例化。
      */
     public EpicFightCompat() {}
+
+    /**
+     * 安全设置属性值 - 防止 NaN/Infinity 导致怪物无法被攻击
+     *
+     * @param attr 属性实例
+     * @param value 要设置的值
+     * @param fallback 后备值（NaN/Infinity 时使用）
+     */
+    private static void safeSetAttribute(AttributeInstance attr, double value, double fallback) {
+        if (Double.isNaN(value) || Double.isInfinite(value)) {
+            attr.setBaseValue(fallback);
+            return;
+        }
+        attr.setBaseValue(value);
+    }
+
+    /**
+     * 安全获取双精度浮点数 - 防止 NaN/Infinity 传播
+     *
+     * @param value 待检查的值
+     * @return 如果值有效则返回原值，否则返回 1.0
+     */
+    private static double safeDouble(double value) {
+        if (Double.isNaN(value) || Double.isInfinite(value)) {
+            return 1.0;
+        }
+        return value;
+    }
 
     /**
      * 获取玩家的战斗强度评估值
@@ -96,7 +126,7 @@ public class EpicFightCompat {
     public void applyMobBuffs(Mob mob, double multiplier) {
         try {
             // 确保倍率不低于 1.0，防止随机因子导致属性变负数
-            double effectiveMultiplier = Math.max(1.0, multiplier);
+            double effectiveMultiplier = safeDouble(Math.max(1.0, multiplier));
 
             // 1. 增加受击抗性 (Stun Armor) - 防止被无限硬直
             // NeoForge 1.21.1: DeferredHolder可以直接作为Holder<Attribute>传入
@@ -105,7 +135,7 @@ public class EpicFightCompat {
                 double originalStunArmor = stunArmorAttr.getBaseValue();
                 // 受击抗性随倍率增加，最高增加大量
                 double newStunArmor = originalStunArmor + (effectiveMultiplier - 1.0) * 5.0;
-                stunArmorAttr.setBaseValue(Math.max(originalStunArmor, newStunArmor));
+                safeSetAttribute(stunArmorAttr, Math.max(originalStunArmor, newStunArmor), originalStunArmor);
 
                 if (Config.ENABLE_DEBUG_LOG.get()) {
                     AdaptiveNemesisMod.LOGGER.debug(
@@ -122,7 +152,7 @@ public class EpicFightCompat {
             if (impactAttr != null) {
                 double originalImpact = impactAttr.getBaseValue();
                 double newImpact = originalImpact * (1.0 + (effectiveMultiplier - 1.0) * 0.3);
-                impactAttr.setBaseValue(Math.max(originalImpact, newImpact));
+                safeSetAttribute(impactAttr, Math.max(originalImpact, newImpact), originalImpact);
 
                 if (Config.ENABLE_DEBUG_LOG.get()) {
                     AdaptiveNemesisMod.LOGGER.debug(
@@ -139,7 +169,7 @@ public class EpicFightCompat {
             if (armorNegationAttr != null) {
                 double originalNegation = armorNegationAttr.getBaseValue();
                 double newNegation = originalNegation + (effectiveMultiplier - 1.0) * 2.0;
-                armorNegationAttr.setBaseValue(Math.min(newNegation, 100.0)); // 最高100%
+                safeSetAttribute(armorNegationAttr, Math.min(newNegation, 100.0), originalNegation); // 最高100%
 
                 if (Config.ENABLE_DEBUG_LOG.get()) {
                     AdaptiveNemesisMod.LOGGER.debug(
@@ -156,7 +186,7 @@ public class EpicFightCompat {
             if (maxStrikesAttr != null) {
                 double originalStrikes = maxStrikesAttr.getBaseValue();
                 double newStrikes = originalStrikes + (effectiveMultiplier - 1.0) * 0.5;
-                maxStrikesAttr.setBaseValue(Math.max(originalStrikes, newStrikes));
+                safeSetAttribute(maxStrikesAttr, Math.max(originalStrikes, newStrikes), originalStrikes);
 
                 if (Config.ENABLE_DEBUG_LOG.get()) {
                     AdaptiveNemesisMod.LOGGER.debug(
@@ -174,7 +204,7 @@ public class EpicFightCompat {
                 double originalWeight = weightAttr.getBaseValue();
                 double minWeight = originalWeight + Config.WEIGHT_MIN_BONUS.get();
                 double newWeight = originalWeight + (effectiveMultiplier - 1.0) * Config.WEIGHT_PER_MULTIPLIER.get();
-                weightAttr.setBaseValue(Math.max(minWeight, newWeight));
+                safeSetAttribute(weightAttr, Math.max(minWeight, newWeight), minWeight);
 
                 if (Config.ENABLE_DEBUG_LOG.get()) {
                     AdaptiveNemesisMod.LOGGER.debug(
@@ -191,7 +221,7 @@ public class EpicFightCompat {
             if (maxStaminaAttr != null) {
                 double originalStamina = maxStaminaAttr.getBaseValue();
                 double newStamina = originalStamina * effectiveMultiplier;
-                maxStaminaAttr.setBaseValue(Math.max(originalStamina, newStamina));
+                safeSetAttribute(maxStaminaAttr, Math.max(originalStamina, newStamina), originalStamina);
 
                 if (Config.ENABLE_DEBUG_LOG.get()) {
                     AdaptiveNemesisMod.LOGGER.debug(
@@ -208,7 +238,7 @@ public class EpicFightCompat {
             if (staminaRegenAttr != null) {
                 double originalRegen = staminaRegenAttr.getBaseValue();
                 double newRegen = originalRegen * (1.0 + (effectiveMultiplier - 1.0) * 0.5);
-                staminaRegenAttr.setBaseValue(Math.max(originalRegen, newRegen));
+                safeSetAttribute(staminaRegenAttr, Math.max(originalRegen, newRegen), originalRegen);
             }
 
             // 8. 增加处决抗性 (Execution Resistance) - 防止被处决
@@ -216,7 +246,7 @@ public class EpicFightCompat {
             if (executionResistAttr != null) {
                 double originalResist = executionResistAttr.getBaseValue();
                 double newResist = originalResist + (effectiveMultiplier - 1.0) * 1.0;
-                executionResistAttr.setBaseValue(Math.max(originalResist, newResist));
+                safeSetAttribute(executionResistAttr, Math.max(originalResist, newResist), originalResist);
             }
 
         } catch (Exception e) {

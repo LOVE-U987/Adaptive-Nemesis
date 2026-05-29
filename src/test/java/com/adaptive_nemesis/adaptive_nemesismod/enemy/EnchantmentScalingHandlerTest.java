@@ -155,4 +155,116 @@ class EnchantmentScalingHandlerTest {
             assertEquals(1.0f, chance, 0.001, "装备生成概率不能超过1.0");
         }
     }
+
+    @Nested
+    @DisplayName("isDangerousEnchantmentKey() - 危险附魔检测")
+    class DangerousEnchantmentTests {
+
+        @ParameterizedTest(name = "「{0}」→ 危险({1})")
+        @CsvSource({
+            // 英文关键词
+            "damage_immunity,      true",
+            "immune_to_all,        true",
+            "invulnerable,         true",
+            "invincible,           true",
+            "immunity,             true",
+            "no_damage,            true",
+            "god,                  true",
+            "divine_protection,    true",
+            "damage_proof,         true",
+            // 模拟那个出问题的模组附魔注册名
+            "irons_spellbooks:immune,  true",
+            "somanyenchants:invulnerable, true",
+            "apotheosis:immune,        true",
+            "extraenchants:god_armor,  true",
+            // 中文关键词
+            "免伤,                 true",
+            "无敌,                 true",
+            "免疫,                 true",
+            "伤害免疫,             true",
+            // 正常附魔（不被误杀）
+            "power,                false",
+            "sharpness,            false",
+            "protection,           false",
+            "fire_aspect,          false",
+            "minecraft:power,      false",
+            "minecraft:sharpness,  false",
+        })
+        @DisplayName("已知关键词检测")
+        void testKnownKeywords(String key, boolean expected) {
+            assertEquals(expected,
+                EnchantmentScalingHandler.isDangerousEnchantmentKey(key),
+                "关键词 '" + key + "' 的危险性判断错误"
+            );
+        }
+
+        @Test
+        @DisplayName("普通原版附魔不受影响")
+        void testVanillaEnchantmentsAreSafe() {
+            assertAll(
+                () -> assertFalse(EnchantmentScalingHandler.isDangerousEnchantmentKey("minecraft:power")),
+                () -> assertFalse(EnchantmentScalingHandler.isDangerousEnchantmentKey("minecraft:sharpness")),
+                () -> assertFalse(EnchantmentScalingHandler.isDangerousEnchantmentKey("minecraft:protection")),
+                () -> assertFalse(EnchantmentScalingHandler.isDangerousEnchantmentKey("minecraft:fire_protection")),
+                () -> assertFalse(EnchantmentScalingHandler.isDangerousEnchantmentKey("minecraft:feather_falling")),
+                () -> assertFalse(EnchantmentScalingHandler.isDangerousEnchantmentKey("minecraft:thorns")),
+                () -> assertFalse(EnchantmentScalingHandler.isDangerousEnchantmentKey("minecraft:unbreaking")),
+                () -> assertFalse(EnchantmentScalingHandler.isDangerousEnchantmentKey("minecraft:mending")),
+                () -> assertFalse(EnchantmentScalingHandler.isDangerousEnchantmentKey("minecraft:respiration")),
+                () -> assertFalse(EnchantmentScalingHandler.isDangerousEnchantmentKey("minecraft:aqua_affinity"))
+            );
+        }
+
+        @Test
+        @DisplayName("普通模组附魔不受影响")
+        void testModEnchantmentsAreSafe() {
+            assertAll(
+                () -> assertFalse(EnchantmentScalingHandler.isDangerousEnchantmentKey("irons_spellbooks:lightning_bolt")),
+                () -> assertFalse(EnchantmentScalingHandler.isDangerousEnchantmentKey("epicfight:damage")),
+                () -> assertFalse(EnchantmentScalingHandler.isDangerousEnchantmentKey("apotheosis:berserk")),
+                () -> assertFalse(EnchantmentScalingHandler.isDangerousEnchantmentKey("soulsweapons:dark_estus")),
+                () -> assertFalse(EnchantmentScalingHandler.isDangerousEnchantmentKey("spell_power:soulfrost")),
+                () -> assertFalse(EnchantmentScalingHandler.isDangerousEnchantmentKey("spell_engine:spell_power"))
+            );
+        }
+
+        @Test
+        @DisplayName("大小写不影响检测")
+        void testCaseInsensitive() {
+            assertAll(
+                () -> assertTrue(EnchantmentScalingHandler.isDangerousEnchantmentKey("DAMAGE_IMMUNITY")),
+                () -> assertTrue(EnchantmentScalingHandler.isDangerousEnchantmentKey("Invulnerable")),
+                () -> assertTrue(EnchantmentScalingHandler.isDangerousEnchantmentKey("免疫一切伤害")),
+                () -> assertFalse(EnchantmentScalingHandler.isDangerousEnchantmentKey("PROTECTION"))
+            );
+        }
+
+        @Test
+        @DisplayName("边界情况：null/空字符串")
+        void testEdgeCases() {
+            assertAll(
+                () -> assertFalse(EnchantmentScalingHandler.isDangerousEnchantmentKey(null)),
+                () -> assertFalse(EnchantmentScalingHandler.isDangerousEnchantmentKey("")),
+                () -> assertFalse(EnchantmentScalingHandler.isDangerousEnchantmentKey("   "))
+            );
+        }
+
+        @ParameterizedTest(name = "敌人的伤害免疫附魔「{0}」→ 被拦截({1})")
+        @CsvSource({
+            // 模拟用户遇到的那个"伤害免疫"附魔的各种可能ID
+            "somanyenchants:immune,                    true",
+            "somanyenchants:damage_immunity,            true",
+            "apotheosis:immune,                         true",
+            "enchdesc:damage_immunity,                  true",
+            "extrautils:invulnerable,                    true",
+            "spartan:god,                               true",
+        })
+        @DisplayName("模拟用户报告的伤害免疫附魔场景")
+        void testReportedDamageImmunityScenarios(String enchantId, boolean expected) {
+            assertEquals(expected,
+                EnchantmentScalingHandler.isDangerousEnchantmentKey(enchantId),
+                "敌人伤害免疫附魔 '" + enchantId + "' 应被拦截"
+            );
+        }
+    }
 }

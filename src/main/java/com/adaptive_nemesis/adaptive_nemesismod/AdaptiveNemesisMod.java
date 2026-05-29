@@ -26,6 +26,13 @@ import net.neoforged.fml.event.lifecycle.FMLCommonSetupEvent;
 import net.neoforged.fml.loading.FMLEnvironment;
 import net.neoforged.neoforge.common.NeoForge;
 
+import org.apache.logging.log4j.Level;
+import org.apache.logging.log4j.core.LoggerContext;
+import org.apache.logging.log4j.core.appender.FileAppender;
+import org.apache.logging.log4j.core.config.Configuration;
+import org.apache.logging.log4j.core.config.LoggerConfig;
+import org.apache.logging.log4j.core.layout.PatternLayout;
+
 /**
  * Adaptive Nemesis / 自适应宿敌 主模组类
  * 
@@ -106,6 +113,9 @@ public class AdaptiveNemesisMod {
         LOGGER.info("👑 Boss伤害上限: {}", Config.ENABLE_BOSS_DAMAGE_CAP.get() ? "已启用" : "已禁用");
         LOGGER.info("📈 敌人加成上限: {}", Config.ENABLE_ENEMY_BONUS_CAP.get() ? "已启用" : "已禁用");
         
+        // 初始化调试日志文件
+        initDebugLogFile();
+        
         // 初始化各子系统
         event.enqueueWork(() -> {
             PlayerStrengthEvaluator.getInstance().initialize();
@@ -116,6 +126,52 @@ public class AdaptiveNemesisMod {
         LOGGER.info("========================================");
         LOGGER.info("✅ Adaptive Nemesis 初始化完成！");
         LOGGER.info("========================================");
+    }
+
+    /**
+     * 初始化调试日志文件输出
+     * 当配置中启用 debugLogToFile 时，自动创建单独的日志文件
+     * 使用 Log4j2 FileAppender 捕获模组所有 DEBUG 级别以上的日志
+     */
+    private static void initDebugLogFile() {
+        if (!Config.DEBUG_LOG_TO_FILE.get()) return;
+
+        try {
+            LoggerContext context = LoggerContext.getContext(false);
+            Configuration config = context.getConfiguration();
+
+            PatternLayout layout = PatternLayout.newBuilder()
+                .withPattern("[%d{HH:mm:ss.SSS}][%level] %msg%n")
+                .withConfiguration(config)
+                .build();
+
+            FileAppender appender = FileAppender.newBuilder()
+                .withFileName(Config.DEBUG_LOG_FILE_PATH.get())
+                .withName("AdaptiveNemesisDebugFile")
+                .withAppend(true)
+                .withLayout(layout)
+                .withConfiguration(config)
+                .build();
+            appender.start();
+
+            config.addAppender(appender);
+
+            // 获取我们日志器的 Log4j2 LoggerConfig 并附加文件输出
+            String loggerName = LOGGER.getName();
+            LoggerConfig loggerConfig = config.getLoggerConfig(loggerName);
+
+            if (loggerConfig == null || !loggerConfig.getName().equals(loggerName)) {
+                loggerConfig = new LoggerConfig(loggerName, Level.DEBUG, true);
+                config.addLogger(loggerName, loggerConfig);
+            }
+
+            loggerConfig.addAppender(appender, Level.DEBUG, null);
+            context.updateLoggers();
+
+            LOGGER.info("📝 调试日志文件已初始化: {}", Config.DEBUG_LOG_FILE_PATH.get());
+        } catch (Exception e) {
+            LOGGER.error("初始化调试日志文件失败: {}", e.getMessage());
+        }
     }
 
     /**

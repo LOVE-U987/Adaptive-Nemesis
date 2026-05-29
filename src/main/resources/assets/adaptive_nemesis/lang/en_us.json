@@ -106,6 +106,17 @@
   "adaptive_nemesis.config.tooltip.equipment_mod_compat_chance": "Chance to replace vanilla gear with modded equipment (0.30 = 30%)",
 
   "adaptive_nemesis.config.category.epic_fight": "Epic Fight Scaling",
+
+  "adaptive_nemesis.config.category.mod_compat": "Mod Compatibility",
+  "adaptive_nemesis.config.mod_compat_l2hostility": "L2Hostility Compat",
+  "adaptive_nemesis.config.tooltip.mod_compat_l2hostility": "Skips health and speed scaling to prevent HP explosion caused by L2Hostility's ADD_MULTIPLIED_TOTAL mechanic",
+  "adaptive_nemesis.config.mod_compat_epic_fight": "Epic Fight Compat",
+  "adaptive_nemesis.config.tooltip.mod_compat_epic_fight": "Applies specialized weight calculation to prevent excessive knockback in Epic Fight mode",
+  "adaptive_nemesis.config.mod_compat_irons_spells": "Iron's Spells Compat",
+  "adaptive_nemesis.config.tooltip.mod_compat_irons_spells": "Suppresses spamming DEBUG logs from Iron's Spells mod",
+  "adaptive_nemesis.config.mod_compat_apotheosis": "Apotheosis Compat",
+  "adaptive_nemesis.config.tooltip.mod_compat_apotheosis": "Includes mythic affix bonuses from Apotheosis in player strength evaluation",
+
   "adaptive_nemesis.config.weight_min_bonus": "Min Weight Bonus",
   "adaptive_nemesis.config.tooltip.weight_min_bonus": "Minimum weight added to mobs to prevent knockback in Epic Fight mode",
   "adaptive_nemesis.config.weight_per_multiplier": "Weight per Multiplier",

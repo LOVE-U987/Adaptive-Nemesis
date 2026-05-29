@@ -7,9 +7,6 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
-import net.minecraft.world.entity.boss.enderdragon.EnderDragon;
-import net.minecraft.world.entity.boss.wither.WitherBoss;
-import net.minecraft.world.entity.monster.warden.Warden;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.neoforge.event.entity.living.LivingIncomingDamageEvent;
 
@@ -136,24 +133,14 @@ public class BossDamageCapHandler {
     /**
      * 检查实体是否是Boss
      * 
+     * 委托给 BossIdentificationService 进行统一判断，
+     * 采用策略模式组合多种识别方式（类型识别、名称识别、血量阈值识别）。
+     * 
      * @param entity 目标实体
      * @return 如果是Boss返回true
      */
     public boolean isBoss(LivingEntity entity) {
-        // 原版Boss
-        if (entity instanceof EnderDragon || 
-            entity instanceof WitherBoss || 
-            entity instanceof Warden) {
-            return true;
-        }
-        
-        // 通过名称检测其他Boss（如模组添加的Boss）
-        String entityName = entity.getType().toString().toLowerCase();
-        return entityName.contains("boss") || 
-               entityName.contains("dragon") ||
-               entityName.contains("wither") ||
-               entityName.contains("warden") ||
-               entity.getMaxHealth() >= 200; // 血量超过200的也视为Boss
+        return BossIdentificationService.getInstance().isBoss(entity);
     }
 
     /**

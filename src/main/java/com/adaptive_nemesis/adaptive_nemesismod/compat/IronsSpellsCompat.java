@@ -26,9 +26,39 @@ import net.minecraft.world.item.ItemStack;
 public class IronsSpellsCompat {
 
     /**
-     * 默认构造函数
+     * 默认构造函数（非空壳）
+     * 工具类，方法由外部直接调用（如 EnemyScalingHandler），不持有内部状态，故无需初始化。
+     * 保留 public 构造以允许外部实例化。
      */
     public IronsSpellsCompat() {}
+
+    /**
+     * 安全设置属性值 - 防止 NaN/Infinity 导致怪物无法被攻击
+     *
+     * @param attr 属性实例
+     * @param value 要设置的值
+     * @param fallback 后备值（NaN/Infinity 时使用）
+     */
+    private static void safeSetAttribute(AttributeInstance attr, double value, double fallback) {
+        if (Double.isNaN(value) || Double.isInfinite(value)) {
+            attr.setBaseValue(fallback);
+            return;
+        }
+        attr.setBaseValue(value);
+    }
+
+    /**
+     * 安全获取双精度浮点数 - 防止 NaN/Infinity 传播
+     *
+     * @param value 待检查的值
+     * @return 如果值有效则返回原值，否则返回 0.0
+     */
+    private static double safeDouble(double value) {
+        if (Double.isNaN(value) || Double.isInfinite(value)) {
+            return 0.0;
+        }
+        return value;
+    }
 
     /**
      * 获取玩家的法术强度评估值
@@ -115,7 +145,7 @@ public class IronsSpellsCompat {
     public void applyMobBuffs(Mob mob, double multiplier) {
         try {
             // 确保倍率不低于 1.0，防止随机因子导致属性降低
-            double effectiveMultiplier = Math.max(1.0, multiplier);
+            double effectiveMultiplier = safeDouble(Math.max(1.0, multiplier));
 
             // 1. 增加法术强度 (Spell Power) - 如果有法术攻击
             // NeoForge 1.21.1: DeferredHolder可以直接作为Holder<Attribute>传入
@@ -123,7 +153,7 @@ public class IronsSpellsCompat {
             if (spellPowerAttr != null) {
                 double originalPower = spellPowerAttr.getBaseValue();
                 double newPower = Math.max(originalPower, originalPower * effectiveMultiplier);
-                spellPowerAttr.setBaseValue(newPower);
+                safeSetAttribute(spellPowerAttr, newPower, originalPower);
 
                 if (Config.ENABLE_DEBUG_LOG.get()) {
                     AdaptiveNemesisMod.LOGGER.debug(
@@ -140,7 +170,7 @@ public class IronsSpellsCompat {
             if (maxManaAttr != null) {
                 double originalMana = maxManaAttr.getBaseValue();
                 double newMana = Math.max(originalMana, originalMana * effectiveMultiplier);
-                maxManaAttr.setBaseValue(newMana);
+                safeSetAttribute(maxManaAttr, newMana, originalMana);
 
                 if (Config.ENABLE_DEBUG_LOG.get()) {
                     AdaptiveNemesisMod.LOGGER.debug(
@@ -157,7 +187,7 @@ public class IronsSpellsCompat {
             if (manaRegenAttr != null) {
                 double originalRegen = manaRegenAttr.getBaseValue();
                 double newRegen = Math.max(originalRegen, originalRegen * (1.0 + (effectiveMultiplier - 1.0) * 0.5));
-                manaRegenAttr.setBaseValue(newRegen);
+                safeSetAttribute(manaRegenAttr, newRegen, originalRegen);
             }
 
             // 4. 增加冷却缩减 (Cooldown Reduction)
@@ -165,7 +195,7 @@ public class IronsSpellsCompat {
             if (cooldownAttr != null) {
                 double originalCooldown = cooldownAttr.getBaseValue();
                 double newCooldown = Math.max(originalCooldown, originalCooldown * (1.0 + (effectiveMultiplier - 1.0) * 0.3));
-                cooldownAttr.setBaseValue(newCooldown);
+                safeSetAttribute(cooldownAttr, newCooldown, originalCooldown);
             }
 
             // 5. 增加施法时间缩减 (Cast Time Reduction)
@@ -173,7 +203,7 @@ public class IronsSpellsCompat {
             if (castTimeAttr != null) {
                 double originalCastTime = castTimeAttr.getBaseValue();
                 double newCastTime = Math.max(originalCastTime, originalCastTime * (1.0 + (effectiveMultiplier - 1.0) * 0.3));
-                castTimeAttr.setBaseValue(newCastTime);
+                safeSetAttribute(castTimeAttr, newCastTime, originalCastTime);
             }
 
             // 6. 增加各系魔法抗性
@@ -195,67 +225,69 @@ public class IronsSpellsCompat {
      */
     private void applyMagicResistance(Mob mob, double multiplier) {
         try {
+            double safeMult = safeDouble(multiplier);
+
             // 火焰抗性
             AttributeInstance fireResist = mob.getAttribute(AttributeRegistry.FIRE_MAGIC_RESIST);
             if (fireResist != null) {
                 double original = fireResist.getBaseValue();
-                fireResist.setBaseValue(Math.max(original, original + (multiplier - 1.0) * 5.0));
+                safeSetAttribute(fireResist, Math.max(original, original + (safeMult - 1.0) * 5.0), original);
             }
 
             // 冰霜抗性
             AttributeInstance iceResist = mob.getAttribute(AttributeRegistry.ICE_MAGIC_RESIST);
             if (iceResist != null) {
                 double original = iceResist.getBaseValue();
-                iceResist.setBaseValue(Math.max(original, original + (multiplier - 1.0) * 5.0));
+                safeSetAttribute(iceResist, Math.max(original, original + (safeMult - 1.0) * 5.0), original);
             }
 
             // 闪电抗性
             AttributeInstance lightningResist = mob.getAttribute(AttributeRegistry.LIGHTNING_MAGIC_RESIST);
             if (lightningResist != null) {
                 double original = lightningResist.getBaseValue();
-                lightningResist.setBaseValue(Math.max(original, original + (multiplier - 1.0) * 5.0));
+                safeSetAttribute(lightningResist, Math.max(original, original + (safeMult - 1.0) * 5.0), original);
             }
 
             // 神圣抗性
             AttributeInstance holyResist = mob.getAttribute(AttributeRegistry.HOLY_MAGIC_RESIST);
             if (holyResist != null) {
                 double original = holyResist.getBaseValue();
-                holyResist.setBaseValue(Math.max(original, original + (multiplier - 1.0) * 5.0));
+                safeSetAttribute(holyResist, Math.max(original, original + (safeMult - 1.0) * 5.0), original);
             }
 
             // 末影抗性
             AttributeInstance enderResist = mob.getAttribute(AttributeRegistry.ENDER_MAGIC_RESIST);
             if (enderResist != null) {
                 double original = enderResist.getBaseValue();
-                enderResist.setBaseValue(Math.max(original, original + (multiplier - 1.0) * 5.0));
+                safeSetAttribute(enderResist, Math.max(original, original + (safeMult - 1.0) * 5.0), original);
             }
 
             // 血魔法抗性
             AttributeInstance bloodResist = mob.getAttribute(AttributeRegistry.BLOOD_MAGIC_RESIST);
             if (bloodResist != null) {
                 double original = bloodResist.getBaseValue();
-                bloodResist.setBaseValue(Math.max(original, original + (multiplier - 1.0) * 5.0));
+                safeSetAttribute(bloodResist, Math.max(original, original + (safeMult - 1.0) * 5.0), original);
             }
 
             // 召唤抗性
             AttributeInstance evocationResist = mob.getAttribute(AttributeRegistry.EVOCATION_MAGIC_RESIST);
             if (evocationResist != null) {
                 double original = evocationResist.getBaseValue();
-                evocationResist.setBaseValue(Math.max(original, original + (multiplier - 1.0) * 5.0));
+                safeSetAttribute(evocationResist, Math.max(original, original + (safeMult - 1.0) * 5.0), original);
             }
 
             // 自然抗性
             AttributeInstance natureResist = mob.getAttribute(AttributeRegistry.NATURE_MAGIC_RESIST);
             if (natureResist != null) {
                 double original = natureResist.getBaseValue();
-                natureResist.setBaseValue(Math.max(original, original + (multiplier - 1.0) * 5.0));
+                safeSetAttribute(natureResist, Math.max(original, original + (safeMult - 1.0) * 5.0), original);
             }
 
             // 远古抗性
             AttributeInstance eldritchResist = mob.getAttribute(AttributeRegistry.ELDRITCH_MAGIC_RESIST);
             if (eldritchResist != null) {
                 double original = eldritchResist.getBaseValue();
-                eldritchResist.setBaseValue(Math.max(original, original + (multiplier - 1.0) * 5.0));
+                safeSetAttribute(eldritchResist, Math.max(original, original + (safeMult - 1.0) * 5.0), original);
             }
 
         } catch (Exception e) {
@@ -271,67 +303,69 @@ public class IronsSpellsCompat {
      */
     private void applySpellPower(Mob mob, double multiplier) {
         try {
+            double safeMult = safeDouble(multiplier);
+
             // 火焰法术强度
             AttributeInstance firePower = mob.getAttribute(AttributeRegistry.FIRE_SPELL_POWER);
             if (firePower != null) {
                 double original = firePower.getBaseValue();
-                firePower.setBaseValue(Math.max(original, original * multiplier));
+                safeSetAttribute(firePower, Math.max(original, original * safeMult), original);
             }
 
             // 冰霜法术强度
             AttributeInstance icePower = mob.getAttribute(AttributeRegistry.ICE_SPELL_POWER);
             if (icePower != null) {
                 double original = icePower.getBaseValue();
-                icePower.setBaseValue(Math.max(original, original * multiplier));
+                safeSetAttribute(icePower, Math.max(original, original * safeMult), original);
             }
 
             // 闪电法术强度
             AttributeInstance lightningPower = mob.getAttribute(AttributeRegistry.LIGHTNING_SPELL_POWER);
             if (lightningPower != null) {
                 double original = lightningPower.getBaseValue();
-                lightningPower.setBaseValue(Math.max(original, original * multiplier));
+                safeSetAttribute(lightningPower, Math.max(original, original * safeMult), original);
             }
 
             // 神圣法术强度
             AttributeInstance holyPower = mob.getAttribute(AttributeRegistry.HOLY_SPELL_POWER);
             if (holyPower != null) {
                 double original = holyPower.getBaseValue();
-                holyPower.setBaseValue(Math.max(original, original * multiplier));
+                safeSetAttribute(holyPower, Math.max(original, original * safeMult), original);
             }
 
             // 末影法术强度
             AttributeInstance enderPower = mob.getAttribute(AttributeRegistry.ENDER_SPELL_POWER);
             if (enderPower != null) {
                 double original = enderPower.getBaseValue();
-                enderPower.setBaseValue(Math.max(original, original * multiplier));
+                safeSetAttribute(enderPower, Math.max(original, original * safeMult), original);
             }
 
             // 血魔法法术强度
             AttributeInstance bloodPower = mob.getAttribute(AttributeRegistry.BLOOD_SPELL_POWER);
             if (bloodPower != null) {
                 double original = bloodPower.getBaseValue();
-                bloodPower.setBaseValue(Math.max(original, original * multiplier));
+                safeSetAttribute(bloodPower, Math.max(original, original * safeMult), original);
             }
 
             // 召唤法术强度
             AttributeInstance evocationPower = mob.getAttribute(AttributeRegistry.EVOCATION_SPELL_POWER);
             if (evocationPower != null) {
                 double original = evocationPower.getBaseValue();
-                evocationPower.setBaseValue(Math.max(original, original * multiplier));
+                safeSetAttribute(evocationPower, Math.max(original, original * safeMult), original);
             }
 
             // 自然法术强度
             AttributeInstance naturePower = mob.getAttribute(AttributeRegistry.NATURE_SPELL_POWER);
             if (naturePower != null) {
                 double original = naturePower.getBaseValue();
-                naturePower.setBaseValue(Math.max(original, original * multiplier));
+                safeSetAttribute(naturePower, Math.max(original, original * safeMult), original);
             }
 
             // 远古法术强度
             AttributeInstance eldritchPower = mob.getAttribute(AttributeRegistry.ELDRITCH_SPELL_POWER);
             if (eldritchPower != null) {
                 double original = eldritchPower.getBaseValue();
-                eldritchPower.setBaseValue(Math.max(original, original * multiplier));
+                safeSetAttribute(eldritchPower, Math.max(original, original * safeMult), original);
             }
 
         } catch (Exception e) {

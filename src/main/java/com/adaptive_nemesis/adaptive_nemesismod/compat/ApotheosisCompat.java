@@ -19,7 +19,9 @@ import net.minecraft.core.component.DataComponents;
 public class ApotheosisCompat {
 
     /**
-     * 默认构造函数
+     * 默认构造函数（非空壳）
+     * 工具类，方法由外部直接调用（如 PlayerStrengthEvaluator），不持有内部状态，故无需初始化。
+     * 保留 public 构造以允许外部实例化。
      */
     public ApotheosisCompat() {}
 

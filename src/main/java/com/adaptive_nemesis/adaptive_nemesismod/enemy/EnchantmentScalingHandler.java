@@ -25,6 +25,7 @@ import net.minecraft.world.DifficultyInstance;
 import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.Mob;
+import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.monster.Enemy;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
@@ -115,6 +116,15 @@ public class EnchantmentScalingHandler {
         Enchantments.FLAME,
         Enchantments.INFINITY,
         Enchantments.UNBREAKING
+    };
+
+    /**
+     * 生成时无法被攻击的怪物NBT标签黑名单
+     */
+    private static final String[] INVULNERABLE_TAGS = {
+        "Invulnerable",
+        "NoAI",
+        "PersistenceRequired"
     };
 
     private EnchantmentScalingHandler() {}
@@ -236,6 +246,9 @@ public class EnchantmentScalingHandler {
                 applyEnchantments(stack, slot, enchantLevel, serverLevel);
             }
         }
+
+        // 装备生成后验证怪物状态
+        validateMobState(mob);
     }
 
     /**
@@ -415,33 +428,33 @@ public class EnchantmentScalingHandler {
         List<Item> modItems = new ArrayList<>();
 
         if (tag != null) {
-            // 从标签中收集非原版的模组物品
+            // 从标签中收集非原版的模组物品（跳过无效物品）
             for (Item item : itemRegistry) {
-                if (item.builtInRegistryHolder().is(tag) && !isVanillaItem(item)) {
+                if (item.builtInRegistryHolder().is(tag) && !isVanillaItem(item) && isValidEquipmentItem(item)) {
                     modItems.add(item);
                 }
             }
         } else if (slot == EquipmentSlot.MAINHAND) {
-            // 主手：从剑和斧标签中收集模组武器
+            // 主手：从剑和斧标签中收集模组武器（跳过无效物品）
             for (Item item : itemRegistry) {
                 boolean isWeapon = item.builtInRegistryHolder().is(ItemTags.SWORDS)
                     || item.builtInRegistryHolder().is(ItemTags.AXES);
-                if (isWeapon && !isVanillaItem(item)) {
+                if (isWeapon && !isVanillaItem(item) && isValidEquipmentItem(item)) {
                     modItems.add(item);
                 }
             }
         } else if (slot == EquipmentSlot.OFFHAND) {
-            // 副手：优先找模组盾牌，找不到再找单手武器
+            // 副手：优先找模组盾牌，找不到再找单手武器（跳过无效物品）
             TagKey<Item> shieldTag = TagKey.create(Registries.ITEM, ResourceLocation.withDefaultNamespace("shields"));
             for (Item item : itemRegistry) {
-                if (item.builtInRegistryHolder().is(shieldTag) && !isVanillaItem(item)) {
+                if (item.builtInRegistryHolder().is(shieldTag) && !isVanillaItem(item) && isValidEquipmentItem(item)) {
                     modItems.add(item);
                 }
             }
             // 没有模组盾牌时，退而求其次找单手武器
             if (modItems.isEmpty()) {
                 for (Item item : itemRegistry) {
-                    if (item.builtInRegistryHolder().is(ItemTags.SWORDS) && !isVanillaItem(item)) {
+                    if (item.builtInRegistryHolder().is(ItemTags.SWORDS) && !isVanillaItem(item) && isValidEquipmentItem(item)) {
                         modItems.add(item);
                     }
                 }
@@ -485,6 +498,9 @@ public class EnchantmentScalingHandler {
             Holder.Reference<Enchantment> enchantHolder = enchantmentRegistry.getHolder(enchantKey).orElse(null);
             if (enchantHolder == null) continue;
 
+            // 跳过危险附魔（如伤害免疫等游戏破坏性效果）
+            if (isDangerousEnchantment(enchantHolder)) continue;
+
             // 随机附魔等级（1到maxLevel之间）
             int level = random.nextInt(maxLevel) + 1;
 
@@ -518,6 +534,14 @@ public class EnchantmentScalingHandler {
         for (Enchantment enchant : registry) {
             try {
                 if (!enchant.canEnchant(stack) || existingEnchants.contains(enchant)) continue;
+
+                // 跳过危险附魔（如伤害免疫等游戏破坏性效果）
+                ResourceKey<Enchantment> enchantKey = registry.getResourceKey(enchant).orElse(null);
+                if (enchantKey != null) {
+                    Holder.Reference<Enchantment> holder = registry.getHolder(enchantKey).orElse(null);
+                    if (holder != null && isDangerousEnchantment(holder)) continue;
+                }
+
                 candidates.add(enchant);
             } catch (Exception e) {
                 // 跳过有问题的附魔
@@ -571,5 +595,143 @@ public class EnchantmentScalingHandler {
      */
     public void initialize() {
         AdaptiveNemesisMod.LOGGER.info("📦 怪物装备/附魔强化系统已初始化");
+    }
+
+    /**
+     * 判断给定文本是否含有危险附魔关键词
+     * 静态方法，用于不依赖 Minecraft 运行时的单元测试
+     *
+     * @param text 待检测的文本（如注册名路径、描述文本）
+     * @return 如果包含危险关键词返回true
+     */
+    static boolean isDangerousEnchantmentKey(String text) {
+        if (text == null || text.isEmpty()) return false;
+        String lower = text.toLowerCase();
+        return lower.contains("immune") || lower.contains("immunity")
+            || lower.contains("invulnerable") || lower.contains("invincible")
+            || lower.contains("no_damage") || lower.contains("damage_immunity")
+            || lower.contains("免伤") || lower.contains("无敌")
+            || lower.contains("免疫") || lower.contains("damage_proof")
+            || lower.contains("god") || lower.contains("divine_protection");
+    }
+
+    /**
+     * 判断附魔是否为危险附魔（如伤害免疫、无敌等游戏破坏性效果）
+     * 此类附魔如果被怪物装备上，会导致怪物无法被攻击
+     *
+     * @param holder 附魔持有者引用
+     * @return 如果是危险附魔返回true，应跳过
+     */
+    private boolean isDangerousEnchantment(Holder.Reference<Enchantment> holder) {
+        if (!holder.isBound()) return false;
+
+        // 通过注册名检测（最可靠，不受语言影响）
+        ResourceLocation enchantId = holder.key().location();
+        String path = enchantId.getPath().toLowerCase();
+
+        if (isDangerousEnchantmentKey(path)) {
+            if (Config.ENABLE_DEBUG_LOG.get()) {
+                AdaptiveNemesisMod.LOGGER.warn(
+                    "⚠️ 跳过危险附魔: {} (来源模组: {})",
+                    enchantId, enchantId.getNamespace()
+                );
+            }
+            return true;
+        }
+
+        // 检查附魔描述（兜底方案）
+        try {
+            String descKey = holder.value().description().getString().toLowerCase();
+            if (isDangerousEnchantmentKey(descKey)) {
+                if (Config.ENABLE_DEBUG_LOG.get()) {
+                    AdaptiveNemesisMod.LOGGER.warn(
+                        "⚠️ 通过描述跳过危险附魔: {} (desc={})",
+                        enchantId, descKey
+                    );
+                }
+                return true;
+            }
+        } catch (Exception e) {
+            // 忽略异常，安全优先
+        }
+
+        return false;
+    }
+
+    /**
+     * 验证模组装备物品的有效性
+     * 防止模组中某些被错误打上装备标签的问题物品导致怪物无法被攻击
+     *
+     * @param item 待验证的物品
+     * @return 如果物品安全有效返回true
+     */
+    private boolean isValidEquipmentItem(Item item) {
+        if (item == null || item == Items.AIR) {
+            return false;
+        }
+
+        // 跳过已知可能产生副作用的特殊物品
+        ItemStack testStack = new ItemStack(item);
+
+        // 跳过没有最大堆叠数的特殊物品（通常是不可常规获得的物品）
+        if (testStack.getMaxStackSize() <= 0) {
+            return false;
+        }
+
+        // 跳过屏障、结构空位等调试物品
+        ResourceLocation id = BuiltInRegistries.ITEM.getKey(item);
+        if (id != null) {
+            String path = id.getPath().toLowerCase();
+            if (path.contains("barrier") || path.contains("structure_void")
+                || path.contains("debug") || path.contains("command")
+                || path.contains("spawn_egg") || path.contains("monster_egg")) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * 怪物生成后状态验证
+     * 检查怪物是否处于可被攻击的正常状态，修复异常状态
+     *
+     * @param mob 待验证的怪物
+     */
+    private void validateMobState(Mob mob) {
+        // 检查并清除实体真正的无敌标志（isInvulnerable/setInvulnerable 操作 Entity.invulnerable 字段）
+        // ⚠️ 注意：getPersistentData().getBoolean("Invulnerable") 是模组自定义数据，和实体无敌无关！
+        if (mob.isInvulnerable()) {
+            mob.setInvulnerable(false);
+            if (Config.ENABLE_DEBUG_LOG.get()) {
+                AdaptiveNemesisMod.LOGGER.warn(
+                    "🔧 修复怪物 {} 的 Invulnerable 标志（由装备生成导致）",
+                    mob.getName().getString()
+                );
+            }
+        }
+
+        // 检查血量是否有效
+        var healthAttr = mob.getAttribute(Attributes.MAX_HEALTH);
+        if (healthAttr != null) {
+            double health = healthAttr.getBaseValue();
+            if (Double.isNaN(health) || Double.isInfinite(health)) {
+                healthAttr.setBaseValue(20.0);
+            } else if (health < 1.0) {
+                healthAttr.setBaseValue(Math.max(20.0, health));
+                if (Config.ENABLE_DEBUG_LOG.get()) {
+                    AdaptiveNemesisMod.LOGGER.warn(
+                        "🔧 修复怪物 {} 的无效 MaxHealth: {}",
+                        mob.getName().getString(), health
+                    );
+                }
+            }
+        }
+
+        // 确保怪物当前血量有效
+        float currentHealth = mob.getHealth();
+        if (Double.isNaN(currentHealth) || Double.isInfinite(currentHealth) || currentHealth <= 0) {
+            mob.setHealth(mob.getMaxHealth());
+        }
     }
 }

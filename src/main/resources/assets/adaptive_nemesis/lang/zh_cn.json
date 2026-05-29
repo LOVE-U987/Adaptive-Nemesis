@@ -106,6 +106,17 @@
   "adaptive_nemesis.config.tooltip.equipment_mod_compat_chance": "用其他模组的装备替代原版装备的概率（0.30=30%）",
 
   "adaptive_nemesis.config.category.epic_fight": "史诗战斗缩放",
+
+  "adaptive_nemesis.config.category.mod_compat": "模组兼容性",
+  "adaptive_nemesis.config.mod_compat_l2hostility": "L2Hostility 兼容",
+  "adaptive_nemesis.config.tooltip.mod_compat_l2hostility": "启用后跳过血量与速度缩放，防止 L2Hostility 的 ADD_MULTIPLIED_TOTAL 机制导致血量爆炸式增长",
+  "adaptive_nemesis.config.mod_compat_epic_fight": "史诗战斗兼容",
+  "adaptive_nemesis.config.tooltip.mod_compat_epic_fight": "启用后应用专用权重计算逻辑，防止怪物在史诗战斗模式下被击退过远",
+  "adaptive_nemesis.config.mod_compat_irons_spells": "铁魔法兼容",
+  "adaptive_nemesis.config.tooltip.mod_compat_irons_spells": "启用后抑制铁魔法模组的刷屏式 DEBUG 日志输出",
+  "adaptive_nemesis.config.mod_compat_apotheosis": "神化兼容",
+  "adaptive_nemesis.config.tooltip.mod_compat_apotheosis": "启用后会在玩家强度评估中考虑神化模组的神话词条加成",
+
   "adaptive_nemesis.config.weight_min_bonus": "重量最小加值",
   "adaptive_nemesis.config.tooltip.weight_min_bonus": "怪物重量至少比原值增加多少，防止被史诗战斗模式击飞",
   "adaptive_nemesis.config.weight_per_multiplier": "每单位难度重量增量",

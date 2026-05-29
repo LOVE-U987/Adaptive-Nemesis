@@ -6,6 +6,7 @@ import java.util.UUID;
 
 import com.adaptive_nemesis.adaptive_nemesismod.AdaptiveNemesisMod;
 import com.adaptive_nemesis.adaptive_nemesismod.Config;
+import com.adaptive_nemesis.adaptive_nemesismod.compat.L2HostilityCompat;
 import com.adaptive_nemesis.adaptive_nemesismod.compat.ModCompatManager;
 import com.adaptive_nemesis.adaptive_nemesismod.kubejs.KubeJSEventTrigger;
 import com.adaptive_nemesis.adaptive_nemesismod.memory.NemesisMemorySystem;
@@ -85,6 +86,37 @@ public class EnemyScalingHandler {
     private final Random random = new Random();
 
     /**
+     * 灵魂石标记 - LUCK属性的特征值
+     * 灵魂石会清空NBT但保留实体核心属性（包括LUCK），
+     * 我们用LUCK属性存一个特征值来标记已缩放实体，
+     * 这是唯一能穿越灵魂石抓捕释放的标记手段
+     */
+    private static final double LUCK_MARKER_VALUE = 0.0420;
+
+    /**
+     * 对生物应用灵魂石标记
+     * 将LUCK属性设为一个特征值 + 标记倍率编码，
+     * 这样灵魂石释放后我们也能识别出这是被缩放过的实体
+     */
+    private void applyScaledMarker(Mob mob, double multiplier) {
+        AttributeInstance luckAttr = mob.getAttribute(Attributes.LUCK);
+        if (luckAttr != null) {
+            luckAttr.setBaseValue(LUCK_MARKER_VALUE);
+        }
+    }
+
+    /**
+     * 检查生物是否已被灵魂石标记
+     * 通过检测LUCK属性的特征值来判断
+     *
+     * @return true表示该实体此前已被缩放系统处理过
+     */
+    private boolean hasScaledMarker(Mob mob) {
+        AttributeInstance luckAttr = mob.getAttribute(Attributes.LUCK);
+        return luckAttr != null && Math.abs(luckAttr.getBaseValue() - LUCK_MARKER_VALUE) < 0.001;
+    }
+
+    /**
      * 私有构造函数 - 单例模式
      */
     private EnemyScalingHandler() {}
@@ -103,6 +135,9 @@ public class EnemyScalingHandler {
 
     /**
      * 实体加入世界事件 - 对新生成的敌人应用强化
+     * 检测链路（按可靠性排序）：
+     * 1. NBT标记 SCALED_TAG（最快，NBT存活时）
+     * 2. LUCK属性标记（灵魂石释放后NBT被清，但属性值存活）
      *
      * @param event 实体加入世界事件
      */
@@ -122,8 +157,50 @@ public class EnemyScalingHandler {
             return;
         }
 
-        // 检查是否已经强化过
+        // === 灵魂石调试日志：打印每次检测的详细数值 ===
+        if (Config.ENABLE_DEBUG_LOG.get()) {
+            AttributeInstance luckAttr = mob.getAttribute(Attributes.LUCK);
+            double luckValue = luckAttr != null ? luckAttr.getBaseValue() : Double.NaN;
+            boolean hasScaledTag = mob.getPersistentData().getBoolean(SCALED_TAG);
+            boolean hasLuckMarker = hasScaledMarker(mob);
+            double scaledTagRaw = mob.getPersistentData().contains(SCALED_TAG)
+                ? (mob.getPersistentData().getBoolean(SCALED_TAG) ? 1.0 : 0.0) : -1.0;
+            AdaptiveNemesisMod.LOGGER.debug(
+                "🔍 [灵魂石检测] 实体={}, 类型={}, UUID={}, UUIDhex={}, "
+                    + "NBT-SCALED_TAG存在={}, SCALED_TAG值={}, "
+                    + "LUCK属性值={}, LUCK标记值={}, hasLuckMarker={}, "
+                    + "当前血量={}, 最终判定={}",
+                mob.getName().getString(),
+                mob.getType().getDescriptionId(),
+                mob.getUUID(),
+                mob.getUUID().toString(),
+                mob.getPersistentData().contains(SCALED_TAG),
+                mob.getPersistentData().getBoolean(SCALED_TAG),
+                String.format("%.6f", luckValue),
+                LUCK_MARKER_VALUE,
+                hasLuckMarker,
+                String.format("%.1f", mob.getAttribute(Attributes.MAX_HEALTH) != null
+                    ? mob.getAttribute(Attributes.MAX_HEALTH).getBaseValue() : -1.0),
+                hasScaledTag || hasLuckMarker ? "跳过(已缩放)" : "首次缩放"
+            );
+        }
+        // === 调试日志结束 ===
+
+        // 检测链路 1: NBT标记（标准路径）
         if (mob.getPersistentData().getBoolean(SCALED_TAG)) {
+            return;
+        }
+
+        // 检测链路 2: LUCK属性标记（灵魂石路径 — 属性值穿越了NBT清除）
+        if (hasScaledMarker(mob)) {
+            if (Config.ENABLE_DEBUG_LOG.get()) {
+                AdaptiveNemesisMod.LOGGER.debug(
+                    "🔮 敌人 {} 命中LUCK属性标记（灵魂石场景），跳过重复缩放",
+                    mob.getName().getString()
+                );
+            }
+            // 恢复NBT标记，后续不再经过此路径
+            mob.getPersistentData().putBoolean(SCALED_TAG, true);
             return;
         }
 
@@ -165,6 +242,7 @@ public class EnemyScalingHandler {
             // 仍然标记为已处理，避免重复触发
             mob.getPersistentData().putBoolean(SCALED_TAG, true);
             mob.getPersistentData().putDouble(SCALE_MULTIPLIER_TAG, 1.0);
+            applyScaledMarker(mob, 1.0);
             return;
         }
 
@@ -177,6 +255,10 @@ public class EnemyScalingHandler {
         // 标记为已强化
         mob.getPersistentData().putBoolean(SCALED_TAG, true);
         mob.getPersistentData().putDouble(SCALE_MULTIPLIER_TAG, multiplier);
+
+        // 打上LUCK属性标记（灵魂石穿越标记）
+        // 这个标记会随着实体的核心属性一起被灵魂石保存和释放
+        applyScaledMarker(mob, multiplier);
 
         if (Config.ENABLE_DEBUG_LOG.get()) {
             AdaptiveNemesisMod.LOGGER.debug(
@@ -395,6 +477,9 @@ public class EnemyScalingHandler {
         // 应用宿敌记忆加成（如果有玩家档案）
         applyNemesisBonuses(mob);
 
+        // 缩放完成后进行状态验证
+        validateMobState(mob);
+
         if (Config.ENABLE_DEBUG_LOG.get()) {
             AttributeInstance finalHealth = mob.getAttribute(Attributes.MAX_HEALTH);
             AttributeInstance finalDamage = mob.getAttribute(Attributes.ATTACK_DAMAGE);
@@ -429,6 +514,76 @@ public class EnemyScalingHandler {
         }
         data.putDouble(tagKey, currentValue);
         return currentValue;
+    }
+
+    /**
+     * 缩放完成后进行怪物状态验证
+     * 检查并修复可能导致怪物无法被攻击的异常状态：
+     * - 清除 Invulnerable 标签
+     * - 修复 NaN/Infinity 属性值
+     * - 验证血量有效性
+     */
+    private void validateMobState(Mob mob) {
+        // 检查并清除实体真正的无敌标志（isInvulnerable/setInvulnerable 操作 Entity.invulnerable 字段）
+        // ⚠️ 注意：getPersistentData().getBoolean("Invulnerable") 是模组自定义数据，和实体无敌无关！
+        if (mob.isInvulnerable()) {
+            mob.setInvulnerable(false);
+            if (Config.ENABLE_DEBUG_LOG.get()) {
+                AdaptiveNemesisMod.LOGGER.warn(
+                    "🔧 缩放后修复怪物 {} 的 Invulnerable 标志",
+                    mob.getName().getString()
+                );
+            }
+        }
+
+        // 检查关键属性是否为 NaN/Infinity，修复为安全值
+        var healthAttr = mob.getAttribute(Attributes.MAX_HEALTH);
+        if (healthAttr != null) {
+            double health = healthAttr.getBaseValue();
+            if (Double.isNaN(health) || Double.isInfinite(health) || health < 1.0) {
+                healthAttr.setBaseValue(Math.max(20.0, 1.0)); // 默认20点血量
+                if (Config.ENABLE_DEBUG_LOG.get()) {
+                    AdaptiveNemesisMod.LOGGER.warn(
+                        "🔧 修复怪物 {} 的无效 MaxHealth: {}",
+                        mob.getName().getString(), health
+                    );
+                }
+            }
+        }
+
+        var damageAttr = mob.getAttribute(Attributes.ATTACK_DAMAGE);
+        if (damageAttr != null) {
+            double dmg = damageAttr.getBaseValue();
+            if (Double.isNaN(dmg) || Double.isInfinite(dmg)) {
+                damageAttr.setBaseValue(1.0); // 默认1点伤害
+                if (Config.ENABLE_DEBUG_LOG.get()) {
+                    AdaptiveNemesisMod.LOGGER.warn(
+                        "🔧 修复怪物 {} 的无效 AttackDamage: {}",
+                        mob.getName().getString(), dmg
+                    );
+                }
+            }
+        }
+
+        var armorAttr = mob.getAttribute(Attributes.ARMOR);
+        if (armorAttr != null) {
+            double armor = armorAttr.getBaseValue();
+            if (Double.isNaN(armor) || Double.isInfinite(armor) || armor < 0) {
+                armorAttr.setBaseValue(0.0); // 默认0护甲
+                if (Config.ENABLE_DEBUG_LOG.get()) {
+                    AdaptiveNemesisMod.LOGGER.warn(
+                        "🔧 修复怪物 {} 的无效 Armor: {}",
+                        mob.getName().getString(), armor
+                    );
+                }
+            }
+        }
+
+        // 确保怪物当前血量有效
+        float currentHealth = mob.getHealth();
+        if (Double.isNaN(currentHealth) || Double.isInfinite(currentHealth) || currentHealth <= 0) {
+            mob.setHealth(mob.getMaxHealth());
+        }
     }
 
     /**
@@ -514,6 +669,20 @@ public class EnemyScalingHandler {
      * 使用原始值确保幂等性 - 防止重复缩放
      */
     private void applyHealthBonus(Mob mob, double multiplier, double randomFactor) {
+        // 当 L2Hostility 加载且兼容模式启用时，其 TANK 特质使用 ADD_MULTIPLIED_TOTAL 修改 MAX_HEALTH，
+        // 与我们修改基础值会形成乘法叠加导致血量爆炸，因此跳过我们的血量缩放
+        if (L2HostilityCompat.shouldSkipHealthAndSpeedScaling()) {
+            if (Config.ENABLE_DEBUG_LOG.get()) {
+                AttributeInstance healthAttr = mob.getAttribute(Attributes.MAX_HEALTH);
+                double currentHealth = healthAttr != null ? healthAttr.getBaseValue() : -1;
+                AdaptiveNemesisMod.LOGGER.debug(
+                    "L2Hostility 兼容: 跳过 {} 的血量加成, 当前基础血量={}",
+                    mob.getName().getString(), currentHealth
+                );
+            }
+            return;
+        }
+
         AttributeInstance healthAttr = mob.getAttribute(Attributes.MAX_HEALTH);
         if (healthAttr != null) {
             CompoundTag data = mob.getPersistentData();
@@ -603,6 +772,20 @@ public class EnemyScalingHandler {
      * 使用原始值确保幂等性
      */
     private void applySpeedBonus(Mob mob, double multiplier) {
+        // L2Hostility 加载且兼容模式启用时，其 SPEEDY 特质使用 ADD_MULTIPLIED_TOTAL 修改 MOVEMENT_SPEED，
+        // 与我们修改基础值会形成乘法叠加，跳过我们的速度缩放
+        if (L2HostilityCompat.shouldSkipHealthAndSpeedScaling()) {
+            if (Config.ENABLE_DEBUG_LOG.get()) {
+                AttributeInstance speedAttr = mob.getAttribute(Attributes.MOVEMENT_SPEED);
+                double currentSpeed = speedAttr != null ? speedAttr.getBaseValue() : -1;
+                AdaptiveNemesisMod.LOGGER.debug(
+                    "L2Hostility 兼容: 跳过 {} 的速度加成, 当前基础速度={}",
+                    mob.getName().getString(), currentSpeed
+                );
+            }
+            return;
+        }
+
         applyAttributeBonus(
             mob,
             Attributes.MOVEMENT_SPEED,
