@@ -1,12 +1,17 @@
 package com.adaptive_nemesis.adaptive_nemesismod.boss;
 
 import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.animal.AbstractGolem;
+import net.minecraft.world.entity.animal.Animal;
 
 /**
  * 基于血量阈值的Boss识别策略
  * 
  * 通过实体最大生命值判断是否为Boss。
  * 血量阈值可通过配置文件动态调整，适用于识别高血量模组Boss。
+ * 
+ * 注意：动物/傀儡类（Animal 子类）不受此策略影响，
+ * 防止高血量铁傀儡等被误识别为Boss吃到敌对加成。
  * 
  * @author Adaptive Nemesis Team
  * @version 1.0.0
@@ -26,6 +31,11 @@ public class HealthThresholdBossIdentifier implements BossIdentifier {
 
     @Override
     public boolean isBoss(LivingEntity entity) {
+        // 🚫 动物/傀儡类不参与血量阈值 Boss 识别
+        // 防止高血量铁傀儡、高血量动物等被误认为Boss
+        if (entity instanceof Animal || entity instanceof AbstractGolem) {
+            return false;
+        }
         return entity.getMaxHealth() >= healthThreshold;
     }
 

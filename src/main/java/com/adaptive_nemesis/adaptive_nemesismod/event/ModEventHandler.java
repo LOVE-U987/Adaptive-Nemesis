@@ -7,6 +7,7 @@ import com.adaptive_nemesis.adaptive_nemesismod.Config;
 import com.adaptive_nemesis.adaptive_nemesismod.boss.BossDamageCapHandler;
 import com.adaptive_nemesis.adaptive_nemesismod.data.WorldStageSavedData;
 import com.adaptive_nemesis.adaptive_nemesismod.enemy.DifficultyTracker;
+import com.adaptive_nemesis.adaptive_nemesismod.enemy.EntityFilterHelper;
 import com.adaptive_nemesis.adaptive_nemesismod.enemy.EnemyScalingHandler;
 import com.adaptive_nemesis.adaptive_nemesismod.enemy.WorldStageManager;
 import com.adaptive_nemesis.adaptive_nemesismod.memory.NemesisMemorySystem;
@@ -126,6 +127,11 @@ public class ModEventHandler {
 
         // 处理Boss生成
         if (event.getEntity() instanceof Mob mob) {
+            // 检查黑名单 - 被ban的实体跳过Boss限伤和Boss加成
+            if (EntityFilterHelper.getInstance().isBlocked(mob)) {
+                return;
+            }
+
             if (BossDamageCapHandler.getInstance().isBoss(mob)) {
                 BossDamageCapHandler.getInstance().applyBossBuffs(mob);
             }

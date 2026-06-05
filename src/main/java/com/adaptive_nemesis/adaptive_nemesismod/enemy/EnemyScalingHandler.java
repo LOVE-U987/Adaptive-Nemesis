@@ -19,9 +19,11 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.Mob;
+import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.ai.attributes.Attribute;
 import net.minecraft.world.entity.ai.attributes.AttributeInstance;
 import net.minecraft.world.entity.ai.attributes.Attributes;
+import net.minecraft.world.entity.ai.attributes.DefaultAttributes;
 import net.minecraft.world.entity.monster.Enemy;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
@@ -150,6 +152,17 @@ public class EnemyScalingHandler {
 
         // 只处理敌对生物
         if (!(event.getEntity() instanceof Mob mob)) {
+            return;
+        }
+
+        // 检查黑名单 - 被ban的实体跳过所有自适应缩放
+        if (EntityFilterHelper.getInstance().isBlocked(mob)) {
+            if (Config.ENABLE_DEBUG_LOG.get()) {
+                AdaptiveNemesisMod.LOGGER.debug(
+                    "🚫 实体 {} 在黑名单中，跳过自适应缩放",
+                    mob.getType().getDescriptionId()
+                );
+            }
             return;
         }
 
@@ -507,6 +520,9 @@ public class EnemyScalingHandler {
     /**
      * 获取或存储原始属性值
      * 确保每次缩放都从原始值开始，防止重复缩放导致属性爆炸
+     * 
+     * 注意：此方法不处理 NBT 标记丢失的情况（灵魂石等工具抓取后重置），
+     * 对于血量属性请使用 applyHealthBonus 中的 DefaultAttributes 回退机制
      */
     private double getOrStoreOriginal(CompoundTag data, String tagKey, double currentValue) {
         if (data.contains(tagKey)) {
@@ -514,6 +530,39 @@ public class EnemyScalingHandler {
         }
         data.putDouble(tagKey, currentValue);
         return currentValue;
+    }
+
+    /**
+     * 获取实体类型的默认属性基础值
+     * 
+     * 通过 DefaultAttributes 查询该实体类型注册时的默认属性值。
+     * 用于 NBT 标记丢失时（如灵魂石抓取后重置）获取真正的原始值，
+     * 防止已缩放的高血量被当作"原始值"再次缩放导致指数级爆炸。
+     *
+     * @param mob           目标生物
+     * @param attribute     要查询的属性
+     * @param fallbackValue 查询失败时的回退值
+     * @return 实体类型的默认属性值
+     */
+    private double getDefaultAttributeBase(Mob mob, Holder<Attribute> attribute, double fallbackValue) {
+        try {
+            // DefaultAttributes.getSupplier 需要 EntityType<? extends LivingEntity>
+            // mob.getType() 返回的是 EntityType<? extends Entity>，需要安全转型
+            @SuppressWarnings("unchecked")
+            var entityType = (EntityType<? extends LivingEntity>) mob.getType();
+            var supplier = DefaultAttributes.getSupplier(entityType);
+            if (supplier != null) {
+                return supplier.getBaseValue(attribute);
+            }
+        } catch (Exception e) {
+            if (Config.ENABLE_DEBUG_LOG.get()) {
+                AdaptiveNemesisMod.LOGGER.warn(
+                    "获取实体 {} 的默认属性失败: {}",
+                    mob.getType().getDescriptionId(), e.getMessage()
+                );
+            }
+        }
+        return fallbackValue;
     }
 
     /**
@@ -686,7 +735,32 @@ public class EnemyScalingHandler {
         AttributeInstance healthAttr = mob.getAttribute(Attributes.MAX_HEALTH);
         if (healthAttr != null) {
             CompoundTag data = mob.getPersistentData();
-            double originalBase = getOrStoreOriginal(data, ORIGINAL_HEALTH_TAG, healthAttr.getBaseValue());
+
+            // 🛡️ 防血量爆炸核心逻辑：
+            //
+            // 原始血量计算分两步：
+            // 1. 如果已有 NBT 标记（ORIGINAL_HEALTH_TAG），直接从标记中读取
+            //    —— 这是正常情况，保证幂等性（重复触发不重复加成）
+            // 2. 如果 NBT 标记丢失（灵魂石、魂符、生物套索等工具抓取后重置 NBT），
+            //    使用 DefaultAttributes 查询该实体类型注册时的默认血量作为"真·原始值"
+            //    —— 防止已经缩放过的高血量被当作原始值再次缩放，导致指数级爆炸 💥
+            double originalBase;
+            if (data.contains(ORIGINAL_HEALTH_TAG)) {
+                originalBase = data.getDouble(ORIGINAL_HEALTH_TAG);
+            } else {
+                originalBase = getDefaultAttributeBase(mob, Attributes.MAX_HEALTH, healthAttr.getBaseValue());
+                data.putDouble(ORIGINAL_HEALTH_TAG, originalBase);
+                if (Config.ENABLE_DEBUG_LOG.get()) {
+                    AdaptiveNemesisMod.LOGGER.debug(
+                        "🛡️ 防血量爆炸: {} 的 NBT 标记丢失，" +
+                        "使用实体类型默认血量 {} (当前基础血量={})",
+                        mob.getName().getString(),
+                        String.format("%.2f", originalBase),
+                        String.format("%.2f", healthAttr.getBaseValue())
+                    );
+                }
+            }
+
             double effectiveMultiplier = Math.min(multiplier * randomFactor, Config.MAX_HEALTH_MULTIPLIER.get());
             double newMax = originalBase * effectiveMultiplier;
             if (newMax < originalBase) {

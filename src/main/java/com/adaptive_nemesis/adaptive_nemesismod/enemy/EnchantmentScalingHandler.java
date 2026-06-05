@@ -8,6 +8,7 @@ import java.util.Set;
 
 import com.adaptive_nemesis.adaptive_nemesismod.AdaptiveNemesisMod;
 import com.adaptive_nemesis.adaptive_nemesismod.Config;
+import com.adaptive_nemesis.adaptive_nemesismod.enemy.EntityFilterHelper;
 import com.adaptive_nemesis.adaptive_nemesismod.player.PlayerStrengthData;
 import com.adaptive_nemesis.adaptive_nemesismod.player.PlayerStrengthEvaluator;
 
@@ -154,6 +155,11 @@ public class EnchantmentScalingHandler {
             return;
         }
 
+        // 检查黑名单 - 被ban的实体跳过装备/附魔缩放
+        if (EntityFilterHelper.getInstance().isBlocked(mob)) {
+            return;
+        }
+
         if (!(mob instanceof Enemy)) {
             return;
         }
@@ -222,11 +228,21 @@ public class EnchantmentScalingHandler {
 
         DifficultyInstance difficulty = mob.level().getCurrentDifficultyAt(mob.blockPosition());
 
+        // 判断该生物是否能使用装备（手持物品+盔甲）
+        // 只有僵尸类、骷髅类这类有手的人形敌对生物才配发装备
+        // 不然苦力怕、蜘蛛、史莱姆穿盔甲锄头太抽象了 😂
+        boolean canEquipGear = isHumanoidMob(mob);
+
         // 遍历所有装备槽
         for (EquipmentSlot slot : EquipmentSlot.values()) {
             boolean isArmor = slot.getType() == EquipmentSlot.Type.HUMANOID_ARMOR;
             boolean isHand = slot == EquipmentSlot.MAINHAND || slot == EquipmentSlot.OFFHAND;
             if (!isArmor && !isHand) {
+                continue;
+            }
+
+            // 非人形生物不生成任何装备（武器、盾牌、盔甲全跳过）
+            if (!canEquipGear) {
                 continue;
             }
 
@@ -588,6 +604,36 @@ public class EnchantmentScalingHandler {
         if (name.contains("spider")) return "spider";
         if (name.contains("creeper")) return "creeper";
         return "generic";
+    }
+
+    /**
+     * 判断生物是否为人形生物（有手能拿武器）
+     * 
+     * 只有人形敌对生物才应该被给予武器/盾牌，
+     * 蜘蛛、苦力怕、史莱姆等非人形生物没有手拿武器。
+     * 
+     * 判断依据：
+     * - 僵尸类（zombie）：僵尸、尸壳、溺尸、僵尸村民等 ✅
+     * - 骷髅类（skeleton）：骷髅、凋零骷髅、流浪者等 ✅
+     * - 蜘蛛类（spider）：蜘蛛、洞穴蜘蛛 ❌
+     * - 苦力怕类（creeper）：苦力怕 ❌
+     * - 通用型（generic）：如唤魔者、卫道士等 ✅（有手的人形敌对生物）
+     *
+     * @param mob 目标生物
+     * @return 如果为人形生物返回 true
+     */
+    private boolean isHumanoidMob(Mob mob) {
+        String mobType = getMobType(mob);
+        // 僵尸、骷髅及其变种是人形生物，可以拿武器
+        if ("zombie".equals(mobType) || "skeleton".equals(mobType)) {
+            return true;
+        }
+        // 通用类型（卫道士、唤魔者、掠夺者等灾厄村民）也是人形
+        if ("generic".equals(mobType)) {
+            return true;
+        }
+        // 蜘蛛、苦力怕不是人形，不给武器
+        return false;
     }
 
     /**

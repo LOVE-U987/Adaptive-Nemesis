@@ -26,6 +26,9 @@ import net.neoforged.fml.event.lifecycle.FMLCommonSetupEvent;
 import net.neoforged.fml.loading.FMLEnvironment;
 import net.neoforged.neoforge.common.NeoForge;
 
+import net.neoforged.neoforge.client.gui.ConfigurationScreen;
+import net.neoforged.neoforge.client.gui.IConfigScreenFactory;
+
 import org.apache.logging.log4j.Level;
 import org.apache.logging.log4j.core.LoggerContext;
 import org.apache.logging.log4j.core.appender.FileAppender;
@@ -78,7 +81,18 @@ public class AdaptiveNemesisMod {
         
         // 注册配置
         modContainer.registerConfig(ModConfig.Type.COMMON, Config.SPEC);
-        
+
+        // 注册游戏内配置界面（仅客户端）
+        // NeoForge 的 ConfigurationScreen 从 ModConfigSpec 自动生成 UI 界面，
+        // 支持：编辑 → 保存到本地 → 触发重载事件 → 配置生效
+        if (FMLEnvironment.dist == Dist.CLIENT) {
+            modContainer.registerExtensionPoint(
+                IConfigScreenFactory.class,
+                (container, screen) -> new ConfigurationScreen(container, screen)
+            );
+            LOGGER.info("📋 已注册游戏内配置界面，可在 Mod 列表中点击「配置」按钮打开");
+        }
+
         // 注册游戏事件处理器
         registerEventHandlers();
         

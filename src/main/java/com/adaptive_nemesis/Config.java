@@ -382,9 +382,17 @@ public class Config {
 
     /**
      * 是否启用神化 (Apotheosis) 兼容模式
-     * 启用后，会在玩家强度评估中考虑神话词条加成
+     * 启用后会在玩家强度评估中考虑神话词条加成
      */
     public static final ModConfigSpec.BooleanValue MOD_COMPAT_APOTHEOSIS_ENABLED;
+
+    // ==================== 实体过滤配置 ====================
+
+    /**
+     * 实体黑名单 - 在黑名单中的实体不会被自适应系统缩放
+     * 支持 * 通配符，例如：minecraft:zombie,minecraft:iron_golem,alexsmobs:*
+     */
+    public static final ModConfigSpec.ConfigValue<String> ENTITY_BLACKLIST;
 
     // ==================== 调试配置 ====================
     
@@ -783,6 +791,18 @@ public class Config {
             .comment("启用后会在玩家强度评估中考虑神话词条加成")
             .comment("Enable Apotheosis compat mode - includes mythic affix bonuses in player strength evaluation")
             .define("modCompatApotheosisEnabled", true);
+
+        BUILDER.pop();
+
+        // ==================== 实体过滤配置 ====================
+        BUILDER.push("entityFilter");
+
+        ENTITY_BLACKLIST = BUILDER
+            .comment("实体黑名单（逗号分隔），在黑名单中的生物不会被自适应系统缩放加成")
+            .comment("支持 * 通配符匹配，例如：minecraft:zombie,minecraft:iron_golem,alexsmobs:*")
+            .comment("Entity blacklist (comma-separated). Entities in this list are excluded from all adaptive scaling.")
+            .comment("Supports * wildcard, e.g.: minecraft:zombie,minecraft:iron_golem,alexsmobs:*")
+            .define("entityBlacklist", "");
 
         BUILDER.pop();
 
