@@ -590,7 +590,7 @@ public class EnemyScalingHandler {
         if (healthAttr != null) {
             double health = healthAttr.getBaseValue();
             if (Double.isNaN(health) || Double.isInfinite(health) || health < 1.0) {
-                healthAttr.setBaseValue(Math.max(20.0, 1.0)); // 默认20点血量
+                healthAttr.setBaseValue(20.0); // 直接设为默认20点血量
                 if (Config.ENABLE_DEBUG_LOG.get()) {
                     AdaptiveNemesisMod.LOGGER.warn(
                         "🔧 修复怪物 {} 的无效 MaxHealth: {}",
