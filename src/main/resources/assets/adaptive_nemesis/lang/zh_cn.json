@@ -117,6 +117,12 @@
   "adaptive_nemesis.config.mod_compat_apotheosis": "神化兼容",
   "adaptive_nemesis.config.tooltip.mod_compat_apotheosis": "启用后会在玩家强度评估中考虑神化模组的神话词条加成",
 
+  "adaptive_nemesis.config.category.entity_filter": "实体过滤",
+  "adaptive_nemesis.config.enable_entity_filter": "启用实体过滤",
+  "adaptive_nemesis.config.tooltip.enable_entity_filter": "关闭后黑白名单不生效，所有实体均受自适应缩放影响",
+  "adaptive_nemesis.config.entity_blacklist": "实体黑名单",
+  "adaptive_nemesis.config.tooltip.entity_blacklist": "逗号分隔的实体ID黑名单，支持 * 通配符，例如：minecraft:zombie,minecraft:iron_golem,alexsmobs:*",
+
   "adaptive_nemesis.config.weight_min_bonus": "重量最小加值",
   "adaptive_nemesis.config.tooltip.weight_min_bonus": "怪物重量至少比原值增加多少，防止被史诗战斗模式击飞",
   "adaptive_nemesis.config.weight_per_multiplier": "每单位难度重量增量",

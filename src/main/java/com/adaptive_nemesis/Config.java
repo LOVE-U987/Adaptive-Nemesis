@@ -389,6 +389,11 @@ public class Config {
     // ==================== 实体过滤配置 ====================
 
     /**
+     * 是否启用实体过滤功能 - 关闭后黑白名单不生效，所有实体均受自适应缩放影响
+     */
+    public static final ModConfigSpec.BooleanValue ENABLE_ENTITY_FILTER;
+
+    /**
      * 实体黑名单 - 在黑名单中的实体不会被自适应系统缩放
      * 支持 * 通配符，例如：minecraft:zombie,minecraft:iron_golem,alexsmobs:*
      */
@@ -796,6 +801,11 @@ public class Config {
 
         // ==================== 实体过滤配置 ====================
         BUILDER.push("entityFilter");
+
+        ENABLE_ENTITY_FILTER = BUILDER
+            .comment("是否启用实体过滤功能 - 关闭后黑白名单不生效，所有实体均受自适应缩放影响")
+            .comment("Enable entity filter - when disabled, all entities are subject to adaptive scaling")
+            .define("enableEntityFilter", true);
 
         ENTITY_BLACKLIST = BUILDER
             .comment("实体黑名单（逗号分隔），在黑名单中的生物不会被自适应系统缩放加成")

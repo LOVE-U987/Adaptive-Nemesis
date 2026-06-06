@@ -56,6 +56,11 @@ public class EntityFilterHelper {
      * @return 如果实体在黑名单中返回 true
      */
     public boolean isBlocked(Entity entity) {
+        // 如果实体过滤功能未启用，直接放行所有实体
+        if (!Config.ENABLE_ENTITY_FILTER.get()) {
+            return false;
+        }
+
         if (entity == null) {
             return false;
         }

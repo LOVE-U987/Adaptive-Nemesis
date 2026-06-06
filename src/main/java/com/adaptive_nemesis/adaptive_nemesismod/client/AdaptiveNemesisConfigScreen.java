@@ -390,6 +390,19 @@ public class AdaptiveNemesisConfigScreen extends Screen {
                 value -> { Config.MOD_COMPAT_APOTHEOSIS_ENABLED.set(value); markChanged(); }),
             widgetX);
 
+        // ===== 实体过滤配置 =====
+        currentY = addCategoryEntry(currentY, "adaptive_nemesis.config.category.entity_filter", 0xFFFF8800);
+        currentY = addConfigEntry(currentY, "adaptive_nemesis.config.enable_entity_filter",
+            "adaptive_nemesis.config.tooltip.enable_entity_filter",
+            createBooleanButton(Config.ENABLE_ENTITY_FILTER.get(),
+                value -> { Config.ENABLE_ENTITY_FILTER.set(value); markChanged(); }),
+            widgetX);
+        currentY = addConfigEntry(currentY, "adaptive_nemesis.config.entity_blacklist",
+            "adaptive_nemesis.config.tooltip.entity_blacklist",
+            createStringEditBox(Config.ENTITY_BLACKLIST.get(),
+                value -> { Config.ENTITY_BLACKLIST.set(value); markChanged(); }),
+            widgetX);
+
         // ===== 调试选项 =====
         currentY = addCategoryEntry(currentY, "adaptive_nemesis.config.category.debug", 0xFFAAAAAA);
         currentY = addConfigEntry(currentY, "adaptive_nemesis.config.enable_debug_log",

@@ -117,6 +117,12 @@
   "adaptive_nemesis.config.mod_compat_apotheosis": "Apotheosis Compat",
   "adaptive_nemesis.config.tooltip.mod_compat_apotheosis": "Includes mythic affix bonuses from Apotheosis in player strength evaluation",
 
+  "adaptive_nemesis.config.category.entity_filter": "Entity Filter",
+  "adaptive_nemesis.config.enable_entity_filter": "Enable Entity Filter",
+  "adaptive_nemesis.config.tooltip.enable_entity_filter": "When disabled, all entities are subject to adaptive scaling regardless of blacklist",
+  "adaptive_nemesis.config.entity_blacklist": "Entity Blacklist",
+  "adaptive_nemesis.config.tooltip.entity_blacklist": "Comma-separated entity IDs, supports * wildcard, e.g.: minecraft:zombie,minecraft:iron_golem,alexsmobs:*",
+
   "adaptive_nemesis.config.weight_min_bonus": "Min Weight Bonus",
   "adaptive_nemesis.config.tooltip.weight_min_bonus": "Minimum weight added to mobs to prevent knockback in Epic Fight mode",
   "adaptive_nemesis.config.weight_per_multiplier": "Weight per Multiplier",
