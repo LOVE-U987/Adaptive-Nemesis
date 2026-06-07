@@ -1,261 +1,193 @@
-## 1. 高层摘要 (TL;DR)
+## 1. 高级摘要 (TL;DR)
 
-*   **影响范围:** 🟡 **中等** - 新增实体过滤系统、配置界面和血量缩放保护机制
-*   **核心变更:**
-    *   ✨ 新增**实体黑名单配置**，支持通配符排除特定生物（如铁傀儡、模组生物）
-    *   🛡️ 实现**防血量爆炸机制**，解决灵魂石抓取后NBT重置导致的属性指数级增长
-    *   🎮 添加**游戏内配置界面**，无需重启即可修改配置
-    *   🧍 添加**人形生物判断逻辑**，防止蜘蛛、苦力怕等非人形生物获得装备
-    *   🚫 修复Boss识别误判，排除动物/傀儡类实体
+*   **影响范围：** 🟡 **中等** - 涉及10个命令类的所有用户界面消息
+*   **核心变更：** 为所有命令输出消息添加英文翻译，实现中英文双语显示
+*   **关键修改：**
+    *   ✨ 所有命令帮助文本、状态消息、错误提示均采用 `中文/English` 格式
+    *   🌍 提升国际化支持，方便不同语言玩家理解
+    *   📝 统一翻译格式，部分使用 `/` 分隔，部分使用 `[]` 括号
 
 ---
 
-## 2. 可视化概览 (代码与逻辑映射)
+## 2. 可视化概览 (代码与逻辑图)
 
 ```mermaid
 graph TD
-    subgraph "配置层 Config.java"
-        A["ENTITY_BLACKLIST<br/>实体黑名单配置"]
-        B["游戏内配置界面<br/>ConfigurationScreen"]
+    subgraph "Command Layer / 命令层"
+        DC["DifficultyCommand<br/>难度命令"]
+        HC["HelpCommand<br/>帮助命令"]
+        MC["MemoryCommand<br/>记忆命令"]
+        PC["ProtectionCommand<br/>保护命令"]
+        RC["ReloadCommand<br/>重载命令"]
+        SC["ScanCommand<br/>扫描命令"]
+        StC["StatusCommand<br/>状态命令"]
+        StrC["StrengthCommand<br/>强度命令"]
+        SNC["SummonNemesisCommand<br/>召唤命令"]
+        TC["TestCommand<br/>测试命令"]
     end
     
-    subgraph "核心工具 EntityFilterHelper.java"
-        C["isBlocked() - 黑名单检查"]
-        D["refreshPatterns() - 正则解析"]
-        E["支持 * 通配符匹配"]
+    subgraph "Message Types / 消息类型"
+        M1["📋 帮助信息<br/>Help Messages"]
+        M2["✅ 成功提示<br/>Success Messages"]
+        M3["❌ 错误提示<br/>Error Messages"]
+        M4["📊 状态显示<br/>Status Display"]
+        M5["⚙️ 配置信息<br/>Config Info"]
     end
     
-    subgraph "缩放处理层"
-        F["EnemyScalingHandler<br/>applyHealthBonus()"]
-        G["EnchantmentScalingHandler<br/>scaleEquipment()"]
-        H["HealthThresholdBossIdentifier<br/>isBoss()"]
+    subgraph "Translation Format / 翻译格式"
+        F1["中文/English<br/>斜杠分隔"]
+        F2["中文 [English]<br/>方括号"]
     end
     
-    subgraph "保护机制"
-        I["getDefaultAttributeBase()<br/>获取默认属性"]
-        J["isHumanoidMob()<br/>人形生物判断"]
-    end
+    DC --> M1
+    DC --> M4
+    DC --> M5
+    DC --> F1
     
-    A --> D
-    B --> A
-    D --> C
-    E --> C
+    HC --> M1
+    HC --> F1
     
-    C --> F
-    C --> G
-    C --> H
+    MC --> M2
+    MC --> M3
+    MC --> M4
+    MC --> F1
     
-    F --> I
-    G --> J
-    H -->|排除 Animal 类| J
+    PC --> M2
+    PC --> M3
+    PC --> M4
+    PC --> F1
     
-    style A fill:#bbdefb,color:#0d47a1
-    style C fill:#c8e6c9,color:#1a5e20
-    style I fill:#fff3e0,color:#e65100
-    style J fill:#f3e5f5,color:#7b1fa2
+    RC --> M2
+    RC --> F1
+    
+    SC --> M4
+    SC --> F1
+    
+    StC --> M2
+    StC --> M3
+    StC --> M4
+    StC --> F1
+    
+    StrC --> M2
+    StrC --> M3
+    StrC --> M4
+    StrC --> F1
+    
+    SNC --> M2
+    SNC --> F1
+    
+    TC --> M1
+    TC --> M2
+    TC --> M3
+    TC --> M4
+    TC --> F1
+    
+    style DC fill:#bbdefb,color:#0d47a1
+    style HC fill:#c8e6c9,color:#1a5e20
+    style MC fill:#fff3e0,color:#e65100
+    style PC fill:#f3e5f5,color:#7b1fa2
+    style RC fill:#ffebee,color:#c62828
+    style SC fill:#e0f7fa,color:#006064
+    style StC fill:#fce4ec,color:#880e4f
+    style StrC fill:#f1f8e9,color:#33691e
+    style SNC fill:#fff8e1,color:#ff6f00
+    style TC fill:#e8eaf6,color:#283593
 ```
 
 ---
 
 ## 3. 详细变更分析
 
-### 📋 配置系统增强
+### 📦 组件一：核心命令类 (10个文件)
 
-#### Config.java
-**变更内容:**
-- 新增 `ENTITY_BLACKLIST` 配置项，支持逗号分隔的实体ID列表
-- 支持通配符 `*` 匹配（如 `minecraft:zombie,alexsmobs:*`）
-- 优化 Apotheosis 兼容模式注释格式
+所有命令类都进行了相同的国际化改造，具体变更如下：
 
-**配置结构:**
-| 配置键 | 类型 | 默认值 | 说明 |
-|--------|------|--------|------|
-| `entityFilter.entityBlacklist` | String | `""` | 实体黑名单，支持 `*` 通配符 |
+#### 🎯 变更内容
+为所有用户界面消息添加英文翻译，采用两种格式：
+- **格式A：** `中文/English` (使用斜杠分隔)
+- **格式B：** `中文 [English]` (使用方括号)
 
-#### AdaptiveNemesisMod.java
-**变更内容:**
-- 注册 NeoForge 配置界面扩展点 `IConfigScreenFactory`
-- 仅在客户端环境注册配置界面
-- 支持游戏内直接编辑配置并热重载
+#### 📋 消息类型覆盖表
+
+| 消息类型 | 原格式 | 新格式 | 示例 |
+|---------|--------|--------|------|
+| **标题** | `§6===== 难度设置 =====` | `§6===== Difficulty Settings =====` | 完全替换 |
+| **状态显示** | `§e状态: §a已启用` | `§e状态/Status: §a已启用(Enabled)` | 双语+括号 |
+| **配置项** | `§e难度系数基准: §f%.2f` | `§e难度系数基准/Difficulty Base: §f%.2f` | 斜杠分隔 |
+| **错误提示** | `❌ 此命令只能由玩家执行` | `❌ 此命令只能由玩家执行 §7[This command can only be executed by players]` | 方括号 |
+| **成功消息** | `§a难度系数已设置为: §f%.2f` | `§a难度系数已设置为/Difficulty set to: §f%.2f` | 斜杠分隔 |
+| **警告提示** | `§e⚠️ 注意: 配置更改将在下次重启后生效` | `§e⚠️ 注意/Note: 配置更改将在下次重启后生效 §7[Configuration changes will take effect after restart]` | 混合格式 |
+
+#### 🔍 各命令类具体变更
+
+| 命令类 | 主要变更消息数 | 特殊处理 |
+|--------|---------------|----------|
+| **DifficultyCommand** | 12处 | 难度设置、真实伤害设置双语化 |
+| **HelpCommand** | 10处 | 所有帮助命令描述双语化 |
+| **MemoryCommand** | 10处 | 战斗记录、KDA统计双语化 |
+| **ProtectionCommand** | 9处 | 新手保护状态双语化 |
+| **ReloadCommand** | 2处 | 重载提示双语化 |
+| **ScanCommand** | 12处 | 扫描结果、属性显示双语化，新增英文映射switch |
+| **StatusCommand** | 10处 | 玩家状态、配置显示双语化 |
+| **StrengthCommand** | 9处 | 强度详情双语化 |
+| **SummonNemesisCommand** | 7处 | 召唤消息、宿敌名称双语化 |
+| **TestCommand** | 50+处 | 所有测试输出消息双语化 |
+
+#### 💡 特殊实现细节
+
+**ScanCommand.java** 新增了英文翻译映射逻辑：
 
 ```java
-// 新增配置界面注册逻辑
-if (FMLEnvironment.dist == Dist.CLIENT) {
-    modContainer.registerExtensionPoint(
-        IConfigScreenFactory.class,
-        (container, screen) -> new ConfigurationScreen(container, screen)
-    );
-}
-```
-
----
-
-### 🚫 实体过滤系统 (新增)
-
-#### EntityFilterHelper.java (新文件)
-**核心功能:**
-- **单例模式**：全局唯一的实体过滤器实例
-- **黑名单匹配**：支持通配符的正则表达式匹配
-- **配置热重载**：通过哈希检测配置变化，自动重新解析
-- **性能优化**：预编译正则模式，避免重复解析
-
-**关键方法:**
-| 方法 | 功能 |
-|------|------|
-| `isBlocked(Entity)` | 检查实体是否在黑名单中 |
-| `getEntityId(Entity)` | 获取实体完整注册ID |
-| `refreshPatterns()` | 刷新黑名单正则模式列表 |
-
-**通配符转换逻辑:**
-```java
-// 将 minecraft:* 转换为正则 \Qminecraft\E.*\Q\E
-String regex = "\\Q" + trimmed.replace("*", "\\E.*\\Q") + "\\E";
-```
-
----
-
-### 🛡️ 防血量爆炸机制
-
-#### EnemyScalingHandler.java
-**问题背景:**
-当使用灵魂石、魂符等工具抓取生物时，NBT标记会被重置，导致已缩放的高血量被当作"原始值"再次缩放，引发指数级血量爆炸。
-
-**解决方案:**
-1. 新增 `getDefaultAttributeBase()` 方法，通过 `DefaultAttributes` 查询实体类型注册时的默认属性值
-2. 修改 `applyHealthBonus()` 逻辑，采用双重回退机制：
-
-```mermaid
-flowchart TD
-    A["开始血量缩放"] --> B{NBT标记存在?}
-    B -->|是| C["从NBT读取原始血量"]
-    B -->|否| D["查询DefaultAttributes"]
-    D --> E{查询成功?}
-    E -->|是| F["使用默认血量"]
-    E -->|否| G["使用当前基础血量"]
-    C --> H["应用缩放倍率"]
-    F --> H
-    G --> H
-    H --> I["保存NBT标记"]
-    I --> J["完成"]
-    
-    style D fill:#fff3e0,color:#e65100
-    style F fill:#c8e6c9,color:#1a5e20
-    style G fill:#ffcdd2,color:#b71c1c
-```
-
-**新增方法:**
-```java
-private double getDefaultAttributeBase(Mob mob, Holder<Attribute> attribute, double fallbackValue)
-```
-
----
-
-### 🧍 人形生物装备限制
-
-#### EnchantmentScalingHandler.java
-**变更内容:**
-- 新增 `isHumanoidMob()` 方法，判断生物是否为人形（有手能拿武器）
-- 只有僵尸类、骷髅类、通用型（如卫道士）才会被给予装备
-- 蜘蛛、苦力怕、史莱姆等非人形生物不再获得武器/盔甲
-
-**人形生物判断规则:**
-| 生物类型 | 是否人形 | 示例 |
-|----------|----------|------|
-| `zombie` | ✅ | 僵尸、尸壳、溺尸 |
-| `skeleton` | ✅ | 骷髅、凋零骷髅、流浪者 |
-| `generic` | ✅ | 卫道士、唤魔者、掠夺者 |
-| `spider` | ❌ | 蜘蛛、洞穴蜘蛛 |
-| `creeper` | ❌ | 苦力怕 |
-
-**代码逻辑:**
-```java
-private boolean isHumanoidMob(Mob mob) {
-    String mobType = getMobType(mob);
-    if ("zombie".equals(mobType) || "skeleton".equals(mobType)) {
-        return true;
-    }
-    if ("generic".equals(mobType)) {
-        return true;
-    }
-    return false;
-}
-```
-
----
-
-### 🚫 Boss识别优化
-
-#### HealthThresholdBossIdentifier.java
-**变更内容:**
-- 添加 `Animal` 类导入
-- 在 `isBoss()` 方法中排除所有 `Animal` 子类
-- 防止高血量铁傀儡、高血量动物被误识别为Boss
-
-**修改前:**
-```java
-return entity.getMaxHealth() >= healthThreshold;
-```
-
-**修改后:**
-```java
-if (entity instanceof Animal) {
-    return false;
-}
-return entity.getMaxHealth() >= healthThreshold;
-```
-
----
-
-### 🔗 事件处理器集成
-
-#### ModEventHandler.java
-**变更内容:**
-- 在 `EntityJoinLevelEvent` 处理中添加黑名单检查
-- 被黑名单的实体跳过Boss限伤和Boss加成
-
-**集成点:**
-```java
-if (EntityFilterHelper.getInstance().isBlocked(mob)) {
-    return;  // 跳过所有Boss相关处理
-}
+// 添加英文翻译映射
+String nameEn = switch (name) {
+    case "血量/HP" -> "HP";
+    case "攻击/Damage" -> "Damage";
+    case "护甲/Armor" -> "Armor";
+    case "攻速/Atk Speed" -> "Atk Speed";
+    case "韧性/Toughness" -> "Toughness";
+    default -> name;
+};
 ```
 
 ---
 
 ## 4. 影响与风险评估
 
-### ✅ 功能改进
-| 改进项 | 影响 |
-|--------|------|
-| 实体黑名单 | 允许玩家排除特定生物（如铁傀儡、宠物）不受缩放影响 |
-| 配置界面 | 无需重启即可修改配置，提升用户体验 |
-| 防血量爆炸 | 解决灵魂石抓取导致的属性爆炸问题 |
-| 人形生物限制 | 避免非人形生物获得装备，提升游戏逻辑合理性 |
-| Boss识别优化 | 防止高血量动物被误识别为Boss |
+### ⚠️ 破坏性变更
+*   **无破坏性变更** - 仅修改用户界面文本，不影响功能逻辑
 
-### ⚠️ 潜在风险
-| 风险项 | 描述 | 建议 |
-|--------|------|------|
-| **配置兼容性** | 新增 `entityFilter` 配置节，旧配置文件需要重新生成 | 建议提供配置迁移指南 |
-| **性能影响** | 黑名单检查涉及正则匹配，大量实体生成时可能有轻微开销 | 已通过缓存优化，实际影响极小 |
-| **模组兼容性** | `DefaultAttributes` 查询可能对某些自定义实体模组不兼容 | 已添加异常捕获和回退机制 |
+### ✅ 测试建议
 
-### 🧪 测试建议
-1. **黑名单功能测试:**
-   - 配置 `minecraft:iron_golem` 验证铁傀儡不被缩放
-   - 配置 `alexsmobs:*` 验证通配符匹配
+| 测试场景 | 验证内容 |
+|---------|---------|
+| **命令输出显示** | 执行所有 `/an` 命令，确认消息格式正确显示中英文 |
+| **错误提示** | 触发各种错误情况（如无效玩家），确认错误消息双语显示 |
+| **帮助信息** | 执行 `/an help`，确认所有命令描述双语显示 |
+| **测试命令** | 执行 `/an test all`，确认所有测试输出双语显示 |
+| **特殊字符** | 验证Minecraft颜色代码（§）与双语文本配合正常 |
+| **多行消息** | 验证多行状态消息格式对齐正确 |
 
-2. **防血量爆炸测试:**
-   - 使用灵魂石抓取已缩放的生物
-   - 验证血量不会指数级增长
+### 🔍 风险点
+1. **格式一致性：** 部分消息使用 `/` 分隔，部分使用 `[]` 括号，建议统一格式
+2. **消息长度：** 双语文本可能导致消息过长，在聊天窗口可能换行
+3. **颜色代码：** 确保颜色代码与双语文本配合正确显示
 
-3. **人形生物限制测试:**
-   - 生成蜘蛛、苦力怕，验证不获得装备
-   - 生成僵尸、骷髅，验证正常获得装备
+### 📊 改进建议
+- 考虑将翻译提取到外部配置文件或资源包中，便于后续维护
+- 统一翻译格式（建议统一使用 `中文/English` 格式）
+- 考虑添加语言切换功能，允许玩家选择单一语言显示
 
-4. **配置界面测试:**
-   - 在游戏内修改配置
-   - 验证修改后立即生效
+---
+
+## 📝 变更统计
+
+| 指标 | 数值 |
+|-----|------|
+| **修改文件数** | 10个 |
+| **修改代码行数** | ~200+ 行 |
+| **新增消息** | 0条（仅翻译现有消息） |
+| **删除消息** | 0条 |
+| **翻译覆盖率** | 100%（所有UI消息） |
 
 ---
 
@@ -263,4 +195,4 @@ if (EntityFilterHelper.getInstance().isBlocked(mob)) {
 
 | 文件 | 版本变更 |
 |------|----------|
-| `gradle.properties` | `1.0.4` → `1.0.5` |
+| `gradle.properties` | `1.0.5` → `1.0.6` |
