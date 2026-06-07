@@ -114,7 +114,7 @@ public class ScanCommand {
             "§6========== 周围敌人扫描结果 =========="
         ), false);
         source.sendSuccess(() -> Component.literal(
-            "§7扫描范围: §f" + range + " §7格 | 发现敌人: §f" + enemies.size() + " §7个"
+            "§7扫描范围/Range: §f" + range + " §7格 | 发现敌人/Enemies: §f" + enemies.size() + " §7个"
         ), false);
         source.sendSuccess(() -> Component.literal(""), false);
 
@@ -134,12 +134,12 @@ public class ScanCommand {
         final int finalScaledCount = scaledCount[0];
         source.sendSuccess(() -> Component.literal(""), false);
         source.sendSuccess(() -> Component.literal(
-            "§6========== 统计 =========="
+            "§6========== Summary =========="
         ), false);
         source.sendSuccess(() -> Component.literal(
-            "§7总敌人: §f" + totalEnemies +
+            "§7总敌人/Total: §f" + totalEnemies +
             " §7| 已强化: §c" + finalScaledCount +
-            " §7| 未强化: §a" + (totalEnemies - finalScaledCount)
+            " §7| 未强化/Unscaled: §a" + (totalEnemies - finalScaledCount)
         ), false);
 
         return enemies.size();
@@ -160,7 +160,7 @@ public class ScanCommand {
         // 基础信息行
         source.sendSuccess(() -> Component.literal(
             "§e" + name + " " + status +
-            (isScaled ? " §7倍率: §f" + DF.format(multiplier) + "x" : "")
+            (isScaled ? " §7倍率/Multiplier: §f" + DF.format(multiplier) + "x" : "")
         ), false);
 
         if (!isScaled) {
@@ -198,14 +198,14 @@ public class ScanCommand {
         double originalToughness = toughnessAttr != null && toughnessAttr.getBaseValue() > 0 ? currentToughness / multiplier : 0;
 
         // 发送详细属性对比
-        sendAttributeLine(source, "血量", originalHealth, currentHealth, true);
-        sendAttributeLine(source, "攻击", originalDamage, currentDamage, true);
-        sendAttributeLine(source, "护甲", originalArmor, currentArmor, true);
+        sendAttributeLine(source, "血量/HP", originalHealth, currentHealth, true);
+        sendAttributeLine(source, "攻击/Damage", originalDamage, currentDamage, true);
+        sendAttributeLine(source, "护甲/Armor", originalArmor, currentArmor, true);
 
         // 移速特殊处理
         source.sendSuccess(() -> Component.literal(
-            "  §7移速: §f" + DF.format(currentSpeed) +
-            (Config.FIX_SPEED_BONUS_TO_ZERO.get() ? " §7(§e已固定§7)" : "")
+            "  §7移速/Speed: §f" + DF.format(currentSpeed) +
+            (Config.FIX_SPEED_BONUS_TO_ZERO.get() ? " §7(§e已固定/Fixed§7)" : "")
         ), false);
 
         // 攻速和韧性可能为0，特殊显示
@@ -214,7 +214,7 @@ public class ScanCommand {
 
         // 显示当前生命值
         source.sendSuccess(() -> Component.literal(
-            "  §7当前生命: §f" + DF.format(mob.getHealth()) + " §7/ §f" + DF.format(currentHealth)
+            "  §7当前生命/Current HP: §f" + DF.format(mob.getHealth()) + " §7/ §f" + DF.format(currentHealth)
         ), false);
 
         source.sendSuccess(() -> Component.literal(""), false);
@@ -230,15 +230,22 @@ public class ScanCommand {
      * @param showPercent 是否显示百分比
      */
     private static void sendAttributeLine(CommandSourceStack source, String name, double original, double current, boolean showPercent) {
+        // 添加英文翻译映射
+        String nameEn = switch (name) {
+            case "血量/HP" -> "HP";
+            case "攻击/Damage" -> "Damage";
+            case "护甲/Armor" -> "Armor";
+            case "攻速/Atk Speed" -> "Atk Speed";
+            case "韧性/Toughness" -> "Toughness";
+            default -> name;
+        };
         if (original <= 0 && current <= 0) {
-            // 如果都是0，显示为未强化
             source.sendSuccess(() -> Component.literal(
-                "  §7" + name + ": §7无"
+                "  §7" + name + ": §7无 §7[N/A]"
             ), false);
         } else if (original <= 0) {
-            // 原始值为0，只显示当前值
             source.sendSuccess(() -> Component.literal(
-                "  §7" + name + ": §c" + DF.format(current) + " §7(§e新增§7)"
+                "  §7" + name + ": §c" + DF.format(current) + " §7(§e新增/New§7)"
             ), false);
         } else {
             final String percentStr;

@@ -38,55 +38,55 @@ public class HelpCommand {
         CommandSourceStack source = context.getSource();
 
         source.sendSuccess(() -> Component.literal(
-            "§6===== Adaptive Nemesis 帮助 ====="
+            "§6===== Adaptive Nemesis Help ====="
         ), false);
 
         source.sendSuccess(() -> Component.literal(
-            "§e基础命令:"
+            "§e基础命令/Basic Commands:"
         ), false);
 
         source.sendSuccess(() -> Component.literal(
-            "§f/an status [玩家] §7- 查看模组状态和玩家信息"
+            "§f/an status [player] §7- 查看模组状态和玩家信息 §7[View mod status and player info]"
         ), false);
 
         source.sendSuccess(() -> Component.literal(
-            "§f/an strength [玩家] §7- 查看玩家详细强度评估"
+            "§f/an strength [player] §7- 查看玩家详细强度评估 §7[View detailed player strength assessment]"
         ), false);
 
         source.sendSuccess(() -> Component.literal(
-            "§f/an difficulty [get|set <数值>] §7- 查看/调整难度"
+            "§f/an difficulty [get|set <value>] §7- 查看/调整难度 §7[View/Adjust difficulty]"
         ), false);
 
         source.sendSuccess(() -> Component.literal(
-            "§f/an difficulty true_damage [get|set <true|false>] §7- 真实伤害设置"
+            "§f/an difficulty true_damage [get|set <true|false>] §7- 真实伤害设置 §7[True damage settings]"
         ), false);
 
         source.sendSuccess(() -> Component.literal(
-            "§f/an protection [玩家] [get|enable|disable] §7- 新手保护管理"
+            "§f/an protection [player] [get|enable|disable] §7- 新手保护管理 §7[Newbie protection management]"
         ), false);
 
         source.sendSuccess(() -> Component.literal(
-            "§f/an memory [玩家] §7- 查看宿敌记忆档案"
+            "§f/an memory [player] §7- 查看宿敌记忆档案 §7[View nemesis memory profile]"
         ), false);
 
         source.sendSuccess(() -> Component.literal(
-            "§f/an test [模块] §7- 测试模组各模块运行状态"
+            "§f/an test [module] §7- 测试模组各模块运行状态 §7[Test mod module status]"
         ), false);
 
         source.sendSuccess(() -> Component.literal(
-            "§7   可用模块: all, player, enemy, damage, boss, float, memory, protection, compat, config"
+            "§7   可用模块/Available modules: all, player, enemy, damage, boss, float, memory, protection, compat, config"
         ), false);
 
         source.sendSuccess(() -> Component.literal(
-            "§f/an nemesis [类型] §7- 召唤宿敌 (zombie/skeleton/creeper/spider/witch/random)"
+            "§f/an nemesis [type] §7- 召唤宿敌 §7[Summon nemesis] (zombie/skeleton/creeper/spider/witch/random)"
         ), false);
 
         source.sendSuccess(() -> Component.literal(
-            "§f/an reload §7- 重新加载模组数据"
+            "§f/an reload §7- 重新加载模组数据 §7[Reload mod data]"
         ), false);
 
         source.sendSuccess(() -> Component.literal(
-            "§f/an help §7- 显示此帮助信息"
+            "§f/an help §7- 显示此帮助信息 §7[Show this help]"
         ), false);
 
         source.sendSuccess(() -> Component.literal(
@@ -94,7 +94,7 @@ public class HelpCommand {
         ), false);
 
         source.sendSuccess(() -> Component.literal(
-            "§e提示: 所有命令需要OP权限（等级2）"
+            "§e提示/Tip: 所有命令需要OP权限(等级2) §7[All commands require OP permission (level 2)]"
         ), false);
 
         return 1;

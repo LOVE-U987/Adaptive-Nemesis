@@ -40,7 +40,7 @@ public class ReloadCommand {
         CommandSourceStack source = context.getSource();
 
         source.sendSuccess(() -> Component.literal(
-            "§6🔄 正在重新加载 Adaptive Nemesis..."
+            "§6🔄 正在重新加载/Reloading Adaptive Nemesis..."
         ), true);
 
         // 清除玩家强度缓存
@@ -58,7 +58,7 @@ public class ReloadCommand {
         ), false);
 
         source.sendSuccess(() -> Component.literal(
-            "§e- 配置将在下次读取时更新"
+            "§e- 配置将在下次读取时更新/Config will update on next read"
         ), false);
 
         return 1;

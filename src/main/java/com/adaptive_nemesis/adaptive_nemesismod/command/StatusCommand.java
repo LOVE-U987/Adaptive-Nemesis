@@ -46,7 +46,7 @@ public class StatusCommand {
         CommandSourceStack source = context.getSource();
 
         if (!(source.getEntity() instanceof ServerPlayer player)) {
-            source.sendFailure(Component.literal("❌ 此命令只能由玩家执行"));
+            source.sendFailure(Component.literal("❌ 此命令只能由玩家执行 §7[This command can only be executed by players]"));
             return 0;
         }
 
@@ -66,7 +66,7 @@ public class StatusCommand {
             ServerPlayer target = net.minecraft.commands.arguments.EntityArgument.getPlayer(context, "player");
             return showPlayerStatus(source, target);
         } catch (Exception e) {
-            source.sendFailure(Component.literal("❌ 无法找到指定玩家"));
+            source.sendFailure(Component.literal("❌ 无法找到指定玩家 §7[Unable to find the specified player]"));
             return 0;
         }
     }
@@ -84,51 +84,51 @@ public class StatusCommand {
 
         // 发送状态信息
         source.sendSuccess(() -> Component.literal(
-            "§6===== Adaptive Nemesis 状态 ====="
+            "§6===== Adaptive Nemesis Status ====="
         ), false);
 
         source.sendSuccess(() -> Component.literal(
-            "§e玩家: §f" + player.getName().getString()
+            "§e玩家/Player: §f" + player.getName().getString()
         ), false);
 
         if (strengthData != null) {
             source.sendSuccess(() -> Component.literal(
-                String.format("§e综合强度: §f%.2f", strengthData.getTotalStrength())
+                String.format("§e综合强度/Total Strength: §f%.2f", strengthData.getTotalStrength())
             ), false);
             source.sendSuccess(() -> Component.literal(
-                String.format("§e  └ 防御: §f%.2f §e| 输出: §f%.2f", 
+                String.format("§e  └ 防御/Defense: §f%.2f §e| 输出/Damage: §f%.2f", 
                     strengthData.getDefenseStrength(), strengthData.getDamageStrength())
             ), false);
             source.sendSuccess(() -> Component.literal(
-                String.format("§e  └ 神话: §f%.2f §e| 铁魔法: §f%.2f §e| 史诗: §f%.2f",
+                String.format("§e  └ 神话/Apotheosis: §f%.2f §e| 铁魔法/Iron's Spells: §f%.2f §e| 史诗/Epic Fight: §f%.2f",
                     strengthData.getApotheosisStrength(), 
                     strengthData.getIronsSpellsStrength(),
                     strengthData.getEpicFightStrength())
             ), false);
         } else {
             source.sendSuccess(() -> Component.literal(
-                "§e综合强度: §7尚未计算"
+                "§e综合强度/Total Strength: §7尚未计算/Not calculated yet"
             ), false);
         }
 
         source.sendSuccess(() -> Component.literal(
-            String.format("§e浮动倍率: §f%.2f", floatMultiplier)
+            String.format("§e浮动倍率/Float Multiplier: §f%.2f", floatMultiplier)
         ), false);
 
         source.sendSuccess(() -> Component.literal(
-            String.format("§e难度基准: §f%.2f", Config.DIFFICULTY_BASE_MULTIPLIER.get())
+            String.format("§e难度基准/Difficulty Base: §f%.2f", Config.DIFFICULTY_BASE_MULTIPLIER.get())
         ), false);
 
         source.sendSuccess(() -> Component.literal(
-            "§e真实伤害: " + (Config.ENABLE_TRUE_DAMAGE.get() ? "§a已启用" : "§c已禁用")
+            "§e真实伤害/True Damage: " + (Config.ENABLE_TRUE_DAMAGE.get() ? "§a已启用(Enabled)" : "§c已禁用(Disabled)")
         ), false);
 
         source.sendSuccess(() -> Component.literal(
-            "§eBoss上限: " + (Config.ENABLE_BOSS_DAMAGE_CAP.get() ? "§a已启用" : "§c已禁用")
+            "§eBoss上限/Boss Cap: " + (Config.ENABLE_BOSS_DAMAGE_CAP.get() ? "§a已启用(Enabled)" : "§c已禁用(Disabled)")
         ), false);
 
         source.sendSuccess(() -> Component.literal(
-            "§e新手保护: " + (Config.ENABLE_NEWBIE_PROTECTION.get() ? "§a已启用" : "§c已禁用")
+            "§e新手保护/Newbie Protection: " + (Config.ENABLE_NEWBIE_PROTECTION.get() ? "§a已启用(Enabled)" : "§c已禁用(Disabled)")
         ), false);
 
         source.sendSuccess(() -> Component.literal(

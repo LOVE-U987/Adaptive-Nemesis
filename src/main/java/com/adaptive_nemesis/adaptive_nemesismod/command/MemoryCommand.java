@@ -43,7 +43,7 @@ public class MemoryCommand {
         CommandSourceStack source = context.getSource();
 
         if (!(source.getEntity() instanceof ServerPlayer player)) {
-            source.sendFailure(Component.literal("❌ 此命令只能由玩家执行"));
+            source.sendFailure(Component.literal("❌ 此命令只能由玩家执行 §7[This command can only be executed by players]"));
             return 0;
         }
 
@@ -63,7 +63,8 @@ public class MemoryCommand {
             ServerPlayer target = net.minecraft.commands.arguments.EntityArgument.getPlayer(context, "player");
             return showMemory(source, target);
         } catch (Exception e) {
-            source.sendFailure(Component.literal("❌ 无法找到指定玩家"));
+            source.sendFailure(Component.literal("❌ 无法找到指定玩家 §7[Player not found]"));
+
             return 0;
         }
     }
@@ -79,16 +80,16 @@ public class MemoryCommand {
         NemesisProfile profile = NemesisMemorySystem.getInstance().getProfile(player.getUUID());
 
         source.sendSuccess(() -> Component.literal(
-            "§5===== 宿敌记忆档案 ====="
+            "§5===== Nemesis Memory Profile ====="
         ), false);
 
         source.sendSuccess(() -> Component.literal(
-            "§e玩家: §f" + player.getName().getString()
+            "§e玩家/Player: §f" + player.getName().getString()
         ), false);
 
         if (profile == null) {
             source.sendSuccess(() -> Component.literal(
-                "§7暂无战斗记录"
+                "§7暂无战斗记录 §7[No battle records yet]"
             ), false);
             source.sendSuccess(() -> Component.literal(
                 "§5========================"
@@ -97,35 +98,35 @@ public class MemoryCommand {
         }
 
         source.sendSuccess(() -> Component.literal(
-            String.format("§e总击杀: §f%d §e| 总死亡: §f%d §e| KDA: §f%.2f",
+            String.format("§e总击杀/Kills: §f%d §e| 总死亡/Deaths: §f%d §e| KDA: §f%.2f",
                 profile.getTotalKills(), profile.getTotalDeaths(), profile.getKdaRatio())
         ), false);
 
         source.sendSuccess(() -> Component.literal(
-            String.format("§e主要战斗风格: §f%s", profile.getDominantStyle().getDisplayName())
+            String.format("§e主要战斗风格/Dominant Style: §f%s", profile.getDominantStyle().getDisplayName())
         ), false);
 
         source.sendSuccess(() -> Component.literal(
-            String.format("§e近战击杀: §f%d §e| 远程击杀: §f%d §e| 法术击杀: §f%d",
+            String.format("§e近战/Melee: §f%d §e| 远程/Ranged: §f%d §e| 法术/Magic: §f%d",
                 profile.getKillStyleCount(NemesisMemorySystem.CombatStyle.MELEE),
                 profile.getKillStyleCount(NemesisMemorySystem.CombatStyle.RANGED),
                 profile.getKillStyleCount(NemesisMemorySystem.CombatStyle.MAGIC))
         ), false);
 
         source.sendSuccess(() -> Component.literal(
-            String.format("§e常用武器: §f%s", profile.getMostUsedWeapon())
+            String.format("§e常用武器/Most Used Weapon: §f%s", profile.getMostUsedWeapon())
         ), false);
 
         source.sendSuccess(() -> Component.literal(
-            String.format("§e击杀最多: §f%s", profile.getMostKilledEntity())
+            String.format("§e击杀最多/Most Killed: §f%s", profile.getMostKilledEntity())
         ), false);
 
         source.sendSuccess(() -> Component.literal(
-            String.format("§e常见死因: §f%s", profile.getMostCommonDeathSource())
+            String.format("§e常见死因/Common Death Cause: §f%s", profile.getMostCommonDeathSource())
         ), false);
 
         source.sendSuccess(() -> Component.literal(
-            String.format("§e常见杀手: §f%s", profile.getMostCommonKiller())
+            String.format("§e常见杀手/Common Killer: §f%s", profile.getMostCommonKiller())
         ), false);
 
         source.sendSuccess(() -> Component.literal(

@@ -324,7 +324,7 @@ public class SummonNemesisCommand {
             Component.literal("§c⚔️ 宿敌降临！")
         ));
         player.connection.send(new net.minecraft.network.protocol.game.ClientboundSetSubtitleTextPacket(
-            Component.literal("§e" + nemesisName + " 已响应你的召唤")
+            Component.literal("§e" + nemesisName + " 已响应你的召唤/has answered your call")
         ));
 
         // 发送聊天消息
@@ -335,7 +335,7 @@ public class SummonNemesisCommand {
             "§c⚔️ 宿敌 " + nemesisName + " 已降临！"
         ));
         player.sendSystemMessage(Component.literal(
-            "§e这个敌人针对你的战斗风格进行了强化！"
+            "§e这个敌人针对你的战斗风格进行了强化 §7[This enemy is strengthened against your combat style!]"
         ));
         player.sendSystemMessage(Component.literal(
             "§7小心应对，它会记住你的每一次攻击..."
@@ -377,11 +377,11 @@ public class SummonNemesisCommand {
      * @return 宿敌名称
      */
     private static String getNemesisName(EntityType<? extends Mob> entityType) {
-        if (entityType == EntityType.ZOMBIE) return "僵尸宿敌";
-        if (entityType == EntityType.SKELETON) return "骷髅宿敌";
-        if (entityType == EntityType.CREEPER) return "苦力怕宿敌";
-        if (entityType == EntityType.SPIDER) return "蜘蛛宿敌";
-        if (entityType == EntityType.WITCH) return "女巫宿敌";
-        return "未知宿敌";
+        if (entityType == EntityType.ZOMBIE) return "僵尸宿敌/Zombie Nemesis";
+        if (entityType == EntityType.SKELETON) return "骷髅宿敌/Skeleton Nemesis";
+        if (entityType == EntityType.CREEPER) return "苦力怕宿敌/Creeper Nemesis";
+        if (entityType == EntityType.SPIDER) return "蜘蛛宿敌/Spider Nemesis";
+        if (entityType == EntityType.WITCH) return "女巫宿敌/Witch Nemesis";
+        return "未知宿敌/Unknown Nemesis";
     }
 }

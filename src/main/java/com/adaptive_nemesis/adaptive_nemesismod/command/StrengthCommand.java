@@ -43,7 +43,7 @@ public class StrengthCommand {
         CommandSourceStack source = context.getSource();
 
         if (!(source.getEntity() instanceof ServerPlayer player)) {
-            source.sendFailure(Component.literal("❌ 此命令只能由玩家执行"));
+            source.sendFailure(Component.literal("❌ 此命令只能由玩家执行 §7[This command can only be executed by players]"));
             return 0;
         }
 
@@ -63,7 +63,7 @@ public class StrengthCommand {
             ServerPlayer target = net.minecraft.commands.arguments.EntityArgument.getPlayer(context, "player");
             return showStrengthDetails(source, target);
         } catch (Exception e) {
-            source.sendFailure(Component.literal("❌ 无法找到指定玩家"));
+            source.sendFailure(Component.literal("❌ 无法找到指定玩家 §7[Player not found]"));
             return 0;
         }
     }
@@ -80,39 +80,39 @@ public class StrengthCommand {
         var strengthData = PlayerStrengthEvaluator.getInstance().updatePlayerStrength(player);
 
         source.sendSuccess(() -> Component.literal(
-            "§6===== 玩家强度详情 ====="
+            "§6===== Player Strength Details ====="
         ), false);
 
         source.sendSuccess(() -> Component.literal(
-            "§e玩家: §f" + player.getName().getString()
+            "§e玩家/Player: §f" + player.getName().getString()
         ), false);
 
         source.sendSuccess(() -> Component.literal(
-            String.format("§6综合强度: §f%.2f", strengthData.getTotalStrength())
+            String.format("§6综合强度/Total Strength: §f%.2f", strengthData.getTotalStrength())
         ), false);
 
         source.sendSuccess(() -> Component.literal(
-            "§e===== 各维度强度 ====="
+            "§e===== Dimension Breakdown ====="
         ), false);
 
         source.sendSuccess(() -> Component.literal(
-            String.format("§e🛡️ 防御能力: §f%.2f", strengthData.getDefenseStrength())
+            String.format("§e🛡️ 防御能力/Defense: §f%.2f", strengthData.getDefenseStrength())
         ), false);
 
         source.sendSuccess(() -> Component.literal(
-            String.format("§e⚔️ 输出能力: §f%.2f", strengthData.getDamageStrength())
+            String.format("§e⚔️ 输出能力/Damage: §f%.2f", strengthData.getDamageStrength())
         ), false);
 
         source.sendSuccess(() -> Component.literal(
-            String.format("§e✨ 神话词条: §f%.2f", strengthData.getApotheosisStrength())
+            String.format("§e✨ 神话词条/Apotheosis: §f%.2f", strengthData.getApotheosisStrength())
         ), false);
 
         source.sendSuccess(() -> Component.literal(
-            String.format("§e🔮 铁魔法: §f%.2f", strengthData.getIronsSpellsStrength())
+            String.format("§e🔮 铁魔法/Iron's Spells: §f%.2f", strengthData.getIronsSpellsStrength())
         ), false);
 
         source.sendSuccess(() -> Component.literal(
-            String.format("§e🗡️ 史诗战斗: §f%.2f", strengthData.getEpicFightStrength())
+            String.format("§e🗡️ 史诗战斗/Epic Fight: §f%.2f", strengthData.getEpicFightStrength())
         ), false);
 
         source.sendSuccess(() -> Component.literal(
