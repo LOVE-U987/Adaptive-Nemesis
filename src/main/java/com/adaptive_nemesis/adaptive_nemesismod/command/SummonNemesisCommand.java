@@ -95,7 +95,7 @@ public class SummonNemesisCommand {
         CommandSourceStack source = context.getSource();
 
         if (!(source.getEntity() instanceof ServerPlayer player)) {
-            source.sendFailure(Component.literal("❌ 此命令只能由玩家执行"));
+            source.sendFailure(Component.translatable("adaptive_nemesis.command.summon.player_only"));
             return 0;
         }
 
@@ -105,14 +105,14 @@ public class SummonNemesisCommand {
         // 确定实体类型
         EntityType<? extends Mob> entityType = getEntityType(type);
         if (entityType == null) {
-            source.sendFailure(Component.literal("§c❌ 未知的宿敌类型: " + type));
+            source.sendFailure(Component.translatable("adaptive_nemesis.command.summon.unknown_type", type));
             return 0;
         }
 
         // 在玩家附近生成宿敌
         Mob nemesis = entityType.create(level);
         if (nemesis == null) {
-            source.sendFailure(Component.literal("§c❌ 无法生成宿敌"));
+            source.sendFailure(Component.translatable("adaptive_nemesis.command.summon.failed"));
             return 0;
         }
 
@@ -132,8 +132,8 @@ public class SummonNemesisCommand {
         sendNemesisNotification(player, nemesisName);
 
         // 发送命令反馈
-        source.sendSuccess(() -> Component.literal(
-            "§c⚔️ 宿敌 " + nemesisName + " 已降临！"
+        source.sendSuccess(() -> Component.translatable(
+            "adaptive_nemesis.command.summon.arrived", nemesisName
         ), true);
 
         AdaptiveNemesisMod.LOGGER.debug(
@@ -248,7 +248,7 @@ public class SummonNemesisCommand {
 
         // 设置自定义名称
         nemesis.setCustomName(Component.literal(
-            "§c☠ 宿敌 " + nemesis.getName().getString()
+            Component.translatable("adaptive_nemesis.command.summon.name_prefix").getString() + nemesis.getName().getString()
         ));
         nemesis.setCustomNameVisible(true);
     }
@@ -307,7 +307,7 @@ public class SummonNemesisCommand {
         }
 
         nemesis.setCustomName(Component.literal(
-            "§c☠ 宿敌 " + nemesis.getName().getString()
+            Component.translatable("adaptive_nemesis.command.summon.name_prefix").getString() + nemesis.getName().getString()
         ));
         nemesis.setCustomNameVisible(true);
     }
@@ -321,27 +321,27 @@ public class SummonNemesisCommand {
     private static void sendNemesisNotification(ServerPlayer player, String nemesisName) {
         // 发送标题
         player.connection.send(new net.minecraft.network.protocol.game.ClientboundSetTitleTextPacket(
-            Component.literal("§c⚔️ 宿敌降临！")
+            Component.translatable("adaptive_nemesis.command.summon.title_arrived")
         ));
         player.connection.send(new net.minecraft.network.protocol.game.ClientboundSetSubtitleTextPacket(
-            Component.literal("§e" + nemesisName + " 已响应你的召唤/has answered your call")
+            Component.translatable("adaptive_nemesis.command.summon.subtitle", nemesisName)
         ));
 
         // 发送聊天消息
-        player.sendSystemMessage(Component.literal(
-            "§4═══════════════════════════════"
+        player.sendSystemMessage(Component.translatable(
+            "adaptive_nemesis.command.summon.divider"
         ));
-        player.sendSystemMessage(Component.literal(
-            "§c⚔️ 宿敌 " + nemesisName + " 已降临！"
+        player.sendSystemMessage(Component.translatable(
+            "adaptive_nemesis.command.summon.chat_arrived", nemesisName
         ));
-        player.sendSystemMessage(Component.literal(
-            "§e这个敌人针对你的战斗风格进行了强化 §7[This enemy is strengthened against your combat style!]"
+        player.sendSystemMessage(Component.translatable(
+            "adaptive_nemesis.command.summon.strengthened"
         ));
-        player.sendSystemMessage(Component.literal(
-            "§7小心应对，它会记住你的每一次攻击..."
+        player.sendSystemMessage(Component.translatable(
+            "adaptive_nemesis.command.summon.remember"
         ));
-        player.sendSystemMessage(Component.literal(
-            "§4═══════════════════════════════"
+        player.sendSystemMessage(Component.translatable(
+            "adaptive_nemesis.command.summon.divider"
         ));
     }
 
@@ -377,11 +377,11 @@ public class SummonNemesisCommand {
      * @return 宿敌名称
      */
     private static String getNemesisName(EntityType<? extends Mob> entityType) {
-        if (entityType == EntityType.ZOMBIE) return "僵尸宿敌/Zombie Nemesis";
-        if (entityType == EntityType.SKELETON) return "骷髅宿敌/Skeleton Nemesis";
-        if (entityType == EntityType.CREEPER) return "苦力怕宿敌/Creeper Nemesis";
-        if (entityType == EntityType.SPIDER) return "蜘蛛宿敌/Spider Nemesis";
-        if (entityType == EntityType.WITCH) return "女巫宿敌/Witch Nemesis";
-        return "未知宿敌/Unknown Nemesis";
+        if (entityType == EntityType.ZOMBIE) return Component.translatable("adaptive_nemesis.command.summon.name_zombie").getString();
+        if (entityType == EntityType.SKELETON) return Component.translatable("adaptive_nemesis.command.summon.name_skeleton").getString();
+        if (entityType == EntityType.CREEPER) return Component.translatable("adaptive_nemesis.command.summon.name_creeper").getString();
+        if (entityType == EntityType.SPIDER) return Component.translatable("adaptive_nemesis.command.summon.name_spider").getString();
+        if (entityType == EntityType.WITCH) return Component.translatable("adaptive_nemesis.command.summon.name_witch").getString();
+        return Component.translatable("adaptive_nemesis.command.summon.name_unknown").getString();
     }
 }

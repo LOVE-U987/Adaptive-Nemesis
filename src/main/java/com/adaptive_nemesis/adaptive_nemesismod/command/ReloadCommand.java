@@ -39,8 +39,8 @@ public class ReloadCommand {
     private static int execute(CommandContext<CommandSourceStack> context) {
         CommandSourceStack source = context.getSource();
 
-        source.sendSuccess(() -> Component.literal(
-            "§6🔄 正在重新加载/Reloading Adaptive Nemesis..."
+        source.sendSuccess(() -> Component.translatable(
+            "adaptive_nemesis.command.reload.reloading"
         ), true);
 
         // 清除玩家强度缓存
@@ -49,16 +49,16 @@ public class ReloadCommand {
         // 记录日志
         AdaptiveNemesisMod.LOGGER.debug("🔄 通过命令重新加载 Adaptive Nemesis");
 
-        source.sendSuccess(() -> Component.literal(
-            "§a✅ 重载完成！"
+        source.sendSuccess(() -> Component.translatable(
+            "adaptive_nemesis.command.reload.complete"
         ), true);
 
-        source.sendSuccess(() -> Component.literal(
-            "§e- 玩家强度缓存已清除"
+        source.sendSuccess(() -> Component.translatable(
+            "adaptive_nemesis.command.reload.cache_cleared"
         ), false);
 
-        source.sendSuccess(() -> Component.literal(
-            "§e- 配置将在下次读取时更新/Config will update on next read"
+        source.sendSuccess(() -> Component.translatable(
+            "adaptive_nemesis.command.reload.config_update"
         ), false);
 
         return 1;

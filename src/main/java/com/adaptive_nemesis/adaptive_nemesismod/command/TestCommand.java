@@ -81,8 +81,8 @@ public class TestCommand {
         CommandSourceStack source = context.getSource();
         String module = StringArgumentType.getString(context, "module").toLowerCase();
 
-        source.sendSuccess(() -> Component.literal(
-            "§6🧪 Adaptive Nemesis 测试开始/Test Starting..."
+        source.sendSuccess(() -> Component.translatable(
+            "adaptive_nemesis.command.test.starting"
         ), false);
 
         int result;
@@ -98,17 +98,17 @@ public class TestCommand {
             case "compat" -> result = testCompatSystem(source);
             case "config" -> result = testConfigSystem(source);
             default -> {
-                source.sendFailure(Component.literal("§c❌ 未知测试模块/Unknown test module: " + module));
-                source.sendSuccess(() -> Component.literal(
-                    "§e可用模块/Available modules: §fall, player, enemy, damage, boss, float, memory, protection, compat, config"
+                source.sendFailure(Component.translatable("adaptive_nemesis.command.error.unknown_module", module));
+                source.sendSuccess(() -> Component.translatable(
+                    "adaptive_nemesis.command.error.available_modules"
                 ), false);
                 result = 0;
             }
         }
 
         if (result == 1) {
-            source.sendSuccess(() -> Component.literal(
-                "§a✅ 测试完成/Test Complete!"
+            source.sendSuccess(() -> Component.translatable(
+                "adaptive_nemesis.command.test.complete"
             ), false);
         }
 
@@ -122,8 +122,8 @@ public class TestCommand {
      * @return 测试结果
      */
     private static int runAllTests(CommandSourceStack source) {
-        source.sendSuccess(() -> Component.literal(
-            "§6🧪 运行全部模块测试/Running all tests..."
+        source.sendSuccess(() -> Component.translatable(
+            "adaptive_nemesis.command.test.all_header"
         ), false);
 
         int totalTests = 0;
@@ -159,8 +159,8 @@ public class TestCommand {
 
         final int finalPassed = passedTests;
         final int finalTotal = totalTests;
-        source.sendSuccess(() -> Component.literal(
-            String.format("§6📊 测试结果/Results: §a%d§e/§f%d §e通过/Passed", finalPassed, finalTotal)
+        source.sendSuccess(() -> Component.translatable(
+            "adaptive_nemesis.command.test.all_result", String.valueOf(finalPassed), String.valueOf(finalTotal)
         ), false);
 
         return passedTests == totalTests ? 1 : 0;
@@ -173,7 +173,7 @@ public class TestCommand {
      * @return 测试结果
      */
     private static int testConfigSystem(CommandSourceStack source) {
-        printTestHeader(source, "配置系统/Config System");
+        printTestHeader(source, Component.translatable("adaptive_nemesis.command.test.module_config"));
 
         try {
             // 测试配置读取
@@ -183,22 +183,22 @@ public class TestCommand {
             boolean bossCap = Config.ENABLE_BOSS_DAMAGE_CAP.get();
             boolean enemyCap = Config.ENABLE_ENEMY_BONUS_CAP.get();
 
-            printTestLog(source, "难度系数基准/Difficulty Base", String.valueOf(difficulty));
-            printTestLog(source, "真实伤害启用/True Damage", String.valueOf(trueDamage));
-            printTestLog(source, "新手保护启用/Newbie Protection", String.valueOf(newbieProtection));
-            printTestLog(source, "Boss伤害上限启用/Boss Cap", String.valueOf(bossCap));
-            printTestLog(source, "敌人加成上限启用/Enemy Cap", String.valueOf(enemyCap));
+            printTestLog(source, Component.translatable("adaptive_nemesis.command.test.label_difficulty_base"), String.valueOf(difficulty));
+            printTestLog(source, Component.translatable("adaptive_nemesis.command.test.label_true_damage_enabled"), String.valueOf(trueDamage));
+            printTestLog(source, Component.translatable("adaptive_nemesis.command.test.label_newbie_protection"), String.valueOf(newbieProtection));
+            printTestLog(source, Component.translatable("adaptive_nemesis.command.test.label_boss_cap"), String.valueOf(bossCap));
+            printTestLog(source, Component.translatable("adaptive_nemesis.command.test.label_enemy_cap"), String.valueOf(enemyCap));
 
             // 测试配置值范围
             if (difficulty < 0.1 || difficulty > 10.0) {
-                printTestError(source, "难度系数超出有效范围");
+                printTestError(source, Component.translatable("adaptive_nemesis.command.test.label_out_of_range"));
                 return 0;
             }
 
-            printTestSuccess(source, "配置系统正常/Config System OK");
+            printTestSuccess(source, Component.translatable("adaptive_nemesis.command.test.module_config"));
             return 1;
         } catch (Exception e) {
-            printTestError(source, "配置读取异常: " + e.getMessage());
+            printTestError(source, Component.translatable("adaptive_nemesis.command.test.label_config_error", e.getMessage()));
             return 0;
         }
     }
@@ -210,53 +210,53 @@ public class TestCommand {
      * @return 测试结果
      */
     private static int testPlayerSystem(CommandSourceStack source) {
-        printTestHeader(source, "玩家强度评估系统/Player Strength System");
+        printTestHeader(source, Component.translatable("adaptive_nemesis.command.test.module_player"));
 
         try {
             // 测试单例
             PlayerStrengthEvaluator evaluator = PlayerStrengthEvaluator.getInstance();
             if (evaluator == null) {
-                printTestError(source, "无法获取评估器实例");
+                printTestError(source, Component.translatable("adaptive_nemesis.command.error.failed_spawn"));
                 return 0;
             }
-            printTestLog(source, "单例实例/Singleton", "✓ 正常/OK");
+            printTestLog(source, Component.translatable("adaptive_nemesis.command.test.singleton"), Component.translatable("adaptive_nemesis.command.test.status_ok").getString());
 
             // 测试玩家强度计算（如果执行者是玩家）
             if (source.getEntity() instanceof ServerPlayer player) {
                 PlayerStrengthData strengthData = evaluator.updatePlayerStrength(player);
                 if (strengthData != null) {
-                    printTestLog(source, "玩家强度计算/Strength Calc", "✓ 正常/OK");
-                    printTestLog(source, "综合强度/Total Strength", String.format("%.2f", strengthData.getTotalStrength()));
-                    printTestLog(source, "防御强度/Defense", String.format("%.2f", strengthData.getDefenseStrength()));
-                    printTestLog(source, "输出强度/Damage", String.format("%.2f", strengthData.getDamageStrength()));
-                    printTestLog(source, "神话词条强度/Apotheosis", String.format("%.2f", strengthData.getApotheosisStrength()));
-                    printTestLog(source, "铁魔法强度/Iron's Spells", String.format("%.2f", strengthData.getIronsSpellsStrength()));
-                    printTestLog(source, "史诗战斗强度/Epic Fight", String.format("%.2f", strengthData.getEpicFightStrength()));
+                    printTestLog(source, Component.translatable("adaptive_nemesis.command.test.label_strength_calc"), "✓ " + Component.translatable("adaptive_nemesis.command.test.status_ok").getString());
+                    printTestLog(source, Component.translatable("adaptive_nemesis.command.test.label_total_strength"), String.format("%.2f", strengthData.getTotalStrength()));
+                    printTestLog(source, Component.translatable("adaptive_nemesis.command.test.label_defense_strength"), String.format("%.2f", strengthData.getDefenseStrength()));
+                    printTestLog(source, Component.translatable("adaptive_nemesis.command.test.label_damage_strength"), String.format("%.2f", strengthData.getDamageStrength()));
+                    printTestLog(source, Component.translatable("adaptive_nemesis.command.test.label_apotheosis"), String.format("%.2f", strengthData.getApotheosisStrength()));
+                    printTestLog(source, Component.translatable("adaptive_nemesis.command.test.label_irons_spells"), String.format("%.2f", strengthData.getIronsSpellsStrength()));
+                    printTestLog(source, Component.translatable("adaptive_nemesis.command.test.label_epic_fight"), String.format("%.2f", strengthData.getEpicFightStrength()));
 
                     // 计算敌人加成倍率
                     double baseMultiplier = 1.0 + (strengthData.getTotalStrength() * Config.DIFFICULTY_BASE_MULTIPLIER.get() / 100.0);
                     double floatMultiplier = AdaptiveFloatSystem.getInstance().getFloatMultiplier(player.getUUID());
                     double finalMultiplier = baseMultiplier * floatMultiplier;
 
-                    printTestLog(source, "基础加成倍率/Base Multiplier", String.format("%.2f", baseMultiplier));
-                    printTestLog(source, "浮动倍率/Float Multiplier", String.format("%.2f", floatMultiplier));
-                    printTestLog(source, "最终加成倍率/Final Multiplier", String.format("%.2f", finalMultiplier));
+                    printTestLog(source, Component.translatable("adaptive_nemesis.command.test.label_base_multiplier"), String.format("%.2f", baseMultiplier));
+                    printTestLog(source, Component.translatable("adaptive_nemesis.command.test.label_float_multiplier"), String.format("%.2f", floatMultiplier));
+                    printTestLog(source, Component.translatable("adaptive_nemesis.command.test.label_final_multiplier"), String.format("%.2f", finalMultiplier));
 
                     // 计算各属性上限
-                    printTestLog(source, "血量上限倍率/HP Cap Multiplier", String.format("%.2f", Math.min(finalMultiplier, Config.MAX_HEALTH_MULTIPLIER.get())));
-                    printTestLog(source, "伤害上限倍率/Damage Cap Multiplier", String.format("%.2f", Math.min(finalMultiplier, Config.MAX_DAMAGE_MULTIPLIER.get())));
-                    printTestLog(source, "护甲上限倍率/Armor Cap Multiplier", String.format("%.2f", Math.min(finalMultiplier, Config.MAX_ARMOR_MULTIPLIER.get())));
+                    printTestLog(source, Component.translatable("adaptive_nemesis.command.test.label_max_hp"), String.format("%.2f", Math.min(finalMultiplier, Config.MAX_HEALTH_MULTIPLIER.get())));
+                    printTestLog(source, Component.translatable("adaptive_nemesis.command.test.label_max_damage"), String.format("%.2f", Math.min(finalMultiplier, Config.MAX_DAMAGE_MULTIPLIER.get())));
+                    printTestLog(source, Component.translatable("adaptive_nemesis.command.test.label_max_armor"), String.format("%.2f", Math.min(finalMultiplier, Config.MAX_ARMOR_MULTIPLIER.get())));
                 } else {
-                    printTestWarning(source, "玩家强度数据为空");
+                    printTestWarning(source, Component.translatable("adaptive_nemesis.command.test.label_no_strength_data"));
                 }
             } else {
-                printTestWarning(source, "非玩家执行，跳过玩家强度测试");
+                printTestWarning(source, Component.translatable("adaptive_nemesis.command.test.label_skip_non_player"));
             }
 
-            printTestSuccess(source, "玩家强度评估系统正常/Player Strength System OK");
+            printTestSuccess(source, Component.translatable("adaptive_nemesis.command.test.module_player"));
             return 1;
         } catch (Exception e) {
-            printTestError(source, "玩家强度评估异常: " + e.getMessage());
+            printTestError(source, Component.translatable("adaptive_nemesis.command.test.label_strength_error", e.getMessage()));
             return 0;
         }
     }
@@ -268,32 +268,32 @@ public class TestCommand {
      * @return 测试结果
      */
     private static int testEnemySystem(CommandSourceStack source) {
-        printTestHeader(source, "敌人动态强化系统/Enemy Scaling System");
+        printTestHeader(source, Component.translatable("adaptive_nemesis.command.test.module_enemy"));
 
         try {
             // 测试单例
             EnemyScalingHandler handler = EnemyScalingHandler.getInstance();
             if (handler == null) {
-                printTestError(source, "无法获取强化处理器实例");
+                printTestError(source, Component.translatable("adaptive_nemesis.command.test.label_no_scaling_handler"));
                 return 0;
             }
-            printTestLog(source, "单例实例/Singleton", "✓ 正常/OK");
+            printTestLog(source, Component.translatable("adaptive_nemesis.command.test.singleton"), Component.translatable("adaptive_nemesis.command.test.status_ok").getString());
 
             // 测试浮动系统
             AdaptiveFloatSystem floatSystem = AdaptiveFloatSystem.getInstance();
             double floatMultiplier = floatSystem.getFloatMultiplier();
-            printTestLog(source, "当前浮动倍率/Current Float", String.format("%.2f", floatMultiplier));
+            printTestLog(source, Component.translatable("adaptive_nemesis.command.test.label_current_float"), String.format("%.2f", floatMultiplier));
 
             // 验证浮动倍率范围
             if (floatMultiplier < Config.FLOAT_MIN.get() || floatMultiplier > Config.FLOAT_MAX.get()) {
-                printTestWarning(source, "浮动倍率超出配置范围");
+                printTestWarning(source, Component.translatable("adaptive_nemesis.command.test.label_float_out_of_range"));
             }
 
             // 显示敌人加成上限配置
-            printTestLog(source, "血量加成上限/HP Max", String.format("%.2f", Config.MAX_HEALTH_MULTIPLIER.get()));
-            printTestLog(source, "伤害加成上限/Damage Max", String.format("%.2f", Config.MAX_DAMAGE_MULTIPLIER.get()));
-            printTestLog(source, "护甲加成上限/Armor Max", String.format("%.2f", Config.MAX_ARMOR_MULTIPLIER.get()));
-            printTestLog(source, "区域同步范围/Sync Range", Config.AREA_SYNC_RANGE.get() + " 区块");
+            printTestLog(source, Component.translatable("adaptive_nemesis.command.test.label_max_hp_cap"), String.format("%.2f", Config.MAX_HEALTH_MULTIPLIER.get()));
+            printTestLog(source, Component.translatable("adaptive_nemesis.command.test.label_max_damage_cap"), String.format("%.2f", Config.MAX_DAMAGE_MULTIPLIER.get()));
+            printTestLog(source, Component.translatable("adaptive_nemesis.command.test.label_max_armor_cap"), String.format("%.2f", Config.MAX_ARMOR_MULTIPLIER.get()));
+            printTestLog(source, Component.translatable("adaptive_nemesis.command.test.label_sync_range"), Config.AREA_SYNC_RANGE.get() + " 区块");
 
             // 如果执行者是玩家，显示针对该玩家的敌人加成
             if (source.getEntity() instanceof ServerPlayer player) {
@@ -302,18 +302,18 @@ public class TestCommand {
                     double baseMultiplier = 1.0 + (strengthData.getTotalStrength() * Config.DIFFICULTY_BASE_MULTIPLIER.get() / 100.0);
                     double finalMultiplier = baseMultiplier * floatMultiplier;
 
-                    printTestLog(source, "针对你的基础倍率/Your Base Multiplier", String.format("%.2f", baseMultiplier));
-                    printTestLog(source, "针对你的最终倍率/Your Final Multiplier", String.format("%.2f", finalMultiplier));
-                    printTestLog(source, "敌人血量加成/HP Bonus", String.format("+%.0f%%", (Math.min(finalMultiplier, Config.MAX_HEALTH_MULTIPLIER.get()) - 1.0) * 100));
-                    printTestLog(source, "敌人伤害加成/Damage Bonus", String.format("+%.0f%%", (Math.min(finalMultiplier, Config.MAX_DAMAGE_MULTIPLIER.get()) - 1.0) * 100));
-                    printTestLog(source, "敌人护甲加成/Armor Bonus", String.format("+%.0f%%", (Math.min(finalMultiplier, Config.MAX_ARMOR_MULTIPLIER.get()) - 1.0) * 100));
+                    printTestLog(source, Component.translatable("adaptive_nemesis.command.test.label_your_base"), String.format("%.2f", baseMultiplier));
+                    printTestLog(source, Component.translatable("adaptive_nemesis.command.test.label_your_final"), String.format("%.2f", finalMultiplier));
+                    printTestLog(source, Component.translatable("adaptive_nemesis.command.test.label_enemy_hp_bonus"), String.format("+%.0f%%", (Math.min(finalMultiplier, Config.MAX_HEALTH_MULTIPLIER.get()) - 1.0) * 100));
+                    printTestLog(source, Component.translatable("adaptive_nemesis.command.test.label_enemy_damage_bonus"), String.format("+%.0f%%", (Math.min(finalMultiplier, Config.MAX_DAMAGE_MULTIPLIER.get()) - 1.0) * 100));
+                    printTestLog(source, Component.translatable("adaptive_nemesis.command.test.label_enemy_armor_bonus"), String.format("+%.0f%%", (Math.min(finalMultiplier, Config.MAX_ARMOR_MULTIPLIER.get()) - 1.0) * 100));
                 }
             }
 
-            printTestSuccess(source, "敌人动态强化系统正常/Enemy Scaling System OK");
+            printTestSuccess(source, Component.translatable("adaptive_nemesis.command.test.module_enemy"));
             return 1;
         } catch (Exception e) {
-            printTestError(source, "敌人强化系统异常: " + e.getMessage());
+            printTestError(source, Component.translatable("adaptive_nemesis.command.test.label_enemy_error", e.getMessage()));
             return 0;
         }
     }
@@ -325,15 +325,15 @@ public class TestCommand {
      * @return 测试结果
      */
     private static int testDamageSystem(CommandSourceStack source) {
-        printTestHeader(source, "真实伤害转化系统/True Damage System");
+        printTestHeader(source, Component.translatable("adaptive_nemesis.command.test.module_damage"));
 
         try {
             TrueDamageHandler handler = TrueDamageHandler.getInstance();
             if (handler == null) {
-                printTestError(source, "无法获取伤害处理器实例");
+                printTestError(source, Component.translatable("adaptive_nemesis.command.test.label_no_damage_handler"));
                 return 0;
             }
-            printTestLog(source, "单例实例/Singleton", "✓ 正常/OK");
+            printTestLog(source, Component.translatable("adaptive_nemesis.command.test.singleton"), Component.translatable("adaptive_nemesis.command.test.status_ok").getString());
 
             // 测试护甲阈值计算
             double lowPercent = handler.getTrueDamagePercent(10);   // 低护甲
@@ -341,19 +341,19 @@ public class TestCommand {
             double highPercent = handler.getTrueDamagePercent(70);   // 高护甲
             double turtlePercent = handler.getTrueDamagePercent(150); // 铁乌龟
 
-            printTestLog(source, "低护甲阈值/Low Armor Threshold", "< " + Config.LOW_ARMOR_THRESHOLD.get());
-            printTestLog(source, "中护甲阈值/Medium Armor Threshold", Config.LOW_ARMOR_THRESHOLD.get() + " - " + Config.MEDIUM_ARMOR_THRESHOLD.get());
-            printTestLog(source, "高护甲阈值/High Armor Threshold", Config.MEDIUM_ARMOR_THRESHOLD.get() + " - " + Config.HIGH_ARMOR_THRESHOLD.get());
-            printTestLog(source, "铁乌龟阈值/Turtle Threshold", "> " + Config.HIGH_ARMOR_THRESHOLD.get());
+            printTestLog(source, Component.translatable("adaptive_nemesis.command.test.label_low_armor_threshold"), "< " + Config.LOW_ARMOR_THRESHOLD.get());
+            printTestLog(source, Component.translatable("adaptive_nemesis.command.test.label_medium_armor_threshold"), Config.LOW_ARMOR_THRESHOLD.get() + " - " + Config.MEDIUM_ARMOR_THRESHOLD.get());
+            printTestLog(source, Component.translatable("adaptive_nemesis.command.test.label_high_armor_threshold"), Config.MEDIUM_ARMOR_THRESHOLD.get() + " - " + Config.HIGH_ARMOR_THRESHOLD.get());
+            printTestLog(source, Component.translatable("adaptive_nemesis.command.test.label_turtle_threshold"), "> " + Config.HIGH_ARMOR_THRESHOLD.get());
 
-            printTestLog(source, "低护甲真实伤害/Low Armor TD", String.format("%.1f%%", lowPercent));
-            printTestLog(source, "中护甲真实伤害/Medium Armor TD", String.format("%.1f%%", mediumPercent));
-            printTestLog(source, "高护甲真实伤害/High Armor TD", String.format("%.1f%%", highPercent));
-            printTestLog(source, "铁乌龟真实伤害/Turtle TD", String.format("%.1f%%", turtlePercent));
+            printTestLog(source, Component.translatable("adaptive_nemesis.command.test.label_low_true_damage"), String.format("%.1f%%", lowPercent));
+            printTestLog(source, Component.translatable("adaptive_nemesis.command.test.label_medium_true_damage"), String.format("%.1f%%", mediumPercent));
+            printTestLog(source, Component.translatable("adaptive_nemesis.command.test.label_high_true_damage"), String.format("%.1f%%", highPercent));
+            printTestLog(source, Component.translatable("adaptive_nemesis.command.test.label_turtle_true_damage"), String.format("%.1f%%", turtlePercent));
 
             // 验证阈值递增
             if (!(lowPercent <= mediumPercent && mediumPercent <= highPercent && highPercent <= turtlePercent)) {
-                printTestWarning(source, "真实伤害比例未按预期递增");
+                printTestWarning(source, Component.translatable("adaptive_nemesis.command.test.label_td_not_increasing"));
             }
 
             // 如果执行者是玩家，显示针对该玩家的真实伤害
@@ -362,24 +362,24 @@ public class TestCommand {
                 double playerTrueDamagePercent = handler.getTrueDamagePercent(armorValue);
                 String armorLevel = handler.getArmorLevelDescription(armorValue);
 
-                printTestLog(source, "你的当前护甲/Your Armor", String.format("%.1f", armorValue));
-                printTestLog(source, "你的护甲等级/Your Armor Level", armorLevel);
-                printTestLog(source, "你的真实伤害比例/Your TD %", String.format("%.1f%%", playerTrueDamagePercent));
+                printTestLog(source, Component.translatable("adaptive_nemesis.command.test.label_your_armor"), String.format("%.1f", armorValue));
+                printTestLog(source, Component.translatable("adaptive_nemesis.command.test.label_your_armor_level"), armorLevel);
+                printTestLog(source, Component.translatable("adaptive_nemesis.command.test.label_your_td_percent"), String.format("%.1f%%", playerTrueDamagePercent));
 
                 // 计算实际伤害示例
                 double exampleDamage = 20.0;
                 double trueDamage = exampleDamage * (playerTrueDamagePercent / 100.0);
                 double reducedDamage = exampleDamage - trueDamage;
 
-                printTestLog(source, "伤害示例/Example Damage", String.format("%.1f 伤害", exampleDamage));
-                printTestLog(source, "真实伤害部分/True Damage", String.format("%.1f", trueDamage));
-                printTestLog(source, "护甲减免部分/Mitigated", String.format("%.1f", reducedDamage));
+                printTestLog(source, Component.translatable("adaptive_nemesis.command.test.label_damage_example"), String.format("%.1f 伤害", exampleDamage));
+                printTestLog(source, Component.translatable("adaptive_nemesis.command.test.label_true_damage_part"), String.format("%.1f", trueDamage));
+                printTestLog(source, Component.translatable("adaptive_nemesis.command.test.label_mitigated_part"), String.format("%.1f", reducedDamage));
             }
 
-            printTestSuccess(source, "真实伤害转化系统正常/True Damage System OK");
+            printTestSuccess(source, Component.translatable("adaptive_nemesis.command.test.module_damage"));
             return 1;
         } catch (Exception e) {
-            printTestError(source, "真实伤害系统异常: " + e.getMessage());
+            printTestError(source, Component.translatable("adaptive_nemesis.command.test.label_damage_error", e.getMessage()));
             return 0;
         }
     }
@@ -391,20 +391,20 @@ public class TestCommand {
      * @return 测试结果
      */
     private static int testBossSystem(CommandSourceStack source) {
-        printTestHeader(source, "Boss特殊机制系统/Boss System");
+        printTestHeader(source, Component.translatable("adaptive_nemesis.command.test.module_boss"));
 
         try {
             BossDamageCapHandler handler = BossDamageCapHandler.getInstance();
             if (handler == null) {
-                printTestError(source, "无法获取Boss处理器实例");
+                printTestError(source, Component.translatable("adaptive_nemesis.command.test.label_no_boss_handler"));
                 return 0;
             }
-            printTestLog(source, "单例实例/Singleton", "✓ 正常/OK");
+            printTestLog(source, Component.translatable("adaptive_nemesis.command.test.singleton"), Component.translatable("adaptive_nemesis.command.test.status_ok").getString());
 
             // 测试配置
-            printTestLog(source, "伤害上限/Damage Cap", String.valueOf(Config.BOSS_DAMAGE_CAP.get()));
-            printTestLog(source, "血量倍率/HP Multiplier", String.valueOf(Config.BOSS_HEALTH_MULTIPLIER.get()));
-            printTestLog(source, "伤害倍率/Damage Multiplier", String.valueOf(Config.BOSS_DAMAGE_MULTIPLIER.get()));
+            printTestLog(source, Component.translatable("adaptive_nemesis.command.test.label_damage_cap"), String.valueOf(Config.BOSS_DAMAGE_CAP.get()));
+            printTestLog(source, Component.translatable("adaptive_nemesis.command.test.label_hp_multiplier"), String.valueOf(Config.BOSS_HEALTH_MULTIPLIER.get()));
+            printTestLog(source, Component.translatable("adaptive_nemesis.command.test.label_damage_multiplier"), String.valueOf(Config.BOSS_DAMAGE_MULTIPLIER.get()));
 
             // 显示实际效果
             double exampleBossHealth = 200.0;
@@ -412,14 +412,14 @@ public class TestCommand {
             double buffedHealth = exampleBossHealth * Config.BOSS_HEALTH_MULTIPLIER.get();
             double buffedDamage = exampleBossDamage * Config.BOSS_DAMAGE_MULTIPLIER.get();
 
-            printTestLog(source, "Boss示例血量/Boss HP Example", String.format("%.0f -> %.0f", exampleBossHealth, buffedHealth));
-            printTestLog(source, "Boss示例伤害/Boss Damage Example", String.format("%.1f -> %.1f", exampleBossDamage, buffedDamage));
-            printTestLog(source, "玩家伤害上限/Player Damage Cap", String.format("%.1f", Config.BOSS_DAMAGE_CAP.get()));
+            printTestLog(source, Component.translatable("adaptive_nemesis.command.test.label_boss_hp_example"), String.format("%.0f -> %.0f", exampleBossHealth, buffedHealth));
+            printTestLog(source, Component.translatable("adaptive_nemesis.command.test.label_boss_damage_example"), String.format("%.1f -> %.1f", exampleBossDamage, buffedDamage));
+            printTestLog(source, Component.translatable("adaptive_nemesis.command.test.label_player_damage_cap"), String.format("%.1f", Config.BOSS_DAMAGE_CAP.get()));
 
-            printTestSuccess(source, "Boss特殊机制系统正常/Boss System OK");
+            printTestSuccess(source, Component.translatable("adaptive_nemesis.command.test.module_boss"));
             return 1;
         } catch (Exception e) {
-            printTestError(source, "Boss机制异常: " + e.getMessage());
+            printTestError(source, Component.translatable("adaptive_nemesis.command.test.label_boss_error", e.getMessage()));
             return 0;
         }
     }
@@ -431,42 +431,42 @@ public class TestCommand {
      * @return 测试结果
      */
     private static int testFloatSystem(CommandSourceStack source) {
-        printTestHeader(source, "智能浮动系统/Float System");
+        printTestHeader(source, Component.translatable("adaptive_nemesis.command.test.module_float"));
 
         try {
             AdaptiveFloatSystem floatSystem = AdaptiveFloatSystem.getInstance();
             if (floatSystem == null) {
-                printTestError(source, "无法获取浮动系统实例");
+                printTestError(source, Component.translatable("adaptive_nemesis.command.test.label_no_float_system"));
                 return 0;
             }
-            printTestLog(source, "单例实例/Singleton", "✓ 正常/OK");
+            printTestLog(source, Component.translatable("adaptive_nemesis.command.test.singleton"), Component.translatable("adaptive_nemesis.command.test.status_ok").getString());
 
             // 测试默认倍率
             double defaultMultiplier = floatSystem.getFloatMultiplier();
-            printTestLog(source, "默认浮动倍率/Default Float", String.format("%.2f", defaultMultiplier));
+            printTestLog(source, Component.translatable("adaptive_nemesis.command.test.label_default_float"), String.format("%.2f", defaultMultiplier));
 
             // 测试配置值
-            printTestLog(source, "浮动最小值/Float Min", String.valueOf(Config.FLOAT_MIN.get()));
-            printTestLog(source, "浮动最大值/Float Max", String.valueOf(Config.FLOAT_MAX.get()));
-            printTestLog(source, "击杀加成/Kill Bonus", String.format("+%.0f%%", Config.KILL_STREAK_MULTIPLIER_INCREASE.get() * 100));
-            printTestLog(source, "死亡减免/Death Reduction", String.format("-%.0f%%", Config.DEATH_STREAK_MULTIPLIER_DECREASE.get() * 100));
-            printTestLog(source, "重置时间/Reset Time", Config.FLOAT_RESET_TIME_MINUTES.get() + " 分钟");
+            printTestLog(source, Component.translatable("adaptive_nemesis.command.test.label_float_min"), String.valueOf(Config.FLOAT_MIN.get()));
+            printTestLog(source, Component.translatable("adaptive_nemesis.command.test.label_float_max"), String.valueOf(Config.FLOAT_MAX.get()));
+            printTestLog(source, Component.translatable("adaptive_nemesis.command.test.label_kill_bonus"), String.format("+%.0f%%", Config.KILL_STREAK_MULTIPLIER_INCREASE.get() * 100));
+            printTestLog(source, Component.translatable("adaptive_nemesis.command.test.label_death_reduction"), String.format("-%.0f%%", Config.DEATH_STREAK_MULTIPLIER_DECREASE.get() * 100));
+            printTestLog(source, Component.translatable("adaptive_nemesis.command.test.label_reset_time"), Config.FLOAT_RESET_TIME_MINUTES.get() + " 分钟");
 
             // 如果执行者是玩家，显示该玩家的浮动数据
             if (source.getEntity() instanceof ServerPlayer player) {
                 double playerFloat = floatSystem.getFloatMultiplier(player.getUUID());
-                printTestLog(source, "你的当前倍率/Your Multiplier", String.format("%.2f", playerFloat));
+                printTestLog(source, Component.translatable("adaptive_nemesis.command.test.label_your_float"), String.format("%.2f", playerFloat));
 
                 // 计算影响
                 double exampleBase = 1.5;
                 double withFloat = exampleBase * playerFloat;
-                printTestLog(source, "示例影响/Example Impact", String.format("%.2f x %.2f = %.2f", exampleBase, playerFloat, withFloat));
+                printTestLog(source, Component.translatable("adaptive_nemesis.command.test.label_example_impact"), String.format("%.2f x %.2f = %.2f", exampleBase, playerFloat, withFloat));
             }
 
-            printTestSuccess(source, "智能浮动系统正常/Float System OK");
+            printTestSuccess(source, Component.translatable("adaptive_nemesis.command.test.module_float"));
             return 1;
         } catch (Exception e) {
-            printTestError(source, "浮动系统异常: " + e.getMessage());
+            printTestError(source, Component.translatable("adaptive_nemesis.command.test.label_float_error", e.getMessage()));
             return 0;
         }
     }
@@ -478,51 +478,51 @@ public class TestCommand {
      * @return 测试结果
      */
     private static int testMemorySystem(CommandSourceStack source) {
-        printTestHeader(source, "宿敌记忆系统/Memory System");
+        printTestHeader(source, Component.translatable("adaptive_nemesis.command.test.module_memory"));
 
         try {
             NemesisMemorySystem memorySystem = NemesisMemorySystem.getInstance();
             if (memorySystem == null) {
-                printTestError(source, "无法获取记忆系统实例");
+                printTestError(source, Component.translatable("adaptive_nemesis.command.test.label_no_memory_system"));
                 return 0;
             }
-            printTestLog(source, "单例实例/Singleton", "✓ 正常/OK");
+            printTestLog(source, Component.translatable("adaptive_nemesis.command.test.singleton"), Component.translatable("adaptive_nemesis.command.test.status_ok").getString());
 
             // 测试档案获取
             if (source.getEntity() instanceof ServerPlayer player) {
                 NemesisProfile profile = memorySystem.getProfile(player.getUUID());
                 if (profile != null) {
-                    printTestLog(source, "玩家档案/Profile", "✓ 已存在/Exists");
-                    printTestLog(source, "总击杀/Kills", String.valueOf(profile.getTotalKills()));
-                    printTestLog(source, "总死亡/Deaths", String.valueOf(profile.getTotalDeaths()));
-                    printTestLog(source, "KDA", String.format("%.2f", profile.getKdaRatio()));
-                    printTestLog(source, "主要风格/Style", profile.getDominantStyle().getDisplayName());
-                    printTestLog(source, "近战击杀/Melee", String.valueOf(profile.getKillStyleCount(NemesisMemorySystem.CombatStyle.MELEE)));
-                    printTestLog(source, "远程击杀/Ranged", String.valueOf(profile.getKillStyleCount(NemesisMemorySystem.CombatStyle.RANGED)));
-                    printTestLog(source, "法术击杀/Magic", String.valueOf(profile.getKillStyleCount(NemesisMemorySystem.CombatStyle.MAGIC)));
+                    printTestLog(source, Component.translatable("adaptive_nemesis.command.test.label_player_profile"), "✓ " + Component.translatable("adaptive_nemesis.command.test.status_exists").getString());
+                    printTestLog(source, Component.translatable("adaptive_nemesis.command.test.label_total_kills"), String.valueOf(profile.getTotalKills()));
+                    printTestLog(source, Component.translatable("adaptive_nemesis.command.test.label_total_deaths"), String.valueOf(profile.getTotalDeaths()));
+                    printTestLog(source, Component.translatable("adaptive_nemesis.command.test.label_kda"), String.format("%.2f", profile.getKdaRatio()));
+                    printTestLog(source, Component.translatable("adaptive_nemesis.command.test.label_dominant_style"), profile.getDominantStyle().getDisplayName());
+                    printTestLog(source, Component.translatable("adaptive_nemesis.command.test.label_melee_kills"), String.valueOf(profile.getKillStyleCount(NemesisMemorySystem.CombatStyle.MELEE)));
+                    printTestLog(source, Component.translatable("adaptive_nemesis.command.test.label_ranged_kills"), String.valueOf(profile.getKillStyleCount(NemesisMemorySystem.CombatStyle.RANGED)));
+                    printTestLog(source, Component.translatable("adaptive_nemesis.command.test.label_magic_kills"), String.valueOf(profile.getKillStyleCount(NemesisMemorySystem.CombatStyle.MAGIC)));
 
                     // 显示宿敌加成（新增）
-                    printTestLog(source, "宿敌加成/Nemesis Bonus:", "");
-                    printTestLog(source, "  近战抗性/Melee Resist", String.format("+%.1f%%", profile.getMeleeResistanceBonus() * 100));
-                    printTestLog(source, "  远程抗性/Ranged Resist", String.format("+%.1f%%", profile.getRangedResistanceBonus() * 100));
-                    printTestLog(source, "  魔法抗性/Magic Resist", String.format("+%.1f%%", profile.getMagicResistanceBonus() * 100));
-                    printTestLog(source, "  攻击加成/Attack Bonus", String.format("+%.1f%%", profile.getAttackBonus() * 100));
-                    printTestLog(source, "  速度加成/Speed Bonus", String.format("+%.1f%%", profile.getSpeedBonus() * 100));
-                    printTestLog(source, "  生命加成/Health Bonus", String.format("+%.1f%%", profile.getHealthBonus() * 100));
+                    printTestLog(source, Component.translatable("adaptive_nemesis.command.test.label_nemesis_bonus"), "");
+                    printTestLog(source, Component.translatable("adaptive_nemesis.command.test.label_melee_resist"), String.format("+%.1f%%", profile.getMeleeResistanceBonus() * 100));
+                    printTestLog(source, Component.translatable("adaptive_nemesis.command.test.label_ranged_resist"), String.format("+%.1f%%", profile.getRangedResistanceBonus() * 100));
+                    printTestLog(source, Component.translatable("adaptive_nemesis.command.test.label_magic_resist"), String.format("+%.1f%%", profile.getMagicResistanceBonus() * 100));
+                    printTestLog(source, Component.translatable("adaptive_nemesis.command.test.label_attack_bonus"), String.format("+%.1f%%", profile.getAttackBonus() * 100));
+                    printTestLog(source, Component.translatable("adaptive_nemesis.command.test.label_speed_bonus"), String.format("+%.1f%%", profile.getSpeedBonus() * 100));
+                    printTestLog(source, Component.translatable("adaptive_nemesis.command.test.label_health_bonus"), String.format("+%.1f%%", profile.getHealthBonus() * 100));
 
-                    printTestLog(source, "加成总览/Bonus Summary", profile.getBonusDescription());
+                    printTestLog(source, Component.translatable("adaptive_nemesis.command.test.label_bonus_summary"), profile.getBonusDescription());
                 } else {
-                    printTestLog(source, "玩家档案/Profile", "✗ 不存在/No battle records yet");
-                    printTestLog(source, "提示/Tip", "击杀一些敌人后再测试此模块/Kill some enemies first");
+                    printTestLog(source, Component.translatable("adaptive_nemesis.command.test.label_player_profile"), "✗ " + Component.translatable("adaptive_nemesis.command.test.status_no_records").getString());
+                    printTestLog(source, Component.translatable("adaptive_nemesis.command.test.label_tip"), Component.translatable("adaptive_nemesis.command.test.tip_kill_first").getString());
                 }
             } else {
-                printTestWarning(source, "非玩家执行，跳过档案测试");
+                printTestWarning(source, Component.translatable("adaptive_nemesis.command.test.label_skip_non_player_memory"));
             }
 
-            printTestSuccess(source, "宿敌记忆系统正常/Memory System OK");
+            printTestSuccess(source, Component.translatable("adaptive_nemesis.command.test.module_memory"));
             return 1;
         } catch (Exception e) {
-            printTestError(source, "记忆系统异常: " + e.getMessage());
+            printTestError(source, Component.translatable("adaptive_nemesis.command.test.label_memory_error", e.getMessage()));
             return 0;
         }
     }
@@ -534,45 +534,45 @@ public class TestCommand {
      * @return 测试结果
      */
     private static int testProtectionSystem(CommandSourceStack source) {
-        printTestHeader(source, "新手保护系统/Protection System");
+        printTestHeader(source, Component.translatable("adaptive_nemesis.command.test.module_protection"));
 
         try {
             NewbieProtectionHandler handler = NewbieProtectionHandler.getInstance();
             if (handler == null) {
-                printTestError(source, "无法获取保护处理器实例");
+                printTestError(source, Component.translatable("adaptive_nemesis.command.test.label_no_protection_handler"));
                 return 0;
             }
-            printTestLog(source, "单例实例/Singleton", "✓ 正常/OK");
+            printTestLog(source, Component.translatable("adaptive_nemesis.command.test.singleton"), Component.translatable("adaptive_nemesis.command.test.status_ok").getString());
 
             // 测试配置
-            printTestLog(source, "保护启用/Enabled", String.valueOf(Config.ENABLE_NEWBIE_PROTECTION.get()));
-            printTestLog(source, "强度阈值/Strength Threshold", String.valueOf(Config.NEWBIE_STRENGTH_THRESHOLD.get()));
-            printTestLog(source, "持续时间/Duration", Config.NEWBIE_PROTECTION_DURATION.get() + "分钟");
-            printTestLog(source, "属性减免/Reduction", String.format("%.0f%%", Config.NEWBIE_PROTECTION_REDUCTION.get() * 100));
-            printTestLog(source, "死亡加成/Death Bonus", Config.DEATH_PROTECTION_BONUS.get() + "分钟");
-            printTestLog(source, "连续死亡阈值/Death Streak", String.valueOf(Config.DEATH_STREAK_THRESHOLD.get()));
+            printTestLog(source, Component.translatable("adaptive_nemesis.command.test.label_protection_enabled"), String.valueOf(Config.ENABLE_NEWBIE_PROTECTION.get()));
+            printTestLog(source, Component.translatable("adaptive_nemesis.command.test.label_strength_threshold"), String.valueOf(Config.NEWBIE_STRENGTH_THRESHOLD.get()));
+            printTestLog(source, Component.translatable("adaptive_nemesis.command.test.label_duration_info"), Config.NEWBIE_PROTECTION_DURATION.get() + "分钟");
+            printTestLog(source, Component.translatable("adaptive_nemesis.command.test.label_reduction"), String.format("%.0f%%", Config.NEWBIE_PROTECTION_REDUCTION.get() * 100));
+            printTestLog(source, Component.translatable("adaptive_nemesis.command.test.label_death_bonus"), Config.DEATH_PROTECTION_BONUS.get() + "分钟");
+            printTestLog(source, Component.translatable("adaptive_nemesis.command.test.label_death_streak"), String.valueOf(Config.DEATH_STREAK_THRESHOLD.get()));
 
             // 测试玩家保护状态
             if (source.getEntity() instanceof ServerPlayer player) {
                 boolean isProtected = handler.isProtected(player.getUUID());
                 double reduction = handler.getProtectionReduction(player.getUUID());
-                printTestLog(source, "当前保护状态/Status", isProtected ? "§a已启用" : "§c未启用");
-                printTestLog(source, "当前减免比例/Reduction", String.format("%.0f%%", reduction * 100));
+                printTestLog(source, Component.translatable("adaptive_nemesis.command.test.label_protection_status"), Component.translatable(isProtected ? "adaptive_nemesis.command.enabled" : "adaptive_nemesis.command.disabled").getString());
+                printTestLog(source, Component.translatable("adaptive_nemesis.command.test.label_current_reduction"), String.format("%.0f%%", reduction * 100));
 
                 // 显示保护效果
                 if (isProtected) {
                     double exampleEnemyDamage = 20.0;
                     double reducedDamage = exampleEnemyDamage * (1.0 - reduction);
-                    printTestLog(source, "保护效果示例/Example", String.format("%.1f -> %.1f", exampleEnemyDamage, reducedDamage));
+                    printTestLog(source, Component.translatable("adaptive_nemesis.command.test.label_protection_example"), String.format("%.1f -> %.1f", exampleEnemyDamage, reducedDamage));
                 }
             } else {
-                printTestWarning(source, "非玩家执行，跳过保护状态测试");
+                printTestWarning(source, Component.translatable("adaptive_nemesis.command.test.label_skip_non_player_protection"));
             }
 
-            printTestSuccess(source, "新手保护系统正常/Protection System OK");
+            printTestSuccess(source, Component.translatable("adaptive_nemesis.command.test.module_protection"));
             return 1;
         } catch (Exception e) {
-            printTestError(source, "保护系统异常: " + e.getMessage());
+            printTestError(source, Component.translatable("adaptive_nemesis.command.test.label_protection_error", e.getMessage()));
             return 0;
         }
     }
@@ -584,7 +584,7 @@ public class TestCommand {
      * @return 测试结果
      */
     private static int testCompatSystem(CommandSourceStack source) {
-        printTestHeader(source, "模组兼容系统/Compat System");
+        printTestHeader(source, Component.translatable("adaptive_nemesis.command.test.module_compat"));
 
         try {
             // 检测各模组加载状态
@@ -592,30 +592,30 @@ public class TestCommand {
             boolean epicFightLoaded = ModCompatManager.isEpicFightLoaded();
             boolean apotheosisLoaded = ModCompatManager.isApotheosisLoaded();
 
-            printTestLog(source, "铁魔法 (Iron's Spells)", ironsSpellsLoaded ? "§a已加载" : "§7未加载");
-            printTestLog(source, "史诗战斗 (Epic Fight)", epicFightLoaded ? "§a已加载" : "§7未加载");
-            printTestLog(source, "神话 (Apotheosis)", apotheosisLoaded ? "§a已加载" : "§7未加载");
+            printTestLog(source, Component.translatable("adaptive_nemesis.command.test.label_mod_irons_spells"), Component.translatable(ironsSpellsLoaded ? "adaptive_nemesis.command.test.loaded" : "adaptive_nemesis.command.test.not_loaded").getString());
+            printTestLog(source, Component.translatable("adaptive_nemesis.command.test.label_mod_epic_fight"), Component.translatable(epicFightLoaded ? "adaptive_nemesis.command.test.loaded" : "adaptive_nemesis.command.test.not_loaded").getString());
+            printTestLog(source, Component.translatable("adaptive_nemesis.command.test.label_mod_apotheosis"), Component.translatable(apotheosisLoaded ? "adaptive_nemesis.command.test.loaded" : "adaptive_nemesis.command.test.not_loaded").getString());
 
             // 测试兼容处理器
             if (ironsSpellsLoaded) {
                 var ironsCompat = ModCompatManager.getIronsSpellsCompat();
-                printTestLog(source, "铁魔法兼容处理器/Iron's Spells Handler", ironsCompat != null ? "✓ 正常" : "✗ 异常");
+                printTestLog(source, Component.translatable("adaptive_nemesis.command.test.label_irons_compat"), ironsCompat != null ? "✓ " + Component.translatable("adaptive_nemesis.command.test.status_ok").getString() : "✗ " + Component.translatable("adaptive_nemesis.command.test.status_error").getString());
             }
 
             if (epicFightLoaded) {
                 var epicCompat = ModCompatManager.getEpicFightCompat();
-                printTestLog(source, "史诗战斗兼容处理器/Epic Fight Handler", epicCompat != null ? "✓ 正常" : "✗ 异常");
+                printTestLog(source, Component.translatable("adaptive_nemesis.command.test.label_epic_compat"), epicCompat != null ? "✓ " + Component.translatable("adaptive_nemesis.command.test.status_ok").getString() : "✗ " + Component.translatable("adaptive_nemesis.command.test.status_error").getString());
             }
 
             if (apotheosisLoaded) {
                 var apothCompat = ModCompatManager.getApotheosisCompat();
-                printTestLog(source, "神话兼容处理器/Apotheosis Handler", apothCompat != null ? "✓ 正常" : "✗ 异常");
+                printTestLog(source, Component.translatable("adaptive_nemesis.command.test.label_apoth_compat"), apothCompat != null ? "✓ " + Component.translatable("adaptive_nemesis.command.test.status_ok").getString() : "✗ " + Component.translatable("adaptive_nemesis.command.test.status_error").getString());
             }
 
-            printTestSuccess(source, "模组兼容系统正常/Compat System OK");
+            printTestSuccess(source, Component.translatable("adaptive_nemesis.command.test.module_compat"));
             return 1;
         } catch (Exception e) {
-            printTestError(source, "兼容系统异常: " + e.getMessage());
+            printTestError(source, Component.translatable("adaptive_nemesis.command.test.label_compat_error", e.getMessage()));
             return 0;
         }
     }
@@ -626,11 +626,11 @@ public class TestCommand {
      * 打印测试标题
      *
      * @param source 命令来源
-     * @param moduleName 模块名称
+     * @param moduleName 模块名称组件
      */
-    private static void printTestHeader(CommandSourceStack source, String moduleName) {
-        source.sendSuccess(() -> Component.literal(
-            "§e----- Test: " + moduleName + " -----"
+    private static void printTestHeader(CommandSourceStack source, Component moduleName) {
+        source.sendSuccess(() -> Component.translatable(
+            "adaptive_nemesis.command.test.header", moduleName
         ), false);
     }
 
@@ -638,12 +638,12 @@ public class TestCommand {
      * 打印测试日志
      *
      * @param source 命令来源
-     * @param key 测试项
+     * @param key 测试项组件
      * @param value 测试结果
      */
-    private static void printTestLog(CommandSourceStack source, String key, String value) {
-        source.sendSuccess(() -> Component.literal(
-            String.format("§7  > §f%s: §e%s", key, value)
+    private static void printTestLog(CommandSourceStack source, Component key, String value) {
+        source.sendSuccess(() -> Component.translatable(
+            "adaptive_nemesis.command.test.log", key, value
         ), false);
     }
 
@@ -651,11 +651,11 @@ public class TestCommand {
      * 打印测试成功
      *
      * @param source 命令来源
-     * @param message 成功消息
+     * @param message 成功消息组件
      */
-    private static void printTestSuccess(CommandSourceStack source, String message) {
-        source.sendSuccess(() -> Component.literal(
-            "§a  ✓ " + message
+    private static void printTestSuccess(CommandSourceStack source, Component message) {
+        source.sendSuccess(() -> Component.translatable(
+            "adaptive_nemesis.command.test.success", message
         ), false);
     }
 
@@ -663,11 +663,11 @@ public class TestCommand {
      * 打印测试警告
      *
      * @param source 命令来源
-     * @param message 警告消息
+     * @param message 警告消息组件
      */
-    private static void printTestWarning(CommandSourceStack source, String message) {
-        source.sendSuccess(() -> Component.literal(
-            "§e  ⚠ " + message
+    private static void printTestWarning(CommandSourceStack source, Component message) {
+        source.sendSuccess(() -> Component.translatable(
+            "adaptive_nemesis.command.test.warning", message
         ), false);
     }
 
@@ -675,11 +675,11 @@ public class TestCommand {
      * 打印测试错误
      *
      * @param source 命令来源
-     * @param message 错误消息
+     * @param message 错误消息组件
      */
-    private static void printTestError(CommandSourceStack source, String message) {
-        source.sendSuccess(() -> Component.literal(
-            "§c  ✗ " + message
+    private static void printTestError(CommandSourceStack source, Component message) {
+        source.sendSuccess(() -> Component.translatable(
+            "adaptive_nemesis.command.test.error", message
         ), false);
     }
 }

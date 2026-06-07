@@ -51,7 +51,7 @@ public class ProtectionCommand {
         CommandSourceStack source = context.getSource();
 
         if (!(source.getEntity() instanceof ServerPlayer player)) {
-            source.sendFailure(Component.literal("❌ 此命令只能由玩家执行 §7[This command can only be executed by players]"));
+            source.sendFailure(Component.translatable("adaptive_nemesis.command.error.player_only"));
             return 0;
         }
 
@@ -71,7 +71,7 @@ public class ProtectionCommand {
             ServerPlayer target = net.minecraft.commands.arguments.EntityArgument.getPlayer(context, "player");
             return showProtectionStatus(source, target);
         } catch (Exception e) {
-            source.sendFailure(Component.literal("❌ 无法找到指定玩家 §7[Player not found]"));
+            source.sendFailure(Component.translatable("adaptive_nemesis.command.error.player_not_found"));
 
             return 0;
         }
@@ -88,34 +88,39 @@ public class ProtectionCommand {
         boolean isProtected = NewbieProtectionHandler.getInstance().isProtected(player.getUUID());
         double reduction = NewbieProtectionHandler.getInstance().getProtectionReduction(player.getUUID());
 
-        source.sendSuccess(() -> Component.literal(
-            "§6===== Newbie Protection Status ====="
+        source.sendSuccess(() -> Component.translatable(
+            "adaptive_nemesis.command.protection.title"
         ), false);
 
-        source.sendSuccess(() -> Component.literal(
-            "§e玩家/Player: §f" + player.getName().getString()
+        source.sendSuccess(() -> Component.translatable(
+            "adaptive_nemesis.command.protection.player",
+            player.getName().getString()
         ), false);
 
-        source.sendSuccess(() -> Component.literal(
-            "§e保护状态/Status: " + (isProtected ? "§a已启用(Enabled)" : "§c未启用(Not Active)")
+        source.sendSuccess(() -> Component.translatable(
+            "adaptive_nemesis.command.protection.status",
+            Component.translatable(isProtected ? "adaptive_nemesis.command.enabled" : "adaptive_nemesis.command.disabled")
         ), false);
 
         if (isProtected) {
-            source.sendSuccess(() -> Component.literal(
-                String.format("§e属性减免/Reduction: §f%.0f%%", reduction * 100)
+            source.sendSuccess(() -> Component.translatable(
+                "adaptive_nemesis.command.protection.reduction",
+                String.format("%.0f", reduction * 100)
             ), false);
         }
 
-        source.sendSuccess(() -> Component.literal(
-            String.format("§e强度阈值/Strength Threshold: §f%.2f", Config.NEWBIE_STRENGTH_THRESHOLD.get())
+        source.sendSuccess(() -> Component.translatable(
+            "adaptive_nemesis.command.protection.strength_threshold",
+            String.format("%.2f", Config.NEWBIE_STRENGTH_THRESHOLD.get())
         ), false);
 
-        source.sendSuccess(() -> Component.literal(
-            String.format("§e默认持续时间/Default Duration: §f%d分钟 §7[minutes]", Config.NEWBIE_PROTECTION_DURATION.get())
+        source.sendSuccess(() -> Component.translatable(
+            "adaptive_nemesis.command.protection.duration",
+            String.valueOf(Config.NEWBIE_PROTECTION_DURATION.get())
         ), false);
 
-        source.sendSuccess(() -> Component.literal(
-            "§6========================="
+        source.sendSuccess(() -> Component.translatable(
+            "adaptive_nemesis.command.protection.footer"
         ), false);
 
         return 1;
@@ -133,13 +138,14 @@ public class ProtectionCommand {
         try {
             ServerPlayer target = net.minecraft.commands.arguments.EntityArgument.getPlayer(context, "player");
 
-            source.sendSuccess(() -> Component.literal(
-                "§a已为玩家/Enabled for player §f" + target.getName().getString() + " §a启用新手保护 §7[Newbie protection enabled]"
+            source.sendSuccess(() -> Component.translatable(
+                "adaptive_nemesis.command.protection.enabled",
+                target.getName().getString()
             ), true);
 
             return 1;
         } catch (Exception e) {
-            source.sendFailure(Component.literal("❌ 无法找到指定玩家 §7[Player not found]"));
+            source.sendFailure(Component.translatable("adaptive_nemesis.command.error.player_not_found"));
             return 0;
         }
     }
@@ -157,13 +163,14 @@ public class ProtectionCommand {
             ServerPlayer target = net.minecraft.commands.arguments.EntityArgument.getPlayer(context, "player");
             NewbieProtectionHandler.getInstance().clearProtectionData(target.getUUID());
 
-            source.sendSuccess(() -> Component.literal(
-                "§c已为玩家/Disabled for player §f" + target.getName().getString() + " §c禁用新手保护 §7[Newbie protection disabled]"
+            source.sendSuccess(() -> Component.translatable(
+                "adaptive_nemesis.command.protection.disabled",
+                target.getName().getString()
             ), true);
 
             return 1;
         } catch (Exception e) {
-            source.sendFailure(Component.literal("❌ 无法找到指定玩家 §7[Player not found]"));
+            source.sendFailure(Component.translatable("adaptive_nemesis.command.error.player_not_found"));
             return 0;
         }
     }

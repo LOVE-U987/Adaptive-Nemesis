@@ -43,7 +43,7 @@ public class MemoryCommand {
         CommandSourceStack source = context.getSource();
 
         if (!(source.getEntity() instanceof ServerPlayer player)) {
-            source.sendFailure(Component.literal("❌ 此命令只能由玩家执行 §7[This command can only be executed by players]"));
+            source.sendFailure(Component.translatable("adaptive_nemesis.command.error.player_only"));
             return 0;
         }
 
@@ -63,7 +63,7 @@ public class MemoryCommand {
             ServerPlayer target = net.minecraft.commands.arguments.EntityArgument.getPlayer(context, "player");
             return showMemory(source, target);
         } catch (Exception e) {
-            source.sendFailure(Component.literal("❌ 无法找到指定玩家 §7[Player not found]"));
+            source.sendFailure(Component.translatable("adaptive_nemesis.command.error.player_not_found"));
 
             return 0;
         }
@@ -79,58 +79,66 @@ public class MemoryCommand {
     private static int showMemory(CommandSourceStack source, ServerPlayer player) {
         NemesisProfile profile = NemesisMemorySystem.getInstance().getProfile(player.getUUID());
 
-        source.sendSuccess(() -> Component.literal(
-            "§5===== Nemesis Memory Profile ====="
+        source.sendSuccess(() -> Component.translatable(
+            "adaptive_nemesis.command.memory.title"
         ), false);
 
-        source.sendSuccess(() -> Component.literal(
-            "§e玩家/Player: §f" + player.getName().getString()
+        source.sendSuccess(() -> Component.translatable(
+            "adaptive_nemesis.command.memory.player",
+            player.getName().getString()
         ), false);
 
         if (profile == null) {
-            source.sendSuccess(() -> Component.literal(
-                "§7暂无战斗记录 §7[No battle records yet]"
+            source.sendSuccess(() -> Component.translatable(
+                "adaptive_nemesis.command.memory.no_records"
             ), false);
-            source.sendSuccess(() -> Component.literal(
-                "§5========================"
+            source.sendSuccess(() -> Component.translatable(
+                "adaptive_nemesis.command.memory.footer"
             ), false);
             return 1;
         }
 
-        source.sendSuccess(() -> Component.literal(
-            String.format("§e总击杀/Kills: §f%d §e| 总死亡/Deaths: §f%d §e| KDA: §f%.2f",
-                profile.getTotalKills(), profile.getTotalDeaths(), profile.getKdaRatio())
+        source.sendSuccess(() -> Component.translatable(
+            "adaptive_nemesis.command.memory.stats",
+            String.valueOf(profile.getTotalKills()),
+            String.valueOf(profile.getTotalDeaths()),
+            String.format("%.2f", profile.getKdaRatio())
         ), false);
 
-        source.sendSuccess(() -> Component.literal(
-            String.format("§e主要战斗风格/Dominant Style: §f%s", profile.getDominantStyle().getDisplayName())
+        source.sendSuccess(() -> Component.translatable(
+            "adaptive_nemesis.command.memory.dominant_style",
+            profile.getDominantStyle().getDisplayName()
         ), false);
 
-        source.sendSuccess(() -> Component.literal(
-            String.format("§e近战/Melee: §f%d §e| 远程/Ranged: §f%d §e| 法术/Magic: §f%d",
-                profile.getKillStyleCount(NemesisMemorySystem.CombatStyle.MELEE),
-                profile.getKillStyleCount(NemesisMemorySystem.CombatStyle.RANGED),
-                profile.getKillStyleCount(NemesisMemorySystem.CombatStyle.MAGIC))
+        source.sendSuccess(() -> Component.translatable(
+            "adaptive_nemesis.command.memory.style_counts",
+            String.valueOf(profile.getKillStyleCount(NemesisMemorySystem.CombatStyle.MELEE)),
+            String.valueOf(profile.getKillStyleCount(NemesisMemorySystem.CombatStyle.RANGED)),
+            String.valueOf(profile.getKillStyleCount(NemesisMemorySystem.CombatStyle.MAGIC))
         ), false);
 
-        source.sendSuccess(() -> Component.literal(
-            String.format("§e常用武器/Most Used Weapon: §f%s", profile.getMostUsedWeapon())
+        source.sendSuccess(() -> Component.translatable(
+            "adaptive_nemesis.command.memory.most_used_weapon",
+            profile.getMostUsedWeapon()
         ), false);
 
-        source.sendSuccess(() -> Component.literal(
-            String.format("§e击杀最多/Most Killed: §f%s", profile.getMostKilledEntity())
+        source.sendSuccess(() -> Component.translatable(
+            "adaptive_nemesis.command.memory.most_killed",
+            profile.getMostKilledEntity()
         ), false);
 
-        source.sendSuccess(() -> Component.literal(
-            String.format("§e常见死因/Common Death Cause: §f%s", profile.getMostCommonDeathSource())
+        source.sendSuccess(() -> Component.translatable(
+            "adaptive_nemesis.command.memory.common_death",
+            profile.getMostCommonDeathSource()
         ), false);
 
-        source.sendSuccess(() -> Component.literal(
-            String.format("§e常见杀手/Common Killer: §f%s", profile.getMostCommonKiller())
+        source.sendSuccess(() -> Component.translatable(
+            "adaptive_nemesis.command.memory.common_killer",
+            profile.getMostCommonKiller()
         ), false);
 
-        source.sendSuccess(() -> Component.literal(
-            "§5========================"
+        source.sendSuccess(() -> Component.translatable(
+            "adaptive_nemesis.command.memory.footer"
         ), false);
 
         return 1;

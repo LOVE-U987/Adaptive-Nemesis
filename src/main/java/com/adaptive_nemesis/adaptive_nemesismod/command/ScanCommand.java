@@ -80,7 +80,7 @@ public class ScanCommand {
 
         // 确保执行者是玩家
         if (!(source.getEntity() instanceof ServerPlayer player)) {
-            source.sendFailure(Component.literal("§c此命令只能由玩家执行"));
+            source.sendFailure(Component.translatable("adaptive_nemesis.command.scan.player_only"));
             return 0;
         }
 
@@ -101,8 +101,8 @@ public class ScanCommand {
         );
 
         if (enemies.isEmpty()) {
-            source.sendSuccess(() -> Component.literal(
-                "§e在 " + range + " 格范围内没有找到敌对生物"
+            source.sendSuccess(() -> Component.translatable(
+                "adaptive_nemesis.command.scan.no_enemies", String.valueOf(range)
             ), false);
             return 1;
         }
@@ -110,13 +110,12 @@ public class ScanCommand {
         EnemyScalingHandler handler = EnemyScalingHandler.getInstance();
 
         // 发送标题
-        source.sendSuccess(() -> Component.literal(
-            "§6========== 周围敌人扫描结果 =========="
+        source.sendSuccess(() -> Component.translatable(
+            "adaptive_nemesis.command.scan.title"
         ), false);
-        source.sendSuccess(() -> Component.literal(
-            "§7扫描范围/Range: §f" + range + " §7格 | 发现敌人/Enemies: §f" + enemies.size() + " §7个"
+        source.sendSuccess(() -> Component.translatable(
+            "adaptive_nemesis.command.scan.info", String.valueOf(range), String.valueOf(enemies.size())
         ), false);
-        source.sendSuccess(() -> Component.literal(""), false);
 
         final int[] scaledCount = {0};
         for (Mob mob : enemies) {
@@ -132,14 +131,12 @@ public class ScanCommand {
         // 发送统计信息
         final int totalEnemies = enemies.size();
         final int finalScaledCount = scaledCount[0];
-        source.sendSuccess(() -> Component.literal(""), false);
-        source.sendSuccess(() -> Component.literal(
-            "§6========== Summary =========="
+        source.sendSuccess(() -> Component.translatable(
+            "adaptive_nemesis.command.scan.summary_title"
         ), false);
-        source.sendSuccess(() -> Component.literal(
-            "§7总敌人/Total: §f" + totalEnemies +
-            " §7| 已强化: §c" + finalScaledCount +
-            " §7| 未强化/Unscaled: §a" + (totalEnemies - finalScaledCount)
+        source.sendSuccess(() -> Component.translatable(
+            "adaptive_nemesis.command.scan.summary",
+            String.valueOf(totalEnemies), String.valueOf(finalScaledCount), String.valueOf(totalEnemies - finalScaledCount)
         ), false);
 
         return enemies.size();
@@ -155,12 +152,14 @@ public class ScanCommand {
      */
     private static void sendMobInfo(CommandSourceStack source, Mob mob, boolean isScaled, double multiplier) {
         String name = mob.getName().getString();
-        String status = isScaled ? "§c[已强化]" : "§a[未强化]";
+        String status = isScaled ? 
+            Component.translatable("adaptive_nemesis.command.scan.status_scaled").getString() : 
+            Component.translatable("adaptive_nemesis.command.scan.status_unscaled").getString();
 
         // 基础信息行
         source.sendSuccess(() -> Component.literal(
             "§e" + name + " " + status +
-            (isScaled ? " §7倍率/Multiplier: §f" + DF.format(multiplier) + "x" : "")
+            (isScaled ? " " + Component.translatable("adaptive_nemesis.command.scan.multiplier_prefix").getString() + DF.format(multiplier) + "x" : "")
         ), false);
 
         if (!isScaled) {
@@ -198,55 +197,45 @@ public class ScanCommand {
         double originalToughness = toughnessAttr != null && toughnessAttr.getBaseValue() > 0 ? currentToughness / multiplier : 0;
 
         // 发送详细属性对比
-        sendAttributeLine(source, "血量/HP", originalHealth, currentHealth, true);
-        sendAttributeLine(source, "攻击/Damage", originalDamage, currentDamage, true);
-        sendAttributeLine(source, "护甲/Armor", originalArmor, currentArmor, true);
+        sendAttributeLine(source, "adaptive_nemesis.command.scan.attr_hp", originalHealth, currentHealth, true);
+        sendAttributeLine(source, "adaptive_nemesis.command.scan.attr_damage", originalDamage, currentDamage, true);
+        sendAttributeLine(source, "adaptive_nemesis.command.scan.attr_armor", originalArmor, currentArmor, true);
 
         // 移速特殊处理
-        source.sendSuccess(() -> Component.literal(
-            "  §7移速/Speed: §f" + DF.format(currentSpeed) +
-            (Config.FIX_SPEED_BONUS_TO_ZERO.get() ? " §7(§e已固定/Fixed§7)" : "")
-        ), false);
+        source.sendSuccess(() -> {
+            String speedText = "  §7" + Component.translatable("adaptive_nemesis.command.scan.attr_speed").getString() + ": §f" + DF.format(currentSpeed);
+            if (Config.FIX_SPEED_BONUS_TO_ZERO.get()) {
+                speedText += " §7(§e" + Component.translatable("adaptive_nemesis.command.scan.speed_fixed").getString() + "§7)";
+            }
+            return Component.literal(speedText);
+        }, false);
 
         // 攻速和韧性可能为0，特殊显示
-        sendAttributeLine(source, "攻速", originalAttackSpeed, currentAttackSpeed, false);
-        sendAttributeLine(source, "韧性", originalToughness, currentToughness, false);
+        sendAttributeLine(source, "adaptive_nemesis.command.scan.attr_attack_speed", originalAttackSpeed, currentAttackSpeed, false);
+        sendAttributeLine(source, "adaptive_nemesis.command.scan.attr_toughness", originalToughness, currentToughness, false);
 
         // 显示当前生命值
-        source.sendSuccess(() -> Component.literal(
-            "  §7当前生命/Current HP: §f" + DF.format(mob.getHealth()) + " §7/ §f" + DF.format(currentHealth)
+        source.sendSuccess(() -> Component.translatable(
+            "adaptive_nemesis.command.scan.current_hp", DF.format(mob.getHealth()), DF.format(currentHealth)
         ), false);
-
-        source.sendSuccess(() -> Component.literal(""), false);
     }
 
     /**
      * 发送属性对比行
      *
      * @param source 命令源
-     * @param name 属性名称
+     * @param attrKey 属性翻译键
      * @param original 原始值
      * @param current 当前值
      * @param showPercent 是否显示百分比
      */
-    private static void sendAttributeLine(CommandSourceStack source, String name, double original, double current, boolean showPercent) {
-        // 添加英文翻译映射
-        String nameEn = switch (name) {
-            case "血量/HP" -> "HP";
-            case "攻击/Damage" -> "Damage";
-            case "护甲/Armor" -> "Armor";
-            case "攻速/Atk Speed" -> "Atk Speed";
-            case "韧性/Toughness" -> "Toughness";
-            default -> name;
-        };
+    private static void sendAttributeLine(CommandSourceStack source, String attrKey, double original, double current, boolean showPercent) {
         if (original <= 0 && current <= 0) {
-            source.sendSuccess(() -> Component.literal(
-                "  §7" + name + ": §7无 §7[N/A]"
-            ), false);
+            source.sendSuccess(() -> Component.translatable("adaptive_nemesis.command.scan.attr_none",
+                Component.translatable(attrKey)), false);
         } else if (original <= 0) {
-            source.sendSuccess(() -> Component.literal(
-                "  §7" + name + ": §c" + DF.format(current) + " §7(§e新增/New§7)"
-            ), false);
+            source.sendSuccess(() -> Component.translatable("adaptive_nemesis.command.scan.attr_new",
+                Component.translatable(attrKey), DF.format(current)), false);
         } else {
             final String percentStr;
             if (showPercent) {
@@ -255,9 +244,8 @@ public class ScanCommand {
             } else {
                 percentStr = "";
             }
-            source.sendSuccess(() -> Component.literal(
-                "  §7" + name + ": §a" + DF.format(original) + " §7-> §c" + DF.format(current) + percentStr
-            ), false);
+            source.sendSuccess(() -> Component.translatable("adaptive_nemesis.command.scan.attr_scaled",
+                Component.translatable(attrKey), DF.format(original), DF.format(current), percentStr), false);
         }
     }
 }
