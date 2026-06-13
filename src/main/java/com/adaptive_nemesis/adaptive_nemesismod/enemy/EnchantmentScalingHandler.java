@@ -22,7 +22,7 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.tags.ItemTags;
 import net.minecraft.tags.TagKey;
-import net.minecraft.world.DifficultyInstance;
+import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.Mob;
@@ -33,7 +33,6 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.item.enchantment.Enchantment;
 import net.minecraft.world.item.enchantment.Enchantments;
-import net.minecraft.world.phys.AABB;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.neoforge.event.entity.living.FinalizeSpawnEvent;
 
@@ -180,20 +179,26 @@ public class EnchantmentScalingHandler {
 
     /**
      * 获取当前难度倍率
+     * ⚠️ 注意：此方法在 FinalizeSpawnEvent 中调用，那时实体所在区块可能尚未完全生成。
+     * 使用 getEntitiesOfClass + AABB 会触发范围内其他区块的加载，与正在进行的世界生成形成死锁。
+     * 改用玩家列表迭代 + 距离检查，不会触发新的区块加载。
      */
     private double getDifficultyMultiplier(Mob mob) {
         if (!(mob.level() instanceof ServerLevel serverLevel)) {
             return 1.0;
         }
 
-        // 获取附近玩家的强度
+        // 获取附近玩家的强度（安全遍历玩家列表，不触发区块加载）
         double range = Config.AREA_SYNC_RANGE.get() * 16;
-        AABB searchBox = new AABB(
-            mob.getX() - range, mob.getY() - range, mob.getZ() - range,
-            mob.getX() + range, mob.getY() + range, mob.getZ() + range
-        );
+        double rangeSq = range * range;
+        List<ServerPlayer> nearbyPlayers = new ArrayList<>();
 
-        List<ServerPlayer> nearbyPlayers = serverLevel.getEntitiesOfClass(ServerPlayer.class, searchBox);
+        for (ServerPlayer player : serverLevel.getServer().getPlayerList().getPlayers()) {
+            if (player.level() == serverLevel && player.distanceToSqr(mob) <= rangeSq) {
+                nearbyPlayers.add(player);
+            }
+        }
+
         if (nearbyPlayers.isEmpty()) {
             return 1.0;
         }
@@ -226,8 +231,6 @@ public class EnchantmentScalingHandler {
         float enchantChance = calculateEnchantChance(difficultyMultiplier);
         int enchantLevel = calculateEnchantLevel(difficultyMultiplier);
 
-        DifficultyInstance difficulty = mob.level().getCurrentDifficultyAt(mob.blockPosition());
-
         // 判断该生物是否能使用装备（手持物品+盔甲）
         // 只有僵尸类、骷髅类这类有手的人形敌对生物才配发装备
         // 不然苦力怕、蜘蛛、史莱姆穿盔甲锄头太抽象了 😂
@@ -249,7 +252,7 @@ public class EnchantmentScalingHandler {
             ItemStack stack = mob.getItemBySlot(slot);
             if (stack.isEmpty()) {
                 // 有一定概率为怪物生成装备（如果原本没有）
-                if (shouldGrantEquipment(difficultyMultiplier, slot, difficulty)) {
+                if (shouldGrantEquipment(difficultyMultiplier, slot)) {
                     stack = createEquipmentForSlot(mob, slot, difficultyMultiplier, serverLevel);
                     if (!stack.isEmpty()) {
                         mob.setItemSlot(slot, stack);
@@ -334,7 +337,7 @@ public class EnchantmentScalingHandler {
     /**
      * 判断是否应该给怪物生成装备（从Config读取参数）
      */
-    private boolean shouldGrantEquipment(double difficultyMultiplier, EquipmentSlot slot, DifficultyInstance difficulty) {
+    private boolean shouldGrantEquipment(double difficultyMultiplier, EquipmentSlot slot) {
         float baseChance = Config.EQUIPMENT_BASE_CHANCE.get().floatValue();
         float chancePerDifficulty = Config.EQUIPMENT_CHANCE_PER_DIFFICULTY.get().floatValue();
         float totalChance = shouldGrantEquipmentChance(difficultyMultiplier, slot == EquipmentSlot.MAINHAND, baseChance, chancePerDifficulty);
@@ -389,12 +392,10 @@ public class EnchantmentScalingHandler {
      */
     private ItemStack createEquipmentForSlot(Mob mob, EquipmentSlot slot, double difficultyMultiplier, ServerLevel serverLevel) {
         int tier = getEquipmentTier(difficultyMultiplier);
+        double damageCap = getDynamicDamageCap(difficultyMultiplier);
 
         ItemStack vanillaStack = switch (slot) {
-            case MAINHAND -> {
-                Item[] weapons = getWeaponsByTier()[tier];
-                yield new ItemStack(weapons[random.nextInt(weapons.length)]);
-            }
+            case MAINHAND -> createSafeWeapon(tier, damageCap);
             case OFFHAND -> random.nextBoolean() ? new ItemStack(Items.SHIELD) : ItemStack.EMPTY;
             case HEAD -> new ItemStack(getArmorByTier()[tier][0]);
             case CHEST -> new ItemStack(getArmorByTier()[tier][1]);
@@ -405,7 +406,7 @@ public class EnchantmentScalingHandler {
 
         // 尝试用其他模组的装备替换原版装备
         if (!vanillaStack.isEmpty()) {
-            ItemStack modStack = tryGetModEquipment(serverLevel, slot);
+            ItemStack modStack = tryGetModEquipment(serverLevel, slot, difficultyMultiplier, damageCap);
             if (!modStack.isEmpty()) {
                 return modStack;
             }
@@ -417,12 +418,15 @@ public class EnchantmentScalingHandler {
     /**
      * 尝试从其他模组获取装备
      * 通过扫描物品标签注册表，找到其他模组添加的装备
+     * 主手武器会检查动态伤害上限，超模武器被过滤掉
      *
      * @param level 服务端世界
      * @param slot 装备槽位
+     * @param difficultyMultiplier 当前难度倍率
+     * @param damageCap 动态武器伤害上限
      * @return 模组装备，如果没有合适的则返回空
      */
-    private ItemStack tryGetModEquipment(ServerLevel level, EquipmentSlot slot) {
+    private ItemStack tryGetModEquipment(ServerLevel level, EquipmentSlot slot, double difficultyMultiplier, double damageCap) {
         float modChance = Config.EQUIPMENT_MOD_COMPAT_CHANCE.get().floatValue();
         if (random.nextFloat() >= modChance) {
             return ItemStack.EMPTY;
@@ -451,12 +455,23 @@ public class EnchantmentScalingHandler {
                 }
             }
         } else if (slot == EquipmentSlot.MAINHAND) {
-            // 主手：从剑和斧标签中收集模组武器（跳过无效物品）
+            // 主手：从剑和斧标签中收集模组武器，检查伤害上限
             for (Item item : itemRegistry) {
                 boolean isWeapon = item.builtInRegistryHolder().is(ItemTags.SWORDS)
                     || item.builtInRegistryHolder().is(ItemTags.AXES);
                 if (isWeapon && !isVanillaItem(item) && isValidEquipmentItem(item)) {
-                    modItems.add(item);
+                    // 检查武器伤害是否超过动态上限
+                    ItemStack testStack = new ItemStack(item);
+                    if (getWeaponDamage(testStack) <= damageCap) {
+                        modItems.add(item);
+                    } else if (Config.ENABLE_DEBUG_LOG.get()) {
+                        AdaptiveNemesisMod.LOGGER.debug(
+                            "⛔ 过滤超模武器: {} (伤害={}, 上限={})",
+                            BuiltInRegistries.ITEM.getKey(item),
+                            String.format("%.1f", getWeaponDamage(testStack)),
+                            String.format("%.1f", damageCap)
+                        );
+                    }
                 }
             }
         } else if (slot == EquipmentSlot.OFFHAND) {
@@ -595,44 +610,56 @@ public class EnchantmentScalingHandler {
     }
 
     /**
-     * 获取怪物类型
+     * 获取怪物类型（用于日志输出）
      */
     private String getMobType(Mob mob) {
-        String name = mob.getType().getDescriptionId().toLowerCase();
-        if (name.contains("zombie")) return "zombie";
-        if (name.contains("skeleton")) return "skeleton";
-        if (name.contains("spider")) return "spider";
-        if (name.contains("creeper")) return "creeper";
-        return "generic";
+        ResourceLocation id = EntityType.getKey(mob.getType());
+        return id != null ? id.toString() : "unknown";
     }
 
     /**
-     * 判断生物是否为人形生物（有手能拿武器）
+     * 判断生物是否为人形生物（有手能拿武器/穿盔甲）
      * 
-     * 只有人形敌对生物才应该被给予武器/盾牌，
-     * 蜘蛛、苦力怕、史莱姆等非人形生物没有手拿武器。
-     * 
-     * 判断依据：
-     * - 僵尸类（zombie）：僵尸、尸壳、溺尸、僵尸村民等 ✅
-     * - 骷髅类（skeleton）：骷髅、凋零骷髅、流浪者等 ✅
-     * - 蜘蛛类（spider）：蜘蛛、洞穴蜘蛛 ❌
-     * - 苦力怕类（creeper）：苦力怕 ❌
-     * - 通用型（generic）：如唤魔者、卫道士等 ✅（有手的人形敌对生物）
+     * 精准判定规则：
+     * - 僵尸系：僵尸、尸壳、溺尸、僵尸村民、僵尸猪灵 ✅
+     * - 骷髅系：骷髅、流浪者、凋零骷髅、沼骸 ✅
+     * - 灾厄村民（有手的）：卫道士、掠夺者、唤魔者、幻术师 ✅
+     * - 猪灵系：猪灵、猪灵蛮兵 ✅
+     * - 其他非人形生物（蜘蛛、苦力怕、女巫、末影人、幻翼等）：❌
      *
      * @param mob 目标生物
      * @return 如果为人形生物返回 true
      */
     private boolean isHumanoidMob(Mob mob) {
-        String mobType = getMobType(mob);
-        // 僵尸、骷髅及其变种是人形生物，可以拿武器
-        if ("zombie".equals(mobType) || "skeleton".equals(mobType)) {
+        ResourceLocation entityId = EntityType.getKey(mob.getType());
+        if (entityId == null) return false;
+        String id = entityId.toString();
+
+        // 僵尸及其变种 - 经典持械单位 💀
+        if (id.equals("minecraft:zombie") || id.equals("minecraft:husk") ||
+            id.equals("minecraft:drowned") || id.equals("minecraft:zombie_villager") ||
+            id.equals("minecraft:zombified_piglin")) {
             return true;
         }
-        // 通用类型（卫道士、唤魔者、掠夺者等灾厄村民）也是人形
-        if ("generic".equals(mobType)) {
+
+        // 骷髅及其变种 - 弓箭手军团 🏹
+        if (id.equals("minecraft:skeleton") || id.equals("minecraft:stray") ||
+            id.equals("minecraft:wither_skeleton") || id.equals("minecraft:bogged")) {
             return true;
         }
-        // 蜘蛛、苦力怕不是人形，不给武器
+
+        // 有手的灾厄村民 - 一条区的武装分子 ⚔️
+        if (id.equals("minecraft:vindicator") || id.equals("minecraft:pillager") ||
+            id.equals("minecraft:evoker") || id.equals("minecraft:illusioner")) {
+            return true;
+        }
+
+        // 猪灵系 - 下界武斗派 🔥
+        if (id.equals("minecraft:piglin") || id.equals("minecraft:piglin_brute")) {
+            return true;
+        }
+
+        // 其他统统不发装备，你们不配 🤷
         return false;
     }
 
@@ -779,5 +806,74 @@ public class EnchantmentScalingHandler {
         if (Double.isNaN(currentHealth) || Double.isInfinite(currentHealth) || currentHealth <= 0) {
             mob.setHealth(mob.getMaxHealth());
         }
+    }
+
+    // ==================== 武器动态伤害上限 ====================
+
+    /**
+     * 获取武器的攻击伤害值
+     * 通过物品的 ATTACK_DAMAGE 属性修饰器计算实际伤害
+     *
+     * @param stack 武器物品
+     * @return 武器总伤害（含基础空手伤害1.0）
+     */
+    private double getWeaponDamage(ItemStack stack) {
+        var attrModifiers = stack.getAttributeModifiers();
+        for (var entry : attrModifiers.modifiers()) {
+            if (entry.attribute().is(Attributes.ATTACK_DAMAGE)) {
+                // 1.0 是玩家空手基础伤害，加上武器修饰器得到总伤害
+                return 1.0 + entry.modifier().amount();
+            }
+        }
+        return 1.0; // 无伤害修饰器，等于空手伤害
+    }
+
+    /**
+     * 计算动态武器伤害上限
+     * 基于当前难度倍率，玩家越强则上限越高
+     *
+     * @param difficultyMultiplier 当前难度倍率
+     * @return 允许的最大武器伤害值
+     */
+    private double getDynamicDamageCap(double difficultyMultiplier) {
+        double baseCap = Config.WEAPON_DAMAGE_BASE_CAP.get();
+        double perDifficulty = Config.WEAPON_DAMAGE_CAP_PER_DIFFICULTY.get();
+        double maxCap = Config.WEAPON_DAMAGE_MAX_CAP.get();
+
+        // 动态上限 = 基础值 + (倍率-1) * 每倍率增量，不超过绝对上限
+        double cap = baseCap + (difficultyMultiplier - 1.0) * perDifficulty;
+        return Math.min(cap, maxCap);
+    }
+
+    /**
+     * 根据动态伤害上限创建安全的武器
+     * 从当前品质等级向下尝试，直到找到伤害不超过上限的武器
+     * 如果全不行就掏木剑保底 🤷
+     *
+     * @param tier 期望的品质等级
+     * @param damageCap 动态伤害上限
+     * @return 符合伤害上限的武器
+     */
+    private ItemStack createSafeWeapon(int tier, double damageCap) {
+        for (int t = tier; t >= 0; t--) {
+            Item[] weapons = getWeaponsByTier()[t];
+            // 随机打乱武器顺序，避免每次都选同一把
+            List<Item> shuffled = new ArrayList<>(java.util.Arrays.asList(weapons));
+            java.util.Collections.shuffle(shuffled, random);
+            for (Item weapon : shuffled) {
+                ItemStack stack = new ItemStack(weapon);
+                if (getWeaponDamage(stack) <= damageCap) {
+                    return stack;
+                }
+            }
+        }
+        // 保底：木剑（1+4=5点伤害，不会超过任何合理上限）
+        if (Config.ENABLE_DEBUG_LOG.get()) {
+            AdaptiveNemesisMod.LOGGER.warn(
+                "⚠️ 所有品质等级的武器均超过伤害上限，使用木剑保底 (cap={})",
+                String.format("%.1f", damageCap)
+            );
+        }
+        return new ItemStack(Items.WOODEN_SWORD);
     }
 }

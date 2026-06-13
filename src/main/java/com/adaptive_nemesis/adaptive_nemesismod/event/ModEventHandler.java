@@ -13,6 +13,7 @@ import com.adaptive_nemesis.adaptive_nemesismod.enemy.WorldStageManager;
 import com.adaptive_nemesis.adaptive_nemesismod.memory.NemesisMemorySystem;
 import com.adaptive_nemesis.adaptive_nemesismod.player.PlayerStrengthEvaluator;
 import com.adaptive_nemesis.adaptive_nemesismod.protection.NewbieProtectionHandler;
+import com.adaptive_nemesis.adaptive_nemesismod.watchdog.WatchdogService;
 
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
@@ -112,6 +113,9 @@ public class ModEventHandler {
 
         // 清理缓存数据
         PlayerStrengthEvaluator.getInstance().clearAllCache();
+
+        // 停止看门狗服务
+        WatchdogService.getInstance().stop();
     }
 
     /**
@@ -125,15 +129,39 @@ public class ModEventHandler {
             return;
         }
 
-        // 处理Boss生成
-        if (event.getEntity() instanceof Mob mob) {
-            // 检查黑名单 - 被ban的实体跳过Boss限伤和Boss加成
-            if (EntityFilterHelper.getInstance().isBlocked(mob)) {
-                return;
-            }
+        try {
+            // 处理Boss生成
+            if (event.getEntity() instanceof Mob mob) {
+                // 检查黑名单 - 被ban的实体跳过Boss限伤和Boss加成
+                if (EntityFilterHelper.getInstance().isBlocked(mob)) {
+                    return;
+                }
 
-            if (BossDamageCapHandler.getInstance().isBoss(mob)) {
-                BossDamageCapHandler.getInstance().applyBossBuffs(mob);
+                if (BossDamageCapHandler.getInstance().isBoss(mob)) {
+                    // 看门狗：记录 Boss buff 处理状态
+                    if (Config.ENABLE_WATCHDOG.get()) {
+                        WatchdogService.getInstance().updateBossBuffProcessing(
+                            mob.getName().getString(),
+                            mob.getType().getDescriptionId(),
+                            String.format("[%.0f, %.0f, %.0f]", mob.getX(), mob.getY(), mob.getZ()),
+                            mob.level().dimension().location().toString(),
+                            "preApply"
+                        );
+                    }
+                    BossDamageCapHandler.getInstance().applyBossBuffs(mob);
+                }
+            }
+        } catch (Exception e) {
+            // 🛡️ 防御性异常捕获：避免与第三方模组（如 Integrated Cataclysm）交互时
+            // 的未预期异常传播到事件总线导致服务端崩溃或死锁
+            AdaptiveNemesisMod.LOGGER.error(
+                "处理实体 {} (类型: {}) 加入世界事件时发生异常: {}",
+                event.getEntity().getName().getString(),
+                event.getEntity().getType().getDescriptionId(),
+                e.getMessage()
+            );
+            if (Config.ENABLE_DEBUG_LOG.get()) {
+                AdaptiveNemesisMod.LOGGER.error("异常堆栈:", e);
             }
         }
     }
@@ -191,6 +219,11 @@ public class ModEventHandler {
     @SubscribeEvent
     public void onServerTick(ServerTickEvent.Post event) {
         serverTickCount++;
+
+        // 看门狗：更新服务端 tick 时间戳
+        if (Config.ENABLE_WATCHDOG.get()) {
+            WatchdogService.getInstance().updateServerTick();
+        }
 
         // 每600 tick（30秒）检查一次不活跃玩家的浮动倍率
         if (serverTickCount % 600 == 0) {

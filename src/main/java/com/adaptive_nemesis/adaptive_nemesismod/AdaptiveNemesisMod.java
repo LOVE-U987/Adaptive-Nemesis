@@ -14,6 +14,7 @@ import com.adaptive_nemesis.adaptive_nemesismod.memory.NemesisMemorySystem;
 import com.adaptive_nemesis.adaptive_nemesismod.network.ModNetworking;
 import com.adaptive_nemesis.adaptive_nemesismod.player.PlayerStrengthEvaluator;
 import com.adaptive_nemesis.adaptive_nemesismod.protection.NewbieProtectionHandler;
+import com.adaptive_nemesis.adaptive_nemesismod.watchdog.WatchdogService;
 import com.mojang.logging.LogUtils;
 
 import net.neoforged.api.distmarker.Dist;
@@ -133,6 +134,12 @@ public class AdaptiveNemesisMod {
         event.enqueueWork(() -> {
             PlayerStrengthEvaluator.getInstance().initialize();
             NemesisMemorySystem.getInstance().initialize();
+            
+            // 启动看门狗服务（配置已加载完毕，可以安全读取 Config 值）
+            if (Config.ENABLE_WATCHDOG.get()) {
+                WatchdogService.getInstance().start();
+            }
+            
             LOGGER.info("✅ 各子系统初始化完成！");
         });
         

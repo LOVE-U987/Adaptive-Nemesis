@@ -330,6 +330,23 @@ public class Config {
      */
     public static final ModConfigSpec.DoubleValue EQUIPMENT_MOD_COMPAT_CHANCE;
 
+    // ==================== 武器动态伤害上限配置 ====================
+
+    /**
+     * 武器伤害基础上限
+     */
+    public static final ModConfigSpec.DoubleValue WEAPON_DAMAGE_BASE_CAP;
+
+    /**
+     * 每单位难度倍率增加的伤害上限
+     */
+    public static final ModConfigSpec.DoubleValue WEAPON_DAMAGE_CAP_PER_DIFFICULTY;
+
+    /**
+     * 武器伤害绝对上限
+     */
+    public static final ModConfigSpec.DoubleValue WEAPON_DAMAGE_MAX_CAP;
+
     // ==================== 史诗战斗缩放配置 ====================
 
     /**
@@ -425,6 +442,28 @@ public class Config {
      * 日志输出级别 (OFF, ERROR, WARN, INFO, DEBUG)
      */
     public static final ModConfigSpec.ConfigValue<String> LOG_OUTPUT_LEVEL;
+
+    // ==================== 看门狗服务配置 ====================
+
+    /**
+     * 是否启用看门狗服务 - 监控服务端线程卡死/死锁
+     */
+    public static final ModConfigSpec.BooleanValue ENABLE_WATCHDOG;
+
+    /**
+     * 看门狗检查间隔（秒）
+     */
+    public static final ModConfigSpec.IntValue WATCHDOG_CHECK_INTERVAL;
+
+    /**
+     * 看门狗警告阈值（秒）- 超过此时间无响应输出警告
+     */
+    public static final ModConfigSpec.IntValue WATCHDOG_WARN_THRESHOLD;
+
+    /**
+     * 看门狗严重阈值（秒）- 超过此时间输出线程堆栈
+     */
+    public static final ModConfigSpec.IntValue WATCHDOG_CRITICAL_THRESHOLD;
 
     // ==================== 静态初始化块 ====================
     
@@ -735,6 +774,26 @@ public class Config {
 
         BUILDER.pop();
 
+        // ==================== 武器动态伤害上限配置 ====================
+        BUILDER.push("weaponDamageCap");
+
+        WEAPON_DAMAGE_BASE_CAP = BUILDER
+            .comment("武器伤害基础上限 (默认12.0 = 6颗心) - 最低难度时的武器伤害上限")
+            .comment("Base weapon damage cap (default 12.0 = 6 hearts) - at minimum difficulty")
+            .defineInRange("weaponDamageBaseCap", 12.0, 1.0, 100.0);
+
+        WEAPON_DAMAGE_CAP_PER_DIFFICULTY = BUILDER
+            .comment("每单位难度倍率增加的伤害上限 (默认3.0 = 每个倍率+3点伤害)")
+            .comment("Damage cap increase per difficulty unit (default 3.0 = +3 damage per unit)")
+            .defineInRange("weaponDamageCapPerDifficulty", 3.0, 0.0, 50.0);
+
+        WEAPON_DAMAGE_MAX_CAP = BUILDER
+            .comment("武器伤害绝对上限 (默认40.0 = 20颗心) - 无论难度多高都不超过此值")
+            .comment("Absolute weapon damage cap (default 40.0 = 20 hearts) - hard upper limit")
+            .defineInRange("weaponDamageMaxCap", 40.0, 1.0, 500.0);
+
+        BUILDER.pop();
+
         // 史诗战斗缩放配置
         BUILDER.push("epicFightScaling");
 
@@ -842,7 +901,32 @@ public class Config {
             .comment("日志输出级别: OFF(关闭), ERROR(错误), WARN(警告), INFO(信息), DEBUG(调试)")
             .comment("Log output level: OFF, ERROR, WARN, INFO, DEBUG")
             .define("logOutputLevel", "INFO");
-        
+
+        // ==================== 看门狗配置 ====================
+        BUILDER.push("watchdog");
+
+        ENABLE_WATCHDOG = BUILDER
+            .comment("是否启用看门狗服务 - 监控服务端线程是否卡死/死锁")
+            .comment("Enable watchdog service - monitors server thread for hangs/deadlocks")
+            .define("enableWatchdog", true);
+
+        WATCHDOG_CHECK_INTERVAL = BUILDER
+            .comment("看门狗检查间隔（秒）- 每多少秒检查一次服务端活性")
+            .comment("Watchdog check interval (seconds) - how often to check server activity")
+            .defineInRange("watchdogCheckInterval", 5, 1, 30);
+
+        WATCHDOG_WARN_THRESHOLD = BUILDER
+            .comment("看门狗警告阈值（秒）- 服务端超过此时间无响应则输出警告")
+            .comment("Watchdog warning threshold (seconds) - warn if server unresponsive for this long")
+            .defineInRange("watchdogWarnThreshold", 30, 10, 120);
+
+        WATCHDOG_CRITICAL_THRESHOLD = BUILDER
+            .comment("看门狗严重阈值（秒）- 超过此时间输出线程堆栈用于死锁分析")
+            .comment("Watchdog critical threshold (seconds) - dump thread stack for deadlock analysis")
+            .defineInRange("watchdogCriticalThreshold", 60, 30, 300);
+
+        BUILDER.pop();
+
         BUILDER.pop();
     }
 
