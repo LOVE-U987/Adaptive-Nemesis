@@ -17,18 +17,13 @@ import com.adaptive_nemesis.adaptive_nemesismod.protection.NewbieProtectionHandl
 import com.adaptive_nemesis.adaptive_nemesismod.watchdog.WatchdogService;
 import com.mojang.logging.LogUtils;
 
-import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.common.Mod;
 import net.neoforged.fml.config.ModConfig;
 import net.neoforged.fml.ModContainer;
 import net.neoforged.fml.event.config.ModConfigEvent;
 import net.neoforged.fml.event.lifecycle.FMLCommonSetupEvent;
-import net.neoforged.fml.loading.FMLEnvironment;
 import net.neoforged.neoforge.common.NeoForge;
-
-import com.adaptive_nemesis.adaptive_nemesismod.client.AdaptiveNemesisConfigScreen;
-import net.neoforged.neoforge.client.gui.IConfigScreenFactory;
 
 import org.apache.logging.log4j.Level;
 import org.apache.logging.log4j.core.LoggerContext;
@@ -82,16 +77,6 @@ public class AdaptiveNemesisMod {
         
         // 注册配置
         modContainer.registerConfig(ModConfig.Type.COMMON, Config.SPEC);
-
-        // 注册游戏内配置界面（仅客户端）
-        // 使用自定义配置界面 AdaptiveNemesisConfigScreen，支持流畅动画和所有配置分类
-        if (FMLEnvironment.dist == Dist.CLIENT) {
-            modContainer.registerExtensionPoint(
-                IConfigScreenFactory.class,
-                (container, screen) -> new AdaptiveNemesisConfigScreen(screen)
-            );
-            LOGGER.info("📋 已注册自定义配置界面，可在 Mod 列表中点击「配置」按钮打开");
-        }
 
         // 注册游戏事件处理器
         registerEventHandlers();
