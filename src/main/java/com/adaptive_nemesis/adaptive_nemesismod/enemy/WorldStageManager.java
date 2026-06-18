@@ -11,6 +11,7 @@ import com.adaptive_nemesis.adaptive_nemesismod.data.WorldStageSavedData;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.entity.LivingEntity;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.neoforge.event.entity.living.LivingDeathEvent;
@@ -120,7 +121,8 @@ public class WorldStageManager {
         }
 
         // 只有玩家击杀才计数
-        if (!(event.getSource().getEntity() instanceof ServerPlayer)) {
+        DamageSource source = event.getSource();
+        if (source == null || !(source.getEntity() instanceof ServerPlayer)) {
             return;
         }
 

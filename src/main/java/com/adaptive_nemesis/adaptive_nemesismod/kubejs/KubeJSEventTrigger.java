@@ -8,7 +8,9 @@ import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.Mob;
 
 import java.lang.reflect.Method;
+import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * KubeJS 事件触发器
@@ -25,7 +27,13 @@ public class KubeJSEventTrigger {
     private static Boolean initializerAvailable = null;
 
     /**
+     * 反射方法缓存 - 避免每次调用都执行 Class.forName + getMethod
+     */
+    private static final Map<String, Method> METHOD_CACHE = new ConcurrentHashMap<>();
+
+    /**
      * 通过反射调用 KubeJSInitializer 的静态方法
+     * 使用 METHOD_CACHE 缓存 Method 对象以提升性能
      *
      * @param methodName 方法名
      * @param paramTypes 参数类型数组
@@ -46,8 +54,12 @@ public class KubeJSEventTrigger {
         if (!initializerAvailable) return null;
 
         try {
-            Class<?> clazz = Class.forName(INITIALIZER_CLASS);
-            Method method = clazz.getMethod(methodName, paramTypes);
+            Method method = METHOD_CACHE.get(methodName);
+            if (method == null) {
+                Class<?> clazz = Class.forName(INITIALIZER_CLASS);
+                method = clazz.getMethod(methodName, paramTypes);
+                METHOD_CACHE.put(methodName, method);
+            }
             return method.invoke(null, args);
         } catch (Exception e) {
             AdaptiveNemesisMod.LOGGER.warn("反射调用 {} 失败: {}", methodName, e.getMessage());

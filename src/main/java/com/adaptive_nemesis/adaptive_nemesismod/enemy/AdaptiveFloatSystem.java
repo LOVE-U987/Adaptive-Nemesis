@@ -7,7 +7,9 @@ import java.util.UUID;
 import com.adaptive_nemesis.adaptive_nemesismod.AdaptiveNemesisMod;
 import com.adaptive_nemesis.adaptive_nemesismod.Config;
 
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.phys.Vec3;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.neoforge.event.entity.living.LivingDeathEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerEvent;
@@ -71,7 +73,7 @@ public class AdaptiveFloatSystem {
     
     /**
      * 获取默认浮动倍率（用于没有特定玩家数据的情况）
-     * 
+     *
      * @return 默认浮动倍率
      */
     public double getFloatMultiplier() {
@@ -79,13 +81,40 @@ public class AdaptiveFloatSystem {
         if (playerFloatData.isEmpty()) {
             return 1.0;
         }
-        
+
         double total = 0.0;
         for (PlayerFloatData data : playerFloatData.values()) {
             total += data.getCurrentMultiplier();
         }
-        
+
         return total / playerFloatData.size();
+    }
+
+    /**
+     * 获取指定位置附近玩家的平均浮动倍率
+     *
+     * 与 {@link EnemyScalingHandler#getNearbyPlayerStrength} 使用相同的玩家集合，
+     * 避免远处玩家浮动稀释本地难度。
+     *
+     * @param serverLevel 服务端世界
+     * @param center 中心位置
+     * @return 附近玩家的平均浮动倍率，无玩家时返回 1.0
+     */
+    public double getFloatMultiplier(ServerLevel serverLevel, Vec3 center) {
+        double range = Config.AREA_SYNC_RANGE.get() * 16;
+        double rangeSq = range * range;
+
+        double total = 0.0;
+        int count = 0;
+        for (ServerPlayer player : serverLevel.getServer().getPlayerList().getPlayers()) {
+            if (player.level() == serverLevel && player.distanceToSqr(center) <= rangeSq) {
+                PlayerFloatData data = playerFloatData.get(player.getUUID());
+                total += data != null ? data.getCurrentMultiplier() : 1.0;
+                count++;
+            }
+        }
+
+        return count > 0 ? total / count : 1.0;
     }
     
     /**
@@ -128,9 +157,13 @@ public class AdaptiveFloatSystem {
     }
     
     /**
-     * 处理玩家死亡事件
-     * 
-     * @param event 玩家死亡事件
+     * 处理玩家死亡后的浮动倍率调整
+     *
+     * 使用 {@link PlayerEvent.PlayerRespawnEvent} 而非 {@link net.minecraftforge.event.entity.living.LivingDeathEvent}
+     * 是为了确保玩家确实进入重生流程后再调整倍率，避免玩家死亡后立刻退出导致的数据不一致。
+     * 每个有效死亡最终都会触发一次重生事件，因此死亡连击统计不会丢失。
+     *
+     * @param event 玩家重生事件
      */
     @SubscribeEvent
     public void onPlayerDeath(PlayerEvent.PlayerRespawnEvent event) {

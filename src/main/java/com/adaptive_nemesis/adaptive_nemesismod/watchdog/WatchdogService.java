@@ -1,6 +1,7 @@
 package com.adaptive_nemesis.adaptive_nemesismod.watchdog;
 
 import com.adaptive_nemesis.adaptive_nemesismod.AdaptiveNemesisMod;
+import com.adaptive_nemesis.adaptive_nemesismod.Config;
 
 import java.lang.management.ManagementFactory;
 import java.lang.management.ThreadInfo;
@@ -62,14 +63,14 @@ public class WatchdogService {
     /** 上次被处理的实体维度 */
     private final AtomicReference<String> currentEntityDim = new AtomicReference<>("N/A");
 
-    /** 看门狗检查间隔（毫秒） */
-    private static final long CHECK_INTERVAL_MS = 5_000;
+    /** 看门狗检查间隔（毫秒）- 从配置读取 */
+    private volatile long checkIntervalMs = 5_000;
 
-    /** 警告阈值（毫秒）- 超过此时间无活动则记录警告日志 */
-    private static final long WARN_THRESHOLD_MS = 30_000;
+    /** 警告阈值（毫秒）- 从配置读取 */
+    private volatile long warnThresholdMs = 30_000;
 
-    /** 严重阈值（毫秒）- 超过此时间无活动则记录完整线程堆栈 */
-    private static final long CRITICAL_THRESHOLD_MS = 60_000;
+    /** 严重阈值（毫秒）- 从配置读取 */
+    private volatile long criticalThresholdMs = 60_000;
 
     /** 线程转储最小间隔（毫秒）- 避免同一卡死事件刷屏 */
     private static final long DUMP_COOLDOWN_MS = 120_000;
@@ -124,13 +125,34 @@ public class WatchdogService {
         }
         running = true;
 
+        // 从配置读取阈值并转换为毫秒（配置文件中单位为秒）
+        checkIntervalMs = Config.WATCHDOG_CHECK_INTERVAL.get() * 1_000L;
+        warnThresholdMs = Config.WATCHDOG_WARN_THRESHOLD.get() * 1_000L;
+        criticalThresholdMs = Config.WATCHDOG_CRITICAL_THRESHOLD.get() * 1_000L;
+
+        // 校验阈值关系，防止配置错误导致看门狗失效
+        if (warnThresholdMs >= criticalThresholdMs) {
+            AdaptiveNemesisMod.LOGGER.warn(
+                "🐕 看门狗配置异常：警告阈值({}ms) >= 严重阈值({}ms)，已自动将严重阈值调整为警告阈值+30秒",
+                warnThresholdMs, criticalThresholdMs
+            );
+            criticalThresholdMs = warnThresholdMs + 30_000L;
+        }
+        if (checkIntervalMs > warnThresholdMs) {
+            AdaptiveNemesisMod.LOGGER.warn(
+                "🐕 看门狗配置异常：检查间隔({}ms) > 警告阈值({}ms)，可能导致无法及时检测，已自动调整检查间隔",
+                checkIntervalMs, warnThresholdMs
+            );
+            checkIntervalMs = Math.max(1_000L, warnThresholdMs / 5);
+        }
+
         watchdogThread = new Thread(this::watchdogLoop, "AN-Watchdog");
         watchdogThread.setDaemon(true);
         watchdogThread.setPriority(Thread.MIN_PRIORITY);
         watchdogThread.start();
 
-        AdaptiveNemesisMod.LOGGER.info("🐕 看门狗服务已启动（检查间隔={}ms, 警告阈值={}ms）",
-            CHECK_INTERVAL_MS, WARN_THRESHOLD_MS);
+        AdaptiveNemesisMod.LOGGER.info("🐕 看门狗服务已启动（检查间隔={}ms, 警告阈值={}ms, 严重阈值={}ms）",
+            checkIntervalMs, warnThresholdMs, criticalThresholdMs);
     }
 
     /**
@@ -158,7 +180,7 @@ public class WatchdogService {
     private void watchdogLoop() {
         while (running) {
             try {
-                Thread.sleep(CHECK_INTERVAL_MS);
+                Thread.sleep(checkIntervalMs);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 break;
@@ -169,7 +191,7 @@ public class WatchdogService {
             long now = System.nanoTime();
             long elapsedMs = (now - lastActivityNanos.get()) / 1_000_000;
 
-            if (elapsedMs < WARN_THRESHOLD_MS) {
+            if (elapsedMs < warnThresholdMs) {
                 // 正常状态：如果之前卡死过，输出恢复日志
                 if (wasStuck) {
                     wasStuck = false;
@@ -197,15 +219,15 @@ public class WatchdogService {
             String entityPos = currentEntityPos.get();
             String entityDim = currentEntityDim.get();
 
-            if (elapsedMs < CRITICAL_THRESHOLD_MS) {
-                // 一级警告（30s-60s）：记录实体处理信息
+            if (elapsedMs < criticalThresholdMs) {
+                // 一级警告：记录实体处理信息
                 AdaptiveNemesisMod.LOGGER.warn(
                     "🐕 [看门狗-警告] 服务端已 {}ms 无响应！" +
                     "当前处理: 实体={}({}), 阶段={}, 位置={}, 维度={}",
                     elapsedMs, entityName, entityType, stage, entityPos, entityDim
                 );
             } else {
-                // 二级严重（60s+）：输出线程堆栈 + 锁信息
+                // 二级严重：输出线程堆栈 + 锁信息
                 long lastDump = lastDumpNanos.get();
                 long sinceLastDumpMs = (now - lastDump) / 1_000_000;
 
@@ -213,7 +235,7 @@ public class WatchdogService {
                 AdaptiveNemesisMod.LOGGER.error(
                     "🐕 [看门狗-严重] 服务端已 {}ms 无响应（> {}ms 严重阈值）！" +
                     "当前处理: 实体={}({}), 阶段={}, 位置={}, 维度={}",
-                    elapsedMs, CRITICAL_THRESHOLD_MS,
+                    elapsedMs, criticalThresholdMs,
                     entityName, entityType, stage, entityPos, entityDim
                 );
 

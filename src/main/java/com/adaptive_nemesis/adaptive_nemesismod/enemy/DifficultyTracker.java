@@ -8,6 +8,7 @@ import com.adaptive_nemesis.adaptive_nemesismod.AdaptiveNemesisMod;
 import com.adaptive_nemesis.adaptive_nemesismod.Config;
 
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.util.Mth;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.neoforge.event.tick.ServerTickEvent;
 
@@ -160,19 +161,29 @@ public class DifficultyTracker {
     }
 
     /**
-     * 应用Smoothstep缓动函数
-     * 使难度变化更自然，快速开始、缓慢结束
+     * 应用标准 Smoothstep 缓动函数
+     *
+     * 标准 Smoothstep 定义在 [0,1] 区间：
+     *   t = clamp(x, 0, 1)
+     *   smoothstep(t) = 3t² - 2t³
+     *
+     * 此处将配置中的 easingFactor 视为单步最大进度比例，
+     * 先对 factor 本身做 smoothstep，再乘以当前与目标之间的差值 delta，
+     * 使难度变化在起点/终点处速度接近 0，过渡更加自然。
+     *
+     * @param delta  当前值与目标值的差（target - current）
+     * @param factor 单步进度比例，通常取自配置 DIFFICULTY_SMOOTHING_FACTOR
+     * @return 缓动后的单步增量
      */
     private double applySmoothstep(double delta, double factor) {
-        // 计算标准化的进度 (0-1)
-        double progress = 1.0 - (Math.abs(delta) / (Math.abs(delta) + 1.0));
+        // 把 factor 限制在 [0,1]，作为标准 smoothstep 的输入 t
+        double t = Mth.clamp(factor, 0.0, 1.0);
 
-        // Smoothstep公式: 3t² - 2t³
-        double smoothedProgress = progress * progress * (3.0 - 2.0 * progress);
+        // 标准 Smoothstep 公式: 3t² - 2t³
+        double smoothedT = t * t * (3.0 - 2.0 * t);
 
-        // 缓动增量
-        double baseDelta = delta * factor;
-        return baseDelta * (0.5 + 0.5 * smoothedProgress);
+        // 用缓动后的进度比例作用于剩余差值
+        return delta * smoothedT;
     }
 
     /**

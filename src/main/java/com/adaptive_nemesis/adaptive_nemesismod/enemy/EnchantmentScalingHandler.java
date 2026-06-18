@@ -1,8 +1,10 @@
 package com.adaptive_nemesis.adaptive_nemesismod.enemy;
 
 import java.util.ArrayList;
+import java.util.EnumMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Random;
 import java.util.Set;
 
@@ -57,6 +59,16 @@ public class EnchantmentScalingHandler {
     private Item[][] armorByTier;
     private Item[][] weaponsByTier;
 
+    /**
+     * 模组装备与附魔候选缓存 - 在首次需要时构建，避免每次生成扫描整个注册表
+     */
+    private Map<EquipmentSlot, List<Item>> modEquipmentCache;
+    private List<Item> modMainHandWeaponsCache;
+    private List<Item> modShieldsCache;
+    private List<Item> modOffHandWeaponsCache;
+    private List<Holder.Reference<Enchantment>> modEnchantmentCache;
+    private boolean cachesBuilt = false;
+
     private Item[][] getArmorByTier() {
         if (armorByTier == null) {
             armorByTier = new Item[][] {
@@ -81,6 +93,75 @@ public class EnchantmentScalingHandler {
             };
         }
         return weaponsByTier;
+    }
+
+    /**
+     * 构建模组装备与附魔候选缓存
+     * 仅在服务端首次需要时执行一次，避免每次实体生成都扫描整个注册表
+     *
+     * @param level 服务端世界，用于获取注册表访问器
+     */
+    private synchronized void buildCaches(ServerLevel level) {
+        if (cachesBuilt) {
+            return;
+        }
+
+        Registry<Item> itemRegistry = level.registryAccess().registryOrThrow(Registries.ITEM);
+        Registry<Enchantment> enchantmentRegistry = level.registryAccess().registryOrThrow(Registries.ENCHANTMENT);
+
+        modEquipmentCache = new EnumMap<>(EquipmentSlot.class);
+        modEquipmentCache.put(EquipmentSlot.HEAD, new ArrayList<>());
+        modEquipmentCache.put(EquipmentSlot.CHEST, new ArrayList<>());
+        modEquipmentCache.put(EquipmentSlot.LEGS, new ArrayList<>());
+        modEquipmentCache.put(EquipmentSlot.FEET, new ArrayList<>());
+
+        modMainHandWeaponsCache = new ArrayList<>();
+        modShieldsCache = new ArrayList<>();
+        modOffHandWeaponsCache = new ArrayList<>();
+
+        TagKey<Item> shieldTag = TagKey.create(Registries.ITEM, ResourceLocation.withDefaultNamespace("shields"));
+
+        for (Item item : itemRegistry) {
+            if (isVanillaItem(item) || !isValidEquipmentItem(item)) {
+                continue;
+            }
+
+            Holder<Item> holder = item.builtInRegistryHolder();
+            if (holder.is(ItemTags.HEAD_ARMOR)) modEquipmentCache.get(EquipmentSlot.HEAD).add(item);
+            if (holder.is(ItemTags.CHEST_ARMOR)) modEquipmentCache.get(EquipmentSlot.CHEST).add(item);
+            if (holder.is(ItemTags.LEG_ARMOR)) modEquipmentCache.get(EquipmentSlot.LEGS).add(item);
+            if (holder.is(ItemTags.FOOT_ARMOR)) modEquipmentCache.get(EquipmentSlot.FEET).add(item);
+            if (holder.is(ItemTags.SWORDS) || holder.is(ItemTags.AXES)) {
+                modMainHandWeaponsCache.add(item);
+                modOffHandWeaponsCache.add(item);
+            }
+            if (holder.is(shieldTag)) {
+                modShieldsCache.add(item);
+            }
+        }
+
+        modEnchantmentCache = new ArrayList<>();
+        for (Enchantment enchant : enchantmentRegistry) {
+            ResourceKey<Enchantment> key = enchantmentRegistry.getResourceKey(enchant).orElse(null);
+            if (key == null) continue;
+            Holder.Reference<Enchantment> enchantHolder = enchantmentRegistry.getHolder(key).orElse(null);
+            if (enchantHolder == null) continue;
+            if (isDangerousEnchantment(enchantHolder)) continue;
+            modEnchantmentCache.add(enchantHolder);
+        }
+
+        cachesBuilt = true;
+
+        if (Config.ENABLE_DEBUG_LOG.get()) {
+            AdaptiveNemesisMod.LOGGER.debug(
+                "🗂️ EnchantmentScalingHandler 缓存已构建: 护甲={}, 主手武器={}, 盾牌={}, 副手武器={}, 附魔={}",
+                modEquipmentCache.values().stream().mapToInt(List::size).sum(),
+                modMainHandWeaponsCache.size(),
+                modShieldsCache.size(),
+                modOffHandWeaponsCache.size(),
+                modEnchantmentCache.size()
+            );
+        }
     }
     @SuppressWarnings("unchecked")
     private static final ResourceKey<Enchantment>[] WEAPON_ENCHANTMENTS = new ResourceKey[] {
@@ -432,63 +513,35 @@ public class EnchantmentScalingHandler {
             return ItemStack.EMPTY;
         }
 
-        Registry<Item> itemRegistry = level.registryAccess().registryOrThrow(Registries.ITEM);
-
-        // 根据槽位选择对应的物品标签
-        TagKey<Item> tag = switch (slot) {
-            case MAINHAND -> null;
-            case OFFHAND -> null;
-            case HEAD -> ItemTags.HEAD_ARMOR;
-            case CHEST -> ItemTags.CHEST_ARMOR;
-            case LEGS -> ItemTags.LEG_ARMOR;
-            case FEET -> ItemTags.FOOT_ARMOR;
-            default -> null;
-        };
+        buildCaches(level);
 
         List<Item> modItems = new ArrayList<>();
 
-        if (tag != null) {
-            // 从标签中收集非原版的模组物品（跳过无效物品）
-            for (Item item : itemRegistry) {
-                if (item.builtInRegistryHolder().is(tag) && !isVanillaItem(item) && isValidEquipmentItem(item)) {
-                    modItems.add(item);
-                }
-            }
+        if (slot == EquipmentSlot.HEAD || slot == EquipmentSlot.CHEST
+            || slot == EquipmentSlot.LEGS || slot == EquipmentSlot.FEET) {
+            // 护甲：直接使用预缓存的候选列表
+            modItems.addAll(modEquipmentCache.getOrDefault(slot, List.of()));
         } else if (slot == EquipmentSlot.MAINHAND) {
-            // 主手：从剑和斧标签中收集模组武器，检查伤害上限
-            for (Item item : itemRegistry) {
-                boolean isWeapon = item.builtInRegistryHolder().is(ItemTags.SWORDS)
-                    || item.builtInRegistryHolder().is(ItemTags.AXES);
-                if (isWeapon && !isVanillaItem(item) && isValidEquipmentItem(item)) {
-                    // 检查武器伤害是否超过动态上限
-                    ItemStack testStack = new ItemStack(item);
-                    if (getWeaponDamage(testStack) <= damageCap) {
-                        modItems.add(item);
-                    } else if (Config.ENABLE_DEBUG_LOG.get()) {
-                        AdaptiveNemesisMod.LOGGER.debug(
-                            "⛔ 过滤超模武器: {} (伤害={}, 上限={})",
-                            BuiltInRegistries.ITEM.getKey(item),
-                            String.format("%.1f", getWeaponDamage(testStack)),
-                            String.format("%.1f", damageCap)
-                        );
-                    }
+            // 主手：从缓存的模组武器中按动态伤害上限过滤
+            for (Item item : modMainHandWeaponsCache) {
+                ItemStack testStack = new ItemStack(item);
+                double weaponDamage = getWeaponDamage(testStack);
+                if (weaponDamage <= damageCap) {
+                    modItems.add(item);
+                } else if (Config.ENABLE_DEBUG_LOG.get()) {
+                    AdaptiveNemesisMod.LOGGER.debug(
+                        "⛔ 过滤超模武器: {} (伤害={}, 上限={})",
+                        BuiltInRegistries.ITEM.getKey(item),
+                        String.format("%.1f", weaponDamage),
+                        String.format("%.1f", damageCap)
+                    );
                 }
             }
         } else if (slot == EquipmentSlot.OFFHAND) {
-            // 副手：优先找模组盾牌，找不到再找单手武器（跳过无效物品）
-            TagKey<Item> shieldTag = TagKey.create(Registries.ITEM, ResourceLocation.withDefaultNamespace("shields"));
-            for (Item item : itemRegistry) {
-                if (item.builtInRegistryHolder().is(shieldTag) && !isVanillaItem(item) && isValidEquipmentItem(item)) {
-                    modItems.add(item);
-                }
-            }
-            // 没有模组盾牌时，退而求其次找单手武器
+            // 副手：优先使用缓存的模组盾牌，没有则退而求其次使用单手武器
+            modItems.addAll(modShieldsCache);
             if (modItems.isEmpty()) {
-                for (Item item : itemRegistry) {
-                    if (item.builtInRegistryHolder().is(ItemTags.SWORDS) && !isVanillaItem(item) && isValidEquipmentItem(item)) {
-                        modItems.add(item);
-                    }
-                }
+                modItems.addAll(modOffHandWeaponsCache);
             }
         }
 
@@ -513,16 +566,33 @@ public class EnchantmentScalingHandler {
 
     /**
      * 应用附魔到装备
+     *
+     * 先应用原版核心附魔，再尝试应用模组兼容附魔。
+     *
+     * @param stack 装备物品
+     * @param slot 装备槽位
+     * @param maxLevel 最高附魔等级
+     * @param serverLevel 服务端世界
      */
     private void applyEnchantments(ItemStack stack, EquipmentSlot slot, int maxLevel, ServerLevel serverLevel) {
+        applyCoreEnchantments(stack, slot, maxLevel, serverLevel);
+        applyModCompatibleEnchantments(stack, serverLevel, maxLevel);
+    }
+
+    /**
+     * 应用原版核心附魔
+     *
+     * @param stack 装备物品
+     * @param slot 装备槽位
+     * @param maxLevel 最高附魔等级
+     * @param serverLevel 服务端世界
+     */
+    private void applyCoreEnchantments(ItemStack stack, EquipmentSlot slot, int maxLevel, ServerLevel serverLevel) {
         Registry<Enchantment> enchantmentRegistry = serverLevel.registryAccess()
             .registryOrThrow(Registries.ENCHANTMENT);
 
         ResourceKey<Enchantment>[] possibleEnchantments = getEnchantmentsForSlot(slot);
-
-        // 应用的附魔数量（基于难度）
-        int enchantCount = Math.max(1, (int) Math.floor(maxLevel / 2.0));
-        if (enchantCount > 3) enchantCount = 3; // 最多3个核心附魔
+        int enchantCount = calculateCoreEnchantmentCount(maxLevel);
 
         for (int i = 0; i < enchantCount; i++) {
             ResourceKey<Enchantment> enchantKey = possibleEnchantments[random.nextInt(possibleEnchantments.length)];
@@ -535,23 +605,74 @@ public class EnchantmentScalingHandler {
             // 随机附魔等级（1到maxLevel之间）
             int level = random.nextInt(maxLevel) + 1;
 
-            // 检查附魔是否兼容
             try {
                 stack.enchant(enchantHolder, level);
             } catch (Exception e) {
-                // 附冲突忽略
+                // 附魔冲突或不兼容时静默跳过
+                if (Config.ENABLE_DEBUG_LOG.get()) {
+                    AdaptiveNemesisMod.LOGGER.debug(
+                        "⛔ 核心附魔应用失败: {} (level={}), 原因: {}",
+                        enchantHolder.key().location(), level, e.getMessage()
+                    );
+                }
             }
         }
-
-        // 额外尝试应用其他模组的兼容附魔
-        tryApplyModCompatibleEnchantments(stack, enchantmentRegistry, maxLevel);
     }
 
     /**
-     * 尝试应用其他模组添加的兼容附魔
-     * 扫描附魔注册表中的所有附魔，找到与物品兼容且不冲突的附魔
+     * 计算核心附魔数量
+     *
+     * @param maxLevel 最高附魔等级
+     * @return 核心附魔数量（1-3）
      */
-    private void tryApplyModCompatibleEnchantments(ItemStack stack, Registry<Enchantment> registry, int maxLevel) {
+    private int calculateCoreEnchantmentCount(int maxLevel) {
+        int enchantCount = Math.max(1, (int) Math.floor(maxLevel / 2.0));
+        return Math.min(enchantCount, 3);
+    }
+
+    /**
+     * 应用模组兼容附魔
+     *
+     * 使用预缓存的模组附魔列表，避免每次生成扫描整个注册表。
+     *
+     * @param stack 装备物品
+     * @param serverLevel 服务端世界
+     * @param maxLevel 最高附魔等级
+     */
+    private void applyModCompatibleEnchantments(ItemStack stack, ServerLevel serverLevel, int maxLevel) {
+        buildCaches(serverLevel);
+
+        List<Holder.Reference<Enchantment>> candidates = collectCompatibleEnchantments(stack);
+        if (candidates.isEmpty()) {
+            return;
+        }
+
+        // 额外1-2个模组附魔
+        int extraCount = Math.min(1 + random.nextInt(2), candidates.size());
+        for (int i = 0; i < extraCount; i++) {
+            int index = random.nextInt(candidates.size());
+            Holder.Reference<Enchantment> holder = candidates.remove(index);
+            int level = 1 + random.nextInt(Math.max(1, maxLevel / 2));
+            try {
+                stack.enchant(holder, level);
+            } catch (Exception e) {
+                if (Config.ENABLE_DEBUG_LOG.get()) {
+                    AdaptiveNemesisMod.LOGGER.debug(
+                        "⛔ 模组附魔应用失败: {} (level={}), 原因: {}",
+                        holder.key().location(), level, e.getMessage()
+                    );
+                }
+            }
+        }
+    }
+
+    /**
+     * 收集与当前物品兼容且不冲突的模组附魔候选
+     *
+     * @param stack 装备物品
+     * @return 可用附魔候选列表
+     */
+    private List<Holder.Reference<Enchantment>> collectCompatibleEnchantments(ItemStack stack) {
         // 收集已有附魔用于冲突检查
         Set<Enchantment> existingEnchants = new HashSet<>();
         for (Holder<Enchantment> holder : stack.getEnchantments().keySet()) {
@@ -560,41 +681,25 @@ public class EnchantmentScalingHandler {
             }
         }
 
-        // 找到所有兼容且不冲突的附魔
-        List<Enchantment> candidates = new ArrayList<>();
-        for (Enchantment enchant : registry) {
+        List<Holder.Reference<Enchantment>> candidates = new ArrayList<>();
+        for (Holder.Reference<Enchantment> holder : modEnchantmentCache) {
             try {
-                if (!enchant.canEnchant(stack) || existingEnchants.contains(enchant)) continue;
-
-                // 跳过危险附魔（如伤害免疫等游戏破坏性效果）
-                ResourceKey<Enchantment> enchantKey = registry.getResourceKey(enchant).orElse(null);
-                if (enchantKey != null) {
-                    Holder.Reference<Enchantment> holder = registry.getHolder(enchantKey).orElse(null);
-                    if (holder != null && isDangerousEnchantment(holder)) continue;
+                Enchantment enchant = holder.value();
+                if (!enchant.canEnchant(stack) || existingEnchants.contains(enchant)) {
+                    continue;
                 }
-
-                candidates.add(enchant);
+                candidates.add(holder);
             } catch (Exception e) {
                 // 跳过有问题的附魔
+                if (Config.ENABLE_DEBUG_LOG.get()) {
+                    AdaptiveNemesisMod.LOGGER.debug(
+                        "⛔ 模组附魔候选检查失败: {}, 原因: {}",
+                        holder.key().location(), e.getMessage()
+                    );
+                }
             }
         }
-
-        if (candidates.isEmpty()) return;
-
-        // 额外1-2个模组附魔
-        int extraCount = Math.min(1 + random.nextInt(2), candidates.size());
-        for (int i = 0; i < extraCount; i++) {
-            int index = random.nextInt(candidates.size());
-            Enchantment enchant = candidates.remove(index);
-            registry.getResourceKey(enchant).ifPresent(key -> {
-                registry.getHolder(key).ifPresent(holder -> {
-                    int level = 1 + random.nextInt(Math.max(1, maxLevel / 2));
-                    try {
-                        stack.enchant(holder, level);
-                    } catch (Exception ignored) {}
-                });
-            });
-        }
+        return candidates;
     }
 
     /**

@@ -196,26 +196,53 @@ public class PlayerStrengthEvaluator {
     
     /**
      * 计算玩家输出能力强度
-     * 
+     *
      * @param player 目标玩家
      * @return 输出强度值
      */
     private double calculateDamageStrength(ServerPlayer player) {
         double attackDamage = player.getAttributeValue(Attributes.ATTACK_DAMAGE);
         double attackSpeed = player.getAttributeValue(Attributes.ATTACK_SPEED);
-        
-        // 获取主手武器伤害
-        ItemStack mainHand = player.getMainHandItem();
-        double weaponDamage = attackDamage;
-        
-        // 如果有附魔，增加额外评分
-        double enchantBonus = 0;
-        if (!mainHand.isEmpty() && mainHand.isEnchanted()) {
-            enchantBonus = mainHand.getEnchantments().size() * 2.0;
-        }
-        
+
+        // 统计全身装备附魔数量并转换为额外评分
+        double enchantBonus = calculateTotalEnchantmentBonus(player);
+
         // 输出强度 = 攻击力 * 3 + 攻击速度 * 2 + 附魔加成
-        return weaponDamage * 3.0 + attackSpeed * 2.0 + enchantBonus;
+        return attackDamage * 3.0 + attackSpeed * 2.0 + enchantBonus;
+    }
+
+    /**
+     * 统计玩家全身装备的附魔总数并计算评分
+     *
+     * 覆盖主手、副手、护甲四件，避免仅主手附魔被计入导致低估输出强度。
+     *
+     * @param player 目标玩家
+     * @return 附魔带来的强度加成
+     */
+    private double calculateTotalEnchantmentBonus(ServerPlayer player) {
+        int totalEnchantments = 0;
+
+        // 护甲四件
+        for (ItemStack stack : player.getInventory().armor) {
+            if (!stack.isEmpty() && stack.isEnchanted()) {
+                totalEnchantments += stack.getEnchantments().size();
+            }
+        }
+
+        // 副手物品
+        for (ItemStack stack : player.getInventory().offhand) {
+            if (!stack.isEmpty() && stack.isEnchanted()) {
+                totalEnchantments += stack.getEnchantments().size();
+            }
+        }
+
+        // 主手武器
+        ItemStack mainHand = player.getMainHandItem();
+        if (!mainHand.isEmpty() && mainHand.isEnchanted()) {
+            totalEnchantments += mainHand.getEnchantments().size();
+        }
+
+        return totalEnchantments * 2.0;
     }
     
     /**

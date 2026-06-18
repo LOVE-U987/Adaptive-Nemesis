@@ -3,6 +3,7 @@ package com.adaptive_nemesis.adaptive_nemesismod;
 import org.slf4j.Logger;
 
 import com.adaptive_nemesis.adaptive_nemesismod.boss.BossDamageCapHandler;
+import com.adaptive_nemesis.adaptive_nemesismod.boss.BossIdentificationService;
 import com.adaptive_nemesis.adaptive_nemesismod.command.ModCommands;
 import com.adaptive_nemesis.adaptive_nemesismod.damage.TrueDamageHandler;
 import com.adaptive_nemesis.adaptive_nemesismod.enemy.EnemyScalingHandler;
@@ -119,12 +120,15 @@ public class AdaptiveNemesisMod {
         event.enqueueWork(() -> {
             PlayerStrengthEvaluator.getInstance().initialize();
             NemesisMemorySystem.getInstance().initialize();
-            
+
+            // 预初始化 Boss 识别责任链，避免首次伤害事件时才懒加载导致卡顿
+            BossIdentificationService.getInstance().initialize();
+
             // 启动看门狗服务（配置已加载完毕，可以安全读取 Config 值）
             if (Config.ENABLE_WATCHDOG.get()) {
                 WatchdogService.getInstance().start();
             }
-            
+
             LOGGER.info("✅ 各子系统初始化完成！");
         });
         

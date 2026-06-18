@@ -6,13 +6,18 @@ import com.adaptive_nemesis.adaptive_nemesismod.enemy.EnemyScalingHandler;
 
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.neoforge.event.entity.living.LivingIncomingDamageEvent;
 
+import java.util.Collections;
 import java.util.HashSet;
+import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
+import java.util.WeakHashMap;
 
 /**
  * Boss伤害上限处理器
@@ -69,6 +74,15 @@ public class BossDamageCapHandler {
      * 上次缓存更新的配置值
      */
     private String cachedExclusionConfigValue = "";
+
+    /**
+     * Boss 识别结果缓存
+     *
+     * 高并发伤害事件下，每次调用责任链进行 Boss 识别会产生重复开销。
+     * 使用 UUID 作为键、WeakHashMap 作为存储，实体被垃圾回收后缓存条目自动释放，
+     * 避免内存泄漏。结果用 synchronizedMap 包装以保证线程安全。
+     */
+    private final Map<UUID, Boolean> bossResultCache = Collections.synchronizedMap(new WeakHashMap<>());
     
     /**
      * 私有构造函数 - 单例模式
@@ -118,8 +132,9 @@ public class BossDamageCapHandler {
         }
         
         // 检查伤害来源是否是玩家
-        if (event.getSource().getEntity() == null || 
-            !(event.getSource().getEntity() instanceof ServerPlayer player)) {
+        DamageSource source = event.getSource();
+        if (source == null || source.getEntity() == null ||
+            !(source.getEntity() instanceof ServerPlayer player)) {
             return;
         }
         
@@ -150,15 +165,34 @@ public class BossDamageCapHandler {
     
     /**
      * 检查实体是否是Boss
-     * 
+     *
      * 委托给 BossIdentificationService 进行统一判断，
      * 采用策略模式组合多种识别方式（类型识别、名称识别、血量阈值识别）。
-     * 
+     *
+     * 使用 WeakHashMap 缓存识别结果，避免高并发伤害事件下重复遍历责任链。
+     *
      * @param entity 目标实体
      * @return 如果是Boss返回true
      */
     public boolean isBoss(LivingEntity entity) {
-        return BossIdentificationService.getInstance().isBoss(entity);
+        UUID uuid = entity.getUUID();
+        Boolean cached = bossResultCache.get(uuid);
+        if (cached != null) {
+            return cached;
+        }
+
+        boolean result = BossIdentificationService.getInstance().isBoss(entity);
+        bossResultCache.put(uuid, result);
+        return result;
+    }
+
+    /**
+     * 清空 Boss 识别缓存
+     *
+     * 配置热重载或需要强制重新识别时调用。
+     */
+    public void clearBossCache() {
+        bossResultCache.clear();
     }
 
     /**
@@ -222,21 +256,23 @@ public class BossDamageCapHandler {
     
     /**
      * 应用伤害上限
-     * 
+     *
+     * 动态上限规则：Boss 血量百分比越低，允许的单次伤害上限越高，
+     * 以在战斗后期允许玩家适当加速击杀。
+     * dynamicCap = damageCap * (1.0 + (1.0 - healthPercent))
+     * 因此上限范围为 [damageCap, 2 * damageCap]。
+     *
      * @param boss Boss实体
      * @param originalDamage 原始伤害值
      * @return 限制后的伤害值
      */
     private float applyDamageCap(LivingEntity boss, float originalDamage) {
         double damageCap = Config.BOSS_DAMAGE_CAP.get();
-        
-        // 根据Boss已受伤害动态调整上限（受伤越多，上限越高，允许玩家加速击杀）
-        float damageTaken = boss.getPersistentData().getFloat(BOSS_DAMAGE_TAKEN_TAG);
+
+        // 根据 Boss 当前血量百分比动态调整上限
         double healthPercent = boss.getHealth() / boss.getMaxHealth();
-        
-        // Boss血量越低，伤害上限越高（最多提高到2倍）
         double dynamicCap = damageCap * (1.0 + (1.0 - healthPercent));
-        
+
         return Math.min(originalDamage, (float) dynamicCap);
     }
     

@@ -1,6 +1,7 @@
 package com.adaptive_nemesis.adaptive_nemesismod.compat;
 
 import com.adaptive_nemesis.adaptive_nemesismod.AdaptiveNemesisMod;
+import com.adaptive_nemesis.adaptive_nemesismod.Config;
 
 import net.minecraft.server.level.ServerPlayer;
 import net.neoforged.fml.ModList;
@@ -73,7 +74,14 @@ public class ModCompatManager {
      */
     public static boolean isIronsSpellsLoaded() {
         if (ironsSpellsLoaded == null) {
-            ironsSpellsLoaded = ModList.get().isLoaded(IRONS_SPELLS_MODID);
+            ModList modList = ModList.get();
+            if (modList == null) {
+                AdaptiveNemesisMod.LOGGER.warn("ModList 尚未初始化，暂时禁用铁魔法兼容检测");
+                ironsSpellsLoaded = false;
+                return ironsSpellsLoaded;
+            }
+            ironsSpellsLoaded = modList.isLoaded(IRONS_SPELLS_MODID)
+                && Config.MOD_COMPAT_IRONS_SPELLS_ENABLED.get();
             if (ironsSpellsLoaded) {
                 AdaptiveNemesisMod.LOGGER.info("✅ 检测到铁魔法模组 (Iron's Spells 'n Spellbooks)，已启用兼容支持");
                 try {
@@ -94,7 +102,14 @@ public class ModCompatManager {
      */
     public static boolean isEpicFightLoaded() {
         if (epicFightLoaded == null) {
-            epicFightLoaded = ModList.get().isLoaded(EPIC_FIGHT_MODID);
+            ModList modList = ModList.get();
+            if (modList == null) {
+                AdaptiveNemesisMod.LOGGER.warn("ModList 尚未初始化，暂时禁用史诗战斗兼容检测");
+                epicFightLoaded = false;
+                return epicFightLoaded;
+            }
+            epicFightLoaded = modList.isLoaded(EPIC_FIGHT_MODID)
+                && Config.MOD_COMPAT_EPIC_FIGHT_ENABLED.get();
             if (epicFightLoaded) {
                 AdaptiveNemesisMod.LOGGER.debug("✅ 检测到史诗战斗模组 (Epic Fight)，已启用兼容支持");
                 try {
@@ -115,7 +130,14 @@ public class ModCompatManager {
      */
     public static boolean isApotheosisLoaded() {
         if (apotheosisLoaded == null) {
-            apotheosisLoaded = ModList.get().isLoaded(APOTHEOSIS_MODID);
+            ModList modList = ModList.get();
+            if (modList == null) {
+                AdaptiveNemesisMod.LOGGER.warn("ModList 尚未初始化，暂时禁用神话兼容检测");
+                apotheosisLoaded = false;
+                return apotheosisLoaded;
+            }
+            apotheosisLoaded = modList.isLoaded(APOTHEOSIS_MODID)
+                && Config.MOD_COMPAT_APOTHEOSIS_ENABLED.get();
             if (apotheosisLoaded) {
                 AdaptiveNemesisMod.LOGGER.info("✅ 检测到神话模组 (Apotheosis)，已启用兼容支持");
                 try {

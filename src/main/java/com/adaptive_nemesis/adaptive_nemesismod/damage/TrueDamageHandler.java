@@ -5,6 +5,7 @@ import com.adaptive_nemesis.adaptive_nemesismod.Config;
 import com.adaptive_nemesis.adaptive_nemesismod.kubejs.KubeJSEventTrigger;
 
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.tags.DamageTypeTags;
 import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.ai.attributes.Attributes;
@@ -71,6 +72,12 @@ public class TrueDamageHandler {
 
         // 检查伤害来源是否是生物攻击
         if (source.getEntity() == null || !(source.getEntity() instanceof LivingEntity attacker)) {
+            return;
+        }
+
+        // 跳过已无视护甲或本身就是魔法/真实伤害的伤害源
+        // 这些伤害已经不受护甲减免，无需再转化，也可避免递归或重复计算
+        if (source.is(DamageTypeTags.BYPASSES_ARMOR)) {
             return;
         }
 
@@ -142,32 +149,73 @@ public class TrueDamageHandler {
     /**
      * 根据护甲值获取真实伤害比例
      *
-     * 使用护甲倍率计算：
-     * - 基础护甲值 = 20（铁套）
-     * - 护甲倍率 = 当前护甲 / 基础护甲
-     * - 真实伤害比例 = 基础比例 + (护甲倍率 - 1) * 每倍率增加比例
+     * 按配置中的低/中/高护甲阈值分段计算真实伤害比例，
+     * 使真实伤害与护甲等级匹配，避免线性插值偏离设计预期。
      *
      * @param armorValue 玩家护甲值
      * @return 真实伤害百分比
      */
     public double getTrueDamagePercent(double armorValue) {
-        double baseArmor = Config.LOW_ARMOR_THRESHOLD.get(); // 基础护甲阈值
-        double basePercent = Config.LOW_ARMOR_TRUE_DAMAGE_PERCENT.get(); // 基础真实伤害比例
-        double percentPerArmorMultiplier = 5.0; // 每超过1倍护甲增加5%
+        return calculateTrueDamagePercent(
+            armorValue,
+            Config.LOW_ARMOR_THRESHOLD.get(),
+            Config.LOW_ARMOR_TRUE_DAMAGE_PERCENT.get(),
+            Config.MEDIUM_ARMOR_THRESHOLD.get(),
+            Config.MEDIUM_ARMOR_TRUE_DAMAGE_PERCENT.get(),
+            Config.HIGH_ARMOR_THRESHOLD.get(),
+            Config.HIGH_ARMOR_TRUE_DAMAGE_PERCENT.get(),
+            Config.TURTLE_TRUE_DAMAGE_PERCENT.get()
+        );
+    }
 
-        if (armorValue <= baseArmor) {
-            return basePercent;
+    /**
+     * 计算真实伤害比例（纯静态逻辑，便于单元测试）
+     *
+     * @param armorValue     玩家护甲值
+     * @param lowThreshold   低护甲阈值
+     * @param lowPercent     低护甲真实伤害比例
+     * @param mediumThreshold 中护甲阈值
+     * @param mediumPercent  中护甲真实伤害比例
+     * @param highThreshold  高护甲阈值
+     * @param highPercent    高护甲真实伤害比例
+     * @param turtlePercent  超高护甲真实伤害比例
+     * @return 真实伤害百分比
+     */
+    public static double calculateTrueDamagePercent(
+        double armorValue,
+        double lowThreshold, double lowPercent,
+        double mediumThreshold, double mediumPercent,
+        double highThreshold, double highPercent,
+        double turtlePercent
+    ) {
+        if (armorValue <= lowThreshold) {
+            return lowPercent;
         }
+        if (armorValue <= mediumThreshold) {
+            return lerp(armorValue, lowThreshold, mediumThreshold, lowPercent, mediumPercent);
+        }
+        if (armorValue <= highThreshold) {
+            return lerp(armorValue, mediumThreshold, highThreshold, mediumPercent, highPercent);
+        }
+        return turtlePercent;
+    }
 
-        // 计算护甲倍率
-        double armorMultiplier = armorValue / baseArmor;
-
-        // 计算真实伤害比例
-        double trueDamagePercent = basePercent + (armorMultiplier - 1.0) * percentPerArmorMultiplier;
-
-        // 限制最大值
-        double maxPercent = Config.TURTLE_TRUE_DAMAGE_PERCENT.get();
-        return Math.min(trueDamagePercent, maxPercent);
+    /**
+     * 线性插值辅助方法
+     *
+     * @param value 当前值
+     * @param minValue 区间下限
+     * @param maxValue 区间上限
+     * @param minResult 区间下限对应结果
+     * @param maxResult 区间上限对应结果
+     * @return 插值结果
+     */
+    private static double lerp(double value, double minValue, double maxValue, double minResult, double maxResult) {
+        if (maxValue <= minValue) {
+            return minResult;
+        }
+        double t = (value - minValue) / (maxValue - minValue);
+        return minResult + t * (maxResult - minResult);
     }
 
     /**

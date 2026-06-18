@@ -1,5 +1,6 @@
 package com.adaptive_nemesis.adaptive_nemesismod.boss;
 
+import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
 
 import java.util.Collections;
@@ -30,28 +31,63 @@ public class NameBasedBossIdentifier implements BossIdentifier {
 
     @Override
     public boolean isBoss(LivingEntity entity) {
-        String entityName = entity.getType().toString().toLowerCase();
-        return bossKeywords.stream().anyMatch(entityName::contains);
+        return matchesBossKeywords(EntityType.getKey(entity.getType()).toString(), bossKeywords);
     }
 
     @Override
     public String getBossType(LivingEntity entity) {
-        String entityName = entity.getType().toString().toLowerCase();
+        String entityName = EntityType.getKey(entity.getType()).toString().toLowerCase();
+        return inferBossType(entityName, bossKeywords);
+    }
 
-        if (entityName.contains("dragon")) {
+    /**
+     * 判断实体注册名是否匹配给定的 Boss 关键词集合
+     * 提取为静态方法以便单元测试，无需构造 Minecraft 实体
+     *
+     * @param entityKey 实体注册名，例如 "minecraft:zombie" 或 "cataclysm:ignis"
+     * @param keywords  Boss 关键词集合
+     * @return 是否匹配
+     */
+    public static boolean matchesBossKeywords(String entityKey, Set<String> keywords) {
+        if (entityKey == null || keywords == null || keywords.isEmpty()) {
+            return false;
+        }
+        String lower = entityKey.toLowerCase();
+        return keywords.stream().anyMatch(lower::contains);
+    }
+
+    /**
+     * 根据实体注册名推断 Boss 类型
+     *
+     * @param entityKey 实体注册名（小写）
+     * @param keywords  Boss 关键词集合
+     * @return Boss 类型字符串，无法推断时返回 null
+     */
+    public static String inferBossType(String entityKey, Set<String> keywords) {
+        if (entityKey == null) {
+            return null;
+        }
+        String lower = entityKey.toLowerCase();
+
+        if (lower.contains("dragon")) {
             return BOSS_TYPE_DRAGON;
         }
-        if (entityName.contains("wither")) {
+        if (lower.contains("wither")) {
             return BOSS_TYPE_WITHER;
         }
-        if (entityName.contains("warden")) {
+        if (lower.contains("warden")) {
             return BOSS_TYPE_WARDEN;
         }
 
-        return bossKeywords.stream()
-            .filter(entityName::contains)
-            .findFirst()
-            .orElse(null);
+        if (keywords != null) {
+            // 按关键词长度升序匹配，优先返回更具体的名称（如 ignis）而非模组/通用名（如 cataclysm, boss）
+            return keywords.stream()
+                .sorted(java.util.Comparator.comparingInt(String::length))
+                .filter(lower::contains)
+                .findFirst()
+                .orElse(null);
+        }
+        return null;
     }
 
     /**

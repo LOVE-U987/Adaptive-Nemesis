@@ -14,16 +14,28 @@ public class WorldStageSavedData {
 
     /**
      * 加载世界阶段数据
+     *
+     * @param level 服务端世界，传 null 时静默跳过
      */
     public static void load(ServerLevel level) {
+        if (level == null) {
+            AdaptiveNemesisMod.LOGGER.warn("WorldStageSavedData.load 收到 null level，跳过加载");
+            return;
+        }
         // 暂不实现持久化加载
         AdaptiveNemesisMod.LOGGER.debug("World stage data loading skipped (persistence not fully implemented yet)");
     }
 
     /**
      * 保存世界阶段数据
+     *
+     * @param level 服务端世界，传 null 时静默跳过
      */
     public static void save(ServerLevel level) {
+        if (level == null) {
+            AdaptiveNemesisMod.LOGGER.warn("WorldStageSavedData.save 收到 null level，跳过保存");
+            return;
+        }
         // 暂不实现持久化保存
         AdaptiveNemesisMod.LOGGER.debug("World stage data saving skipped (persistence not fully implemented yet)");
     }
