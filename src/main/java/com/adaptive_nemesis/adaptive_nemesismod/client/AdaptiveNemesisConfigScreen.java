@@ -16,6 +16,7 @@ import net.minecraft.util.Mth;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Consumer;
+import java.util.function.Supplier;
 
 /**
  * 自适应宿敌模组配置界面
@@ -199,7 +200,8 @@ public class AdaptiveNemesisConfigScreen extends Screen {
             widgetX);
         currentY = addConfigEntry(currentY, "adaptive_nemesis.config.boss_damage_cap_exclusions",
             "adaptive_nemesis.config.tooltip.boss_damage_cap_exclusions",
-            createStringEditBox(Config.BOSS_DAMAGE_CAP_EXCLUSIONS.get(),
+            createStringEditBox("adaptive_nemesis.config.boss_damage_cap_exclusions",
+                () -> Config.BOSS_DAMAGE_CAP_EXCLUSIONS.get(),
                 value -> { Config.BOSS_DAMAGE_CAP_EXCLUSIONS.set(value); markChanged(); }),
             widgetX);
 
@@ -399,7 +401,8 @@ public class AdaptiveNemesisConfigScreen extends Screen {
             widgetX);
         currentY = addConfigEntry(currentY, "adaptive_nemesis.config.entity_blacklist",
             "adaptive_nemesis.config.tooltip.entity_blacklist",
-            createStringEditBox(Config.ENTITY_BLACKLIST.get(),
+            createStringEditBox("adaptive_nemesis.config.entity_blacklist",
+                () -> Config.ENTITY_BLACKLIST.get(),
                 value -> { Config.ENTITY_BLACKLIST.set(value); markChanged(); }),
             widgetX);
 
@@ -422,7 +425,8 @@ public class AdaptiveNemesisConfigScreen extends Screen {
             widgetX);
         currentY = addConfigEntry(currentY, "adaptive_nemesis.config.debug_log_file_path",
             "adaptive_nemesis.config.tooltip.debug_log_file_path",
-            createStringEditBox(Config.DEBUG_LOG_FILE_PATH.get(),
+            createStringEditBox("adaptive_nemesis.config.debug_log_file_path",
+                () -> Config.DEBUG_LOG_FILE_PATH.get(),
                 value -> { Config.DEBUG_LOG_FILE_PATH.set(value); markChanged(); }),
             widgetX);
         currentY = addConfigEntry(currentY, "adaptive_nemesis.config.log_output_level",
@@ -513,16 +517,30 @@ public class AdaptiveNemesisConfigScreen extends Screen {
         return box;
     }
 
-    /** 创建字符串输入框 */
-    private EditBox createStringEditBox(String initialValue, Consumer<String> onChange) {
-        EditBox box = new EditBox(this.minecraft.font, 0, 0, WIDGET_WIDTH, 20, Component.empty());
-        box.setValue(initialValue);
-        box.setResponder(value -> {
-            if (!value.isEmpty()) {
-                onChange.accept(value);
+    /** 创建可点击打开二级编辑界面的字符串按钮 */
+    private AbstractWidget createStringEditBox(String labelKey, Supplier<String> valueGetter,
+                                                Consumer<String> onChange) {
+        Button button = Button.builder(
+            truncatePreview(valueGetter.get()),
+            btn -> {
+                String currentValue = valueGetter.get();
+                this.minecraft.setScreen(new LongTextEditScreen(this,
+                    Component.translatable(labelKey), currentValue, newValue -> {
+                        onChange.accept(newValue);
+                        btn.setMessage(truncatePreview(newValue));
+                    }));
             }
-        });
-        return box;
+        ).bounds(0, 0, WIDGET_WIDTH, 20).build();
+        return button;
+    }
+
+    /** 截断文本为按钮预览长度，超长部分替换为 ... */
+    private static Component truncatePreview(String text) {
+        if (text == null || text.isEmpty()) {
+            return Component.translatable("adaptive_nemesis.config.click_to_edit");
+        }
+        String preview = text.length() > 16 ? text.substring(0, 16) + "..." : text;
+        return Component.literal(preview);
     }
 
     /** 创建日志级别选择按钮 */

@@ -11,6 +11,8 @@
   "adaptive_nemesis.config.subtitle": "Adaptive Difficulty Balance System",
   "adaptive_nemesis.config.saved": "Config modified, will be saved automatically",
   "adaptive_nemesis.config.scroll_hint": "Use mouse wheel to scroll for more options",
+  "adaptive_nemesis.config.edit.char_count": "characters",
+  "adaptive_nemesis.config.click_to_edit": "[Click to Edit]",
   "adaptive_nemesis.config.value.on": "ON",
   "adaptive_nemesis.config.value.off": "OFF",
 

@@ -11,6 +11,8 @@
   "adaptive_nemesis.config.subtitle": "自适应难度平衡系统",
   "adaptive_nemesis.config.saved": "配置已修改，将自动保存",
   "adaptive_nemesis.config.scroll_hint": "使用鼠标滚轮滚动查看更多选项",
+  "adaptive_nemesis.config.edit.char_count": "个字符",
+  "adaptive_nemesis.config.click_to_edit": "[点击编辑]",
   "adaptive_nemesis.config.value.on": "开启",
   "adaptive_nemesis.config.value.off": "关闭",
 
