@@ -307,8 +307,12 @@ public class EnchantmentScalingHandler {
 
     /**
      * 应用装备强化
+     *
+     * @param mob 目标怪物
+     * @param difficultyMultiplier 难度倍率
+     * @param serverLevel 服务端世界
      */
-    private void applyEquipmentScaling(Mob mob, double difficultyMultiplier, ServerLevel serverLevel) {
+    public void applyEquipmentScaling(Mob mob, double difficultyMultiplier, ServerLevel serverLevel) {
         float enchantChance = calculateEnchantChance(difficultyMultiplier);
         int enchantLevel = calculateEnchantLevel(difficultyMultiplier);
 

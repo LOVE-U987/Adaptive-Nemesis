@@ -2,7 +2,10 @@ package com.adaptive_nemesis.adaptive_nemesismod.invasion;
 
 import com.adaptive_nemesis.adaptive_nemesismod.Config;
 import com.adaptive_nemesis.adaptive_nemesismod.AdaptiveNemesisMod;
+import com.adaptive_nemesis.adaptive_nemesismod.enemy.EnchantmentScalingHandler;
 import com.adaptive_nemesis.adaptive_nemesismod.enemy.WorldStageManager;
+import com.adaptive_nemesis.adaptive_nemesismod.player.PlayerStrengthData;
+import com.adaptive_nemesis.adaptive_nemesismod.player.PlayerStrengthEvaluator;
 import net.minecraft.ChatFormatting;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
@@ -348,7 +351,15 @@ public class InvasionSystem {
         applyInvasionEnhancements(enemy, invasion.getDifficultyMultiplier());
 
         if (enemy instanceof Mob mob) {
-            equipInvasionEnemy(mob, invasion.currentWave);
+            // 分配基础武器（骷髅弓、凋灵骷髅石剑等）
+            equipInvasionEnemy(mob);
+
+            // 接入动态难度：根据附近玩家强度计算装备倍率并应用装备/附魔
+            if (level instanceof ServerLevel serverLevel) {
+                double dynamicMultiplier = calculateDynamicDifficultyMultiplier(serverLevel, center, invasion.getDifficultyMultiplier());
+                EnchantmentScalingHandler.getInstance().applyEquipmentScaling(mob, dynamicMultiplier, serverLevel);
+            }
+
             addCustomAI(mob, center);
         }
 
@@ -870,76 +881,12 @@ public class InvasionSystem {
      * 处理入侵胜利
      */
     private void handleInvasionVictory(ActiveInvasion invasion) {
-        if (!(invasion.getLevel() instanceof ServerLevel level)) {
-            return;
-        }
-        BlockPos center = invasion.getCenterPos();
-
-        for (ServerPlayer player : level.players()) {
-            if (player.distanceToSqr(center.getX(), center.getY(), center.getZ()) <= INVASION_AREA_RADIUS * INVASION_AREA_RADIUS) {
-                giveTreasureBag(player);
-            }
-        }
+        notifyAllPlayersInArea(invasion, Component.literal(
+            "亡灵军团已被击败！"
+        ).withStyle(ChatFormatting.GREEN));
 
         if (Config.ENABLE_DEBUG_LOG.get()) {
             AdaptiveNemesisMod.LOGGER.debug("[入侵] 胜利: 玩家={}", invasion.getPlayerName());
-        }
-    }
-
-    /**
-     * 给予宝藏袋
-     * 直接给予随机战利品 + 一个潜影盒用于收纳
-     */
-    private void giveTreasureBag(Player player) {
-        player.sendSystemMessage(Component.literal(
-            "获得亡灵军团宝藏袋！"
-        ).withStyle(ChatFormatting.YELLOW));
-
-        // 给予随机战利品
-        int lootCount = 3 + random.nextInt(4); // 3-6组物品
-        for (int i = 0; i < lootCount; i++) {
-            ItemStack loot = generateRandomLoot();
-            if (!loot.isEmpty()) {
-                player.getInventory().add(loot);
-            }
-        }
-
-        // 额外给一个潜影盒用于收纳
-        player.getInventory().add(new ItemStack(Items.SHULKER_BOX));
-    }
-
-    /**
-     * 生成随机战利品
-     * 
-     * @return 战利品物品栈
-     */
-    private ItemStack generateRandomLoot() {
-        float roll = random.nextFloat();
-        if (roll < 0.2f) { // 20% - 稀有好物
-            return switch (random.nextInt(4)) {
-                case 0 -> new ItemStack(Items.DIAMOND, 1 + random.nextInt(3));
-                case 1 -> new ItemStack(Items.EMERALD, 3 + random.nextInt(5));
-                case 2 -> new ItemStack(Items.GOLDEN_APPLE, 1);
-                case 3 -> new ItemStack(Items.ENCHANTED_BOOK, 1);
-                default -> ItemStack.EMPTY;
-            };
-        } else if (roll < 0.5f) { // 30% - 实用物资
-            return switch (random.nextInt(5)) {
-                case 0 -> new ItemStack(Items.IRON_INGOT, 3 + random.nextInt(5));
-                case 1 -> new ItemStack(Items.GOLD_INGOT, 2 + random.nextInt(4));
-                case 2 -> new ItemStack(Items.ARROW, 8 + random.nextInt(16));
-                case 3 -> new ItemStack(Items.EXPERIENCE_BOTTLE, 3 + random.nextInt(5));
-                case 4 -> new ItemStack(Items.COOKED_BEEF, 5 + random.nextInt(6));
-                default -> ItemStack.EMPTY;
-            };
-        } else { // 50% - 常见掉落
-            return switch (random.nextInt(4)) {
-                case 0 -> new ItemStack(Items.BONE, 5 + random.nextInt(10));
-                case 1 -> new ItemStack(Items.ROTTEN_FLESH, 5 + random.nextInt(10));
-                case 2 -> new ItemStack(Items.COAL, 3 + random.nextInt(6));
-                case 3 -> new ItemStack(Items.GRAVEL, 8 + random.nextInt(16));
-                default -> ItemStack.EMPTY;
-            };
         }
     }
 
@@ -984,9 +931,12 @@ public class InvasionSystem {
     }
 
     /**
-     * 给入侵敌人装备护甲和武器
+     * 给入侵敌人装备基础武器
+     * 护甲由动态难度系统（EnchantmentScalingHandler）统一生成
+     *
+     * @param enemy 目标怪物
      */
-    private void equipInvasionEnemy(Mob enemy, int waveNumber) {
+    private void equipInvasionEnemy(Mob enemy) {
         EntityType<?> type = enemy.getType();
 
         if (type == EntityType.ZOMBIE_VILLAGER) {
@@ -1008,32 +958,67 @@ public class InvasionSystem {
         if ((type == EntityType.ZOMBIE || type == EntityType.HUSK) && random.nextFloat() < 0.3f) {
             enemy.setItemSlot(net.minecraft.world.entity.EquipmentSlot.MAINHAND, new ItemStack(Items.IRON_SWORD));
         }
+    }
 
-        int armorChance = switch (waveNumber) {
-            case 1 -> 20;
-            case 2 -> 30;
-            case 3 -> 50;
-            case 4 -> 50;
-            case 5 -> 50;
-            case 6 -> 50;
-            default -> 50;
-        };
+    /**
+     * 计算动态难度倍率
+     * 基于入侵中心附近玩家的平均强度，与常规怪物缩放逻辑保持一致
+     *
+     * @param serverLevel 服务端世界
+     * @param center 入侵中心位置
+     * @param baseMultiplier 基础倍率（来自世界阶段）
+     * @return 动态难度倍率
+     */
+    private double calculateDynamicDifficultyMultiplier(ServerLevel serverLevel, BlockPos center, double baseMultiplier) {
+        double range = Config.AREA_SYNC_RANGE.get() * 16;
+        double rangeSq = range * range;
 
-        if (random.nextInt(100) >= armorChance) {
-            return;
+        List<ServerPlayer> nearbyPlayers = new ArrayList<>();
+        for (ServerPlayer player : serverLevel.getServer().getPlayerList().getPlayers()) {
+            if (player.level() == serverLevel && player.distanceToSqr(center.getX(), center.getY(), center.getZ()) <= rangeSq) {
+                nearbyPlayers.add(player);
+            }
         }
 
-        int armorTier = switch (waveNumber) {
-            case 1 -> random.nextInt(2);
-            case 2 -> random.nextInt(3);
-            case 3 -> random.nextInt(4);
-            case 4 -> random.nextInt(4);
-            case 5 -> random.nextInt(4);
-            case 6 -> random.nextInt(4);
-            default -> random.nextInt(4);
-        };
+        if (nearbyPlayers.isEmpty()) {
+            return Math.max(1.0, baseMultiplier);
+        }
 
-        equipArmor(enemy, armorTier);
+        double totalStrength = 0.0;
+        int validPlayers = 0;
+        PlayerStrengthEvaluator evaluator = PlayerStrengthEvaluator.getInstance();
+
+        for (ServerPlayer player : nearbyPlayers) {
+            PlayerStrengthData data = evaluator.getPlayerStrength(player);
+            if (data != null) {
+                totalStrength += data.getTotalStrength();
+                validPlayers++;
+            }
+        }
+
+        if (validPlayers == 0) {
+            return Math.max(1.0, baseMultiplier);
+        }
+
+        double avgStrength = totalStrength / validPlayers;
+        double strengthMultiplier = 1.0 + (avgStrength * Config.DIFFICULTY_BASE_MULTIPLIER.get() / 100.0);
+
+        if (Config.ENABLE_WORLD_STAGE.get()) {
+            strengthMultiplier *= WorldStageManager.getInstance().getWorldStageMultiplier();
+        }
+
+        double finalMultiplier = Math.max(baseMultiplier, Math.max(1.0, strengthMultiplier));
+
+        if (Config.ENABLE_DEBUG_LOG.get()) {
+            AdaptiveNemesisMod.LOGGER.debug(
+                "[入侵动态难度] 平均玩家强度={}, 基础倍率={}, 最终倍率={}",
+                String.format("%.2f", avgStrength),
+                String.format("%.2f", baseMultiplier),
+                String.format("%.2f", finalMultiplier)
+            );
+        }
+
+        return finalMultiplier;
     }
 
     /**
@@ -1045,58 +1030,6 @@ public class InvasionSystem {
         enemy.setItemSlot(net.minecraft.world.entity.EquipmentSlot.LEGS, new ItemStack(Items.IRON_LEGGINGS));
         enemy.setItemSlot(net.minecraft.world.entity.EquipmentSlot.FEET, new ItemStack(Items.IRON_BOOTS));
         enemy.setItemSlot(net.minecraft.world.entity.EquipmentSlot.MAINHAND, new ItemStack(Items.IRON_AXE));
-    }
-
-    /**
-     * 装备护甲
-     */
-    private void equipArmor(Mob enemy, int tier) {
-        ItemStack helmet = getArmorItem(tier, "helmet");
-        ItemStack chestplate = getArmorItem(tier, "chestplate");
-        ItemStack leggings = getArmorItem(tier, "leggings");
-        ItemStack boots = getArmorItem(tier, "boots");
-
-        if (random.nextBoolean()) enemy.setItemSlot(net.minecraft.world.entity.EquipmentSlot.HEAD, helmet);
-        if (random.nextBoolean()) enemy.setItemSlot(net.minecraft.world.entity.EquipmentSlot.CHEST, chestplate);
-        if (random.nextBoolean()) enemy.setItemSlot(net.minecraft.world.entity.EquipmentSlot.LEGS, leggings);
-        if (random.nextBoolean()) enemy.setItemSlot(net.minecraft.world.entity.EquipmentSlot.FEET, boots);
-    }
-
-    /**
-     * 获取护甲物品
-     */
-    private ItemStack getArmorItem(int tier, String type) {
-        return switch (tier) {
-            case 0 -> switch (type) {
-                case "helmet" -> new ItemStack(Items.LEATHER_HELMET);
-                case "chestplate" -> new ItemStack(Items.LEATHER_CHESTPLATE);
-                case "leggings" -> new ItemStack(Items.LEATHER_LEGGINGS);
-                case "boots" -> new ItemStack(Items.LEATHER_BOOTS);
-                default -> ItemStack.EMPTY;
-            };
-            case 1 -> switch (type) {
-                case "helmet" -> new ItemStack(Items.CHAINMAIL_HELMET);
-                case "chestplate" -> new ItemStack(Items.CHAINMAIL_CHESTPLATE);
-                case "leggings" -> new ItemStack(Items.CHAINMAIL_LEGGINGS);
-                case "boots" -> new ItemStack(Items.CHAINMAIL_BOOTS);
-                default -> ItemStack.EMPTY;
-            };
-            case 2 -> switch (type) {
-                case "helmet" -> new ItemStack(Items.IRON_HELMET);
-                case "chestplate" -> new ItemStack(Items.IRON_CHESTPLATE);
-                case "leggings" -> new ItemStack(Items.IRON_LEGGINGS);
-                case "boots" -> new ItemStack(Items.IRON_BOOTS);
-                default -> ItemStack.EMPTY;
-            };
-            case 3 -> switch (type) {
-                case "helmet" -> new ItemStack(Items.DIAMOND_HELMET);
-                case "chestplate" -> new ItemStack(Items.DIAMOND_CHESTPLATE);
-                case "leggings" -> new ItemStack(Items.DIAMOND_LEGGINGS);
-                case "boots" -> new ItemStack(Items.DIAMOND_BOOTS);
-                default -> ItemStack.EMPTY;
-            };
-            default -> ItemStack.EMPTY;
-        };
     }
 
     /**
