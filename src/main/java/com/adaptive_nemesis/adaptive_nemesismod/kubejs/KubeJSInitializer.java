@@ -1,6 +1,8 @@
 package com.adaptive_nemesis.adaptive_nemesismod.kubejs;
 
 import com.adaptive_nemesis.adaptive_nemesismod.AdaptiveNemesisMod;
+import com.adaptive_nemesis.adaptive_nemesismod.invasion.InvasionSystem;
+import com.adaptive_nemesis.adaptive_nemesismod.invasion.InvasionSystem.InvasionType;
 import com.adaptive_nemesis.adaptive_nemesismod.memory.NemesisProfile;
 
 import dev.latvian.mods.kubejs.event.EventGroup;
@@ -10,6 +12,7 @@ import dev.latvian.mods.kubejs.plugin.KubeJSPlugin;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.Mob;
+import net.minecraft.world.entity.player.Player;
 
 import java.util.UUID;
 
@@ -153,6 +156,78 @@ public class KubeJSInitializer implements KubeJSPlugin {
             NEMESIS_MEMORY_UPDATE.post(event);
         } catch (Exception e) {
             AdaptiveNemesisMod.LOGGER.error("触发 KubeJS 宿敌记忆更新事件失败: {}", e.getMessage());
+        }
+    }
+
+    /**
+     * 手动触发亡灵入侵事件
+     *
+     * @param player 目标玩家
+     */
+    public static void triggerUndeadInvasion(Player player) {
+        try {
+            if (player != null) {
+                InvasionSystem.getInstance().triggerInvasion(player.level(), player, InvasionType.UNDEAD);
+            }
+        } catch (Exception e) {
+            AdaptiveNemesisMod.LOGGER.error("触发 KubeJS 亡灵入侵事件失败: {}", e.getMessage());
+        }
+    }
+
+    /**
+     * 手动触发亡灵入侵事件（带自定义参数）
+     *
+     * @param player 目标玩家
+     * @param waveCount 波次数量
+     * @param difficultyMultiplier 难度倍率
+     */
+    public static void triggerUndeadInvasion(Player player, int waveCount, double difficultyMultiplier) {
+        try {
+            if (player != null) {
+                InvasionSystem.getInstance().triggerInvasionManual(player, InvasionType.UNDEAD, waveCount, difficultyMultiplier);
+            }
+        } catch (Exception e) {
+            AdaptiveNemesisMod.LOGGER.error("触发 KubeJS 亡灵入侵事件失败: {}", e.getMessage());
+        }
+    }
+
+    /**
+     * 检查玩家是否正在经历入侵事件
+     *
+     * @param player 玩家
+     * @return 是否在入侵中
+     */
+    public static boolean isInInvasion(Player player) {
+        try {
+            if (player == null) {
+                return false;
+            }
+            return InvasionSystem.getInstance().getActiveInvasion(player) != null;
+        } catch (Exception e) {
+            AdaptiveNemesisMod.LOGGER.error("KubeJS 检查入侵状态失败: {}", e.getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * 获取玩家当前的入侵事件进度
+     *
+     * @param player 玩家
+     * @return 进度信息，格式为 "当前波次/总波次"，或 null
+     */
+    public static String getInvasionProgress(Player player) {
+        try {
+            if (player == null) {
+                return null;
+            }
+            var invasion = InvasionSystem.getInstance().getActiveInvasion(player);
+            if (invasion == null) {
+                return null;
+            }
+            return String.format("%d/%d", invasion.getCurrentWave(), invasion.getTotalWaves());
+        } catch (Exception e) {
+            AdaptiveNemesisMod.LOGGER.error("KubeJS 获取入侵进度失败: {}", e.getMessage());
+            return null;
         }
     }
 }

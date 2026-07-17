@@ -32,7 +32,7 @@ public class WatchdogConfig {
         ENABLE_WATCHDOG = builder
             .comment("是否启用看门狗服务 - 监控服务端线程是否卡死/死锁")
             .comment("Enable watchdog service - monitors server thread for hangs/deadlocks")
-            .define("enableWatchdog", true);
+            .define("enableWatchdog", false);
         WATCHDOG_CHECK_INTERVAL = builder
             .comment("看门狗检查间隔（秒）- 每多少秒检查一次服务端活性")
             .comment("Watchdog check interval (seconds) - how often to check server activity")

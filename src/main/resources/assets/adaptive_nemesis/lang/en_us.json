@@ -106,6 +106,8 @@
   "adaptive_nemesis.config.tooltip.equipment_tier_upgrade_chance": "Chance for equipment to be one tier higher (0.15 = 15%)",
   "adaptive_nemesis.config.equipment_mod_compat_chance": "Mod Equipment Chance",
   "adaptive_nemesis.config.tooltip.equipment_mod_compat_chance": "Chance to replace vanilla gear with modded equipment (0.30 = 30%)",
+  "adaptive_nemesis.config.disable_equipment_drop": "Disable Equipment Drop",
+  "adaptive_nemesis.config.tooltip.disable_equipment_drop": "When enabled, mobs wear equipment but won't drop it on death (prevents players from easily obtaining powerful gear)",
 
   "adaptive_nemesis.config.category.epic_fight": "Epic Fight Scaling",
 

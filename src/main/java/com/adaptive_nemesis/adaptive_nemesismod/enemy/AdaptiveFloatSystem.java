@@ -11,21 +11,27 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.phys.Vec3;
 import net.neoforged.bus.api.SubscribeEvent;
+import net.neoforged.neoforge.event.entity.living.LivingIncomingDamageEvent;
 import net.neoforged.neoforge.event.entity.living.LivingDeathEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerEvent;
+import net.neoforged.neoforge.event.tick.ServerTickEvent;
 
 /**
  * 智能浮动系统
  * 
  * 根据玩家表现动态调整难度浮动倍数：
  * - 连续击杀 → 浮动倍数 +10%
- * - 频繁死亡 → 浮动倍数 -15%
- * - 长时间未战斗 → 浮动倍数重置基准
+ * - 频繁死亡 → 浮动倍数 -15%（弱化，不再是唯一下调依据）
+ * - 长时间未战斗 → 浮动倍数自动缓慢下降（新增）
+ * - 战斗效率低下 → 浮动倍数适当下调（新增）
+ * 
+ * 改进的难度下调机制：不以玩家死亡作为唯一依据，
+ * 当玩家避免死亡但难度已超标时，通过空闲衰减和战斗效率评估自动降低难度。
  * 
  * 目标：让玩家始终感到"有点难，但不多"
  * 
  * @author Adaptive Nemesis Team
- * @version 1.0.0
+ * @version 2.0.0
  */
 public class AdaptiveFloatSystem {
     
@@ -39,6 +45,11 @@ public class AdaptiveFloatSystem {
      * Key: 玩家UUID, Value: 浮动数据
      */
     private final Map<UUID, PlayerFloatData> playerFloatData = new HashMap<>();
+    
+    /**
+     * 服务器Tick计数器 - 用于定时检查空闲衰减
+     */
+    private int tickCounter = 0;
     
     /**
      * 私有构造函数 - 单例模式
@@ -77,7 +88,6 @@ public class AdaptiveFloatSystem {
      * @return 默认浮动倍率
      */
     public double getFloatMultiplier() {
-        // 返回所有在线玩家的平均浮动倍率
         if (playerFloatData.isEmpty()) {
             return 1.0;
         }
@@ -92,9 +102,6 @@ public class AdaptiveFloatSystem {
 
     /**
      * 获取指定位置附近玩家的平均浮动倍率
-     *
-     * 与 {@link EnemyScalingHandler#getNearbyPlayerStrength} 使用相同的玩家集合，
-     * 避免远处玩家浮动稀释本地难度。
      *
      * @param serverLevel 服务端世界
      * @param center 中心位置
@@ -124,7 +131,6 @@ public class AdaptiveFloatSystem {
      */
     @SubscribeEvent
     public void onLivingDeath(LivingDeathEvent event) {
-        // 检查是否是玩家击杀的敌对生物
         if (event.getSource() == null || event.getSource().getEntity() == null) {
             return;
         }
@@ -136,10 +142,8 @@ public class AdaptiveFloatSystem {
         UUID playerId = player.getUUID();
         PlayerFloatData data = getOrCreateFloatData(playerId);
         
-        // 增加连续击杀计数
         data.addKill();
         
-        // 每次击杀都增加浮动倍率（不再只连续5次才加）
         double newMultiplier = data.getCurrentMultiplier() + Config.KILL_STREAK_MULTIPLIER_INCREASE.get();
         data.setMultiplier(Math.min(newMultiplier, Config.FLOAT_MAX.get()));
         
@@ -152,16 +156,54 @@ public class AdaptiveFloatSystem {
             );
         }
         
-        // 更新最后战斗时间
+        data.updateLastCombatTime();
+        data.resetCombatStats();
+    }
+    
+    /**
+     * 处理玩家受伤事件 - 用于计算战斗效率
+     *
+     * @param event 生物受伤事件
+     */
+    @SubscribeEvent
+    public void onPlayerDamage(LivingIncomingDamageEvent event) {
+        if (!(event.getEntity() instanceof ServerPlayer player)) {
+            return;
+        }
+        
+        UUID playerId = player.getUUID();
+        PlayerFloatData data = getOrCreateFloatData(playerId);
+        data.recordDamageTaken(event.getAmount());
+        data.updateLastCombatTime();
+    }
+    
+    /**
+     * 处理玩家攻击事件 - 用于计算战斗效率
+     *
+     * @param event 生物受伤事件
+     */
+    @SubscribeEvent
+    public void onEnemyDamage(LivingIncomingDamageEvent event) {
+        if (event.getSource() == null || event.getSource().getEntity() == null) {
+            return;
+        }
+        
+        if (!(event.getSource().getEntity() instanceof ServerPlayer player)) {
+            return;
+        }
+        
+        UUID playerId = player.getUUID();
+        PlayerFloatData data = getOrCreateFloatData(playerId);
+        data.recordDamageDealt(event.getAmount());
         data.updateLastCombatTime();
     }
     
     /**
      * 处理玩家死亡后的浮动倍率调整
      *
-     * 使用 {@link PlayerEvent.PlayerRespawnEvent} 而非 {@link net.minecraftforge.event.entity.living.LivingDeathEvent}
-     * 是为了确保玩家确实进入重生流程后再调整倍率，避免玩家死亡后立刻退出导致的数据不一致。
-     * 每个有效死亡最终都会触发一次重生事件，因此死亡连击统计不会丢失。
+     * 使用 PlayerRespawnEvent 而非 LivingDeathEvent 是为了确保玩家确实进入重生流程后再调整倍率。
+     * 
+     * 注意：死亡不再是难度下调的唯一依据，仅作为辅助调整。
      *
      * @param event 玩家重生事件
      */
@@ -174,10 +216,8 @@ public class AdaptiveFloatSystem {
         UUID playerId = player.getUUID();
         PlayerFloatData data = getOrCreateFloatData(playerId);
         
-        // 增加死亡计数
         data.addDeath();
         
-        // 减少浮动倍率
         double newMultiplier = data.getCurrentMultiplier() - Config.DEATH_STREAK_MULTIPLIER_DECREASE.get();
         data.setMultiplier(Math.max(newMultiplier, Config.FLOAT_MIN.get()));
         
@@ -189,8 +229,93 @@ public class AdaptiveFloatSystem {
             );
         }
         
-        // 更新最后战斗时间
         data.updateLastCombatTime();
+    }
+    
+    /**
+     * 服务器Tick事件 - 定时检查空闲衰减和战斗效率
+     *
+     * @param event 服务器Tick事件
+     */
+    @SubscribeEvent
+    public void onServerTick(ServerTickEvent.Post event) {
+        tickCounter++;
+        
+        int checkInterval = Config.IDLE_DECAY_CHECK_INTERVAL.get() * 20;
+        if (tickCounter % checkInterval != 0) {
+            return;
+        }
+        
+        processIdleDecay();
+        processEfficiencyAdjustment();
+    }
+    
+    /**
+     * 处理空闲衰减 - 玩家长时间未战斗时自动降低难度
+     */
+    private void processIdleDecay() {
+        if (!Config.ENABLE_IDLE_DECAY.get()) {
+            return;
+        }
+        
+        double decayRate = Config.IDLE_DECAY_RATE.get();
+        long currentTime = System.currentTimeMillis();
+        
+        for (Map.Entry<UUID, PlayerFloatData> entry : playerFloatData.entrySet()) {
+            PlayerFloatData data = entry.getValue();
+            long inactiveMs = currentTime - data.getLastCombatTime();
+            
+            if (inactiveMs > 60000) {
+                double minutesIdle = inactiveMs / 60000.0;
+                double decayAmount = decayRate * minutesIdle / (60.0 / Config.IDLE_DECAY_CHECK_INTERVAL.get());
+                
+                if (decayAmount > 0.001 && data.getCurrentMultiplier() > 1.0) {
+                    double newMultiplier = data.getCurrentMultiplier() - decayAmount;
+                    data.setMultiplier(Math.max(newMultiplier, Config.FLOAT_MIN.get()));
+                    
+                    if (Config.ENABLE_DEBUG_LOG.get()) {
+                        AdaptiveNemesisMod.LOGGER.debug(
+                            "玩家 {} 空闲衰减，浮动倍率降低至 {} (空闲时间: {}秒)",
+                            entry.getKey(),
+                            String.format("%.2f", data.getCurrentMultiplier()),
+                            inactiveMs / 1000
+                        );
+                    }
+                }
+            }
+        }
+    }
+    
+    /**
+     * 处理战斗效率调整 - 战斗效率低下时自动降低难度
+     */
+    private void processEfficiencyAdjustment() {
+        if (!Config.ENABLE_EFFICIENCY_ADJUSTMENT.get()) {
+            return;
+        }
+        
+        double threshold = Config.COMBAT_EFFICIENCY_THRESHOLD.get();
+        
+        for (Map.Entry<UUID, PlayerFloatData> entry : playerFloatData.entrySet()) {
+            PlayerFloatData data = entry.getValue();
+            double efficiency = data.calculateCombatEfficiency();
+            
+            if (efficiency >= 0 && efficiency < threshold && data.getCurrentMultiplier() > 1.0) {
+                double newMultiplier = data.getCurrentMultiplier() - Config.EFFICIENCY_BASED_DECREASE.get();
+                data.setMultiplier(Math.max(newMultiplier, Config.FLOAT_MIN.get()));
+                
+                if (Config.ENABLE_DEBUG_LOG.get()) {
+                    AdaptiveNemesisMod.LOGGER.debug(
+                        "玩家 {} 战斗效率低下 ({}%)，浮动倍率降低至 {}",
+                        entry.getKey(),
+                        String.format("%.0f", efficiency * 100),
+                        String.format("%.2f", data.getCurrentMultiplier())
+                    );
+                }
+            }
+            
+            data.resetCombatStats();
+        }
     }
     
     /**
@@ -238,6 +363,30 @@ public class AdaptiveFloatSystem {
     public void clearPlayerData(UUID playerId) {
         playerFloatData.remove(playerId);
     }
+
+    /**
+     * 降低玩家的浮动倍率（用于入侵胜利后降低难度）
+     * 
+     * @param playerId 玩家UUID
+     * @param decreaseAmount 降低的倍率值
+     */
+    public void decreaseMultiplier(UUID playerId, double decreaseAmount) {
+        PlayerFloatData data = playerFloatData.get(playerId);
+        if (data == null) {
+            return;
+        }
+        
+        double newMultiplier = data.getCurrentMultiplier() - decreaseAmount;
+        data.setMultiplier(Math.max(newMultiplier, Config.FLOAT_MIN.get()));
+        
+        if (Config.ENABLE_DEBUG_LOG.get()) {
+            AdaptiveNemesisMod.LOGGER.debug(
+                "玩家 {} 入侵胜利，浮动倍率降低至 {}",
+                playerId,
+                String.format("%.2f", data.getCurrentMultiplier())
+            );
+        }
+    }
     
     /**
      * 玩家浮动数据内部类
@@ -263,6 +412,16 @@ public class AdaptiveFloatSystem {
          * 最后战斗时间戳
          */
         private long lastCombatTime = System.currentTimeMillis();
+        
+        /**
+         * 战斗效率统计 - 造成的伤害
+         */
+        private float damageDealt = 0.0f;
+        
+        /**
+         * 战斗效率统计 - 受到的伤害
+         */
+        private float damageTaken = 0.0f;
         
         /**
          * 获取当前浮动倍率
@@ -349,6 +508,50 @@ public class AdaptiveFloatSystem {
          */
         public long getLastCombatTime() {
             return lastCombatTime;
+        }
+        
+        /**
+         * 记录造成的伤害
+         * 
+         * @param amount 伤害值
+         */
+        public void recordDamageDealt(float amount) {
+            this.damageDealt += amount;
+        }
+        
+        /**
+         * 记录受到的伤害
+         * 
+         * @param amount 伤害值
+         */
+        public void recordDamageTaken(float amount) {
+            this.damageTaken += amount;
+        }
+        
+        /**
+         * 计算战斗效率
+         * 
+         * 战斗效率 = 造成的伤害 / (造成的伤害 + 受到的伤害)
+         * 返回 -1 表示没有足够的数据进行计算
+         * 
+         * @return 战斗效率 (0.0 - 1.0)，-1表示数据不足
+         */
+        public double calculateCombatEfficiency() {
+            if (damageDealt == 0 && damageTaken == 0) {
+                return -1;
+            }
+            if (damageDealt + damageTaken == 0) {
+                return -1;
+            }
+            return (double) damageDealt / (damageDealt + damageTaken);
+        }
+        
+        /**
+         * 重置战斗效率统计数据
+         */
+        public void resetCombatStats() {
+            this.damageDealt = 0.0f;
+            this.damageTaken = 0.0f;
         }
     }
 }

@@ -327,6 +327,11 @@ public class AdaptiveNemesisConfigScreen extends Screen {
             createDoubleEditBox(Config.EQUIPMENT_MOD_COMPAT_CHANCE.get(), 0.0, 1.0,
                 value -> { Config.EQUIPMENT_MOD_COMPAT_CHANCE.set(value); markChanged(); }),
             widgetX);
+        currentY = addConfigEntry(currentY, "adaptive_nemesis.config.disable_equipment_drop",
+            "adaptive_nemesis.config.tooltip.disable_equipment_drop",
+            createBooleanButton(Config.DISABLE_EQUIPMENT_DROP.get(),
+                value -> { Config.DISABLE_EQUIPMENT_DROP.set(value); markChanged(); }),
+            widgetX);
 
         // ===== 权重配置 =====
         currentY = addCategoryEntry(currentY, "adaptive_nemesis.config.category.weights", 0xFFFFAA55);
@@ -404,6 +409,140 @@ public class AdaptiveNemesisConfigScreen extends Screen {
             createStringEditBox("adaptive_nemesis.config.entity_blacklist",
                 () -> Config.ENTITY_BLACKLIST.get(),
                 value -> { Config.ENTITY_BLACKLIST.set(value); markChanged(); }),
+            widgetX);
+
+        // ===== 看门狗配置 =====
+        currentY = addCategoryEntry(currentY, "adaptive_nemesis.config.category.watchdog", 0xFFAA00AA);
+        currentY = addConfigEntry(currentY, "adaptive_nemesis.config.enable_watchdog",
+            "adaptive_nemesis.config.tooltip.enable_watchdog",
+            createBooleanButton(Config.WATCHDOG.ENABLE_WATCHDOG.get(),
+                value -> { Config.WATCHDOG.ENABLE_WATCHDOG.set(value); markChanged(); }),
+            widgetX);
+        currentY = addConfigEntry(currentY, "adaptive_nemesis.config.watchdog_check_interval",
+            "adaptive_nemesis.config.tooltip.watchdog_check_interval",
+            createIntEditBox(Config.WATCHDOG.WATCHDOG_CHECK_INTERVAL.get(), 1, 30,
+                value -> { Config.WATCHDOG.WATCHDOG_CHECK_INTERVAL.set(value); markChanged(); }),
+            widgetX);
+        currentY = addConfigEntry(currentY, "adaptive_nemesis.config.watchdog_warn_threshold",
+            "adaptive_nemesis.config.tooltip.watchdog_warn_threshold",
+            createIntEditBox(Config.WATCHDOG.WATCHDOG_WARN_THRESHOLD.get(), 10, 120,
+                value -> { Config.WATCHDOG.WATCHDOG_WARN_THRESHOLD.set(value); markChanged(); }),
+            widgetX);
+        currentY = addConfigEntry(currentY, "adaptive_nemesis.config.watchdog_critical_threshold",
+            "adaptive_nemesis.config.tooltip.watchdog_critical_threshold",
+            createIntEditBox(Config.WATCHDOG.WATCHDOG_CRITICAL_THRESHOLD.get(), 30, 300,
+                value -> { Config.WATCHDOG.WATCHDOG_CRITICAL_THRESHOLD.set(value); markChanged(); }),
+            widgetX);
+
+        // ===== 宿敌配置 =====
+        currentY = addCategoryEntry(currentY, "adaptive_nemesis.config.category.nemesis", 0xFF00AAFF);
+        currentY = addConfigEntry(currentY, "adaptive_nemesis.config.enable_nemesis_spawn",
+            "adaptive_nemesis.config.tooltip.enable_nemesis_spawn",
+            createBooleanButton(Config.NEMESIS.ENABLE_NEMESIS_SPAWN.get(),
+                value -> { Config.NEMESIS.ENABLE_NEMESIS_SPAWN.set(value); markChanged(); }),
+            widgetX);
+        currentY = addConfigEntry(currentY, "adaptive_nemesis.config.nemesis_spawn_chance",
+            "adaptive_nemesis.config.tooltip.nemesis_spawn_chance",
+            createDoubleEditBox(Config.NEMESIS.NEMESIS_SPAWN_CHANCE.get(), 0.0, 1.0,
+                value -> { Config.NEMESIS.NEMESIS_SPAWN_CHANCE.set(value); markChanged(); }),
+            widgetX);
+        currentY = addConfigEntry(currentY, "adaptive_nemesis.config.nemesis_base_multiplier",
+            "adaptive_nemesis.config.tooltip.nemesis_base_multiplier",
+            createDoubleEditBox(Config.NEMESIS.NEMESIS_BASE_MULTIPLIER.get(), 1.0, 10.0,
+                value -> { Config.NEMESIS.NEMESIS_BASE_MULTIPLIER.set(value); markChanged(); }),
+            widgetX);
+        currentY = addConfigEntry(currentY, "adaptive_nemesis.config.nemesis_min_multiplier",
+            "adaptive_nemesis.config.tooltip.nemesis_min_multiplier",
+            createDoubleEditBox(Config.NEMESIS.NEMESIS_MIN_MULTIPLIER.get(), 1.0, 10.0,
+                value -> { Config.NEMESIS.NEMESIS_MIN_MULTIPLIER.set(value); markChanged(); }),
+            widgetX);
+        currentY = addConfigEntry(currentY, "adaptive_nemesis.config.nemesis_max_multiplier",
+            "adaptive_nemesis.config.tooltip.nemesis_max_multiplier",
+            createDoubleEditBox(Config.NEMESIS.NEMESIS_MAX_MULTIPLIER.get(), 1.0, 20.0,
+                value -> { Config.NEMESIS.NEMESIS_MAX_MULTIPLIER.set(value); markChanged(); }),
+            widgetX);
+        currentY = addConfigEntry(currentY, "adaptive_nemesis.config.show_nemesis_name",
+            "adaptive_nemesis.config.tooltip.show_nemesis_name",
+            createBooleanButton(Config.NEMESIS.SHOW_NEMESIS_NAME.get(),
+                value -> { Config.NEMESIS.SHOW_NEMESIS_NAME.set(value); markChanged(); }),
+            widgetX);
+        currentY = addConfigEntry(currentY, "adaptive_nemesis.config.nemesis_name_always_visible",
+            "adaptive_nemesis.config.tooltip.nemesis_name_always_visible",
+            createBooleanButton(Config.NEMESIS.NEMESIS_NAME_ALWAYS_VISIBLE.get(),
+                value -> { Config.NEMESIS.NEMESIS_NAME_ALWAYS_VISIBLE.set(value); markChanged(); }),
+            widgetX);
+
+        // ===== 入侵事件配置 =====
+        currentY = addCategoryEntry(currentY, "adaptive_nemesis.config.category.invasion", 0xFFFF00AA);
+        currentY = addConfigEntry(currentY, "adaptive_nemesis.config.enable_invasion",
+            "adaptive_nemesis.config.tooltip.enable_invasion",
+            createBooleanButton(Config.INVASION.ENABLE_INVASION.get(),
+                value -> { Config.INVASION.ENABLE_INVASION.set(value); markChanged(); }),
+            widgetX);
+        currentY = addConfigEntry(currentY, "adaptive_nemesis.config.invasion_trigger_chance",
+            "adaptive_nemesis.config.tooltip.invasion_trigger_chance",
+            createDoubleEditBox(Config.INVASION.INVASION_TRIGGER_CHANCE.get(), 0.0, 1.0,
+                value -> { Config.INVASION.INVASION_TRIGGER_CHANCE.set(value); markChanged(); }),
+            widgetX);
+        currentY = addConfigEntry(currentY, "adaptive_nemesis.config.base_wave_count",
+            "adaptive_nemesis.config.tooltip.base_wave_count",
+            createIntEditBox(Config.INVASION.BASE_WAVE_COUNT.get(), 1, 10,
+                value -> { Config.INVASION.BASE_WAVE_COUNT.set(value); markChanged(); }),
+            widgetX);
+        currentY = addConfigEntry(currentY, "adaptive_nemesis.config.max_wave_count",
+            "adaptive_nemesis.config.tooltip.max_wave_count",
+            createIntEditBox(Config.INVASION.MAX_WAVE_COUNT.get(), 1, 20,
+                value -> { Config.INVASION.MAX_WAVE_COUNT.set(value); markChanged(); }),
+            widgetX);
+        currentY = addConfigEntry(currentY, "adaptive_nemesis.config.max_enemies_per_wave",
+            "adaptive_nemesis.config.tooltip.max_enemies_per_wave",
+            createIntEditBox(Config.INVASION.MAX_ENEMIES_PER_WAVE.get(), 1, 50,
+                value -> { Config.INVASION.MAX_ENEMIES_PER_WAVE.set(value); markChanged(); }),
+            widgetX);
+        currentY = addConfigEntry(currentY, "adaptive_nemesis.config.spawn_distance",
+            "adaptive_nemesis.config.tooltip.spawn_distance",
+            createIntEditBox(Config.INVASION.SPAWN_DISTANCE.get(), 10, 100,
+                value -> { Config.INVASION.SPAWN_DISTANCE.set(value); markChanged(); }),
+            widgetX);
+        currentY = addConfigEntry(currentY, "adaptive_nemesis.config.enable_frost_walker_on_water",
+            "adaptive_nemesis.config.tooltip.enable_frost_walker_on_water",
+            createBooleanButton(Config.INVASION.ENABLE_FROST_WALKER_ON_WATER.get(),
+                value -> { Config.INVASION.ENABLE_FROST_WALKER_ON_WATER.set(value); markChanged(); }),
+            widgetX);
+        currentY = addConfigEntry(currentY, "adaptive_nemesis.config.enable_glowing_effect",
+            "adaptive_nemesis.config.tooltip.enable_glowing_effect",
+            createBooleanButton(Config.INVASION.ENABLE_GLOWING_EFFECT.get(),
+                value -> { Config.INVASION.ENABLE_GLOWING_EFFECT.set(value); markChanged(); }),
+            widgetX);
+        currentY = addConfigEntry(currentY, "adaptive_nemesis.config.difficulty_decrease_on_victory",
+            "adaptive_nemesis.config.tooltip.difficulty_decrease_on_victory",
+            createDoubleEditBox(Config.INVASION.DIFFICULTY_DECREASE_ON_VICTORY.get(), 0.0, 0.5,
+                value -> { Config.INVASION.DIFFICULTY_DECREASE_ON_VICTORY.set(value); markChanged(); }),
+            widgetX);
+        currentY = addConfigEntry(currentY, "adaptive_nemesis.config.loot_rarity_bonus",
+            "adaptive_nemesis.config.tooltip.loot_rarity_bonus",
+            createDoubleEditBox(Config.INVASION.LOOT_RARITY_BONUS.get(), 0.0, 1.0,
+                value -> { Config.INVASION.LOOT_RARITY_BONUS.set(value); markChanged(); }),
+            widgetX);
+        currentY = addConfigEntry(currentY, "adaptive_nemesis.config.enable_custom_difficulty",
+            "adaptive_nemesis.config.tooltip.enable_custom_difficulty",
+            createBooleanButton(Config.INVASION.ENABLE_CUSTOM_DIFFICULTY.get(),
+                value -> { Config.INVASION.ENABLE_CUSTOM_DIFFICULTY.set(value); markChanged(); }),
+            widgetX);
+        currentY = addConfigEntry(currentY, "adaptive_nemesis.config.custom_difficulty_multiplier",
+            "adaptive_nemesis.config.tooltip.custom_difficulty_multiplier",
+            createDoubleEditBox(Config.INVASION.CUSTOM_DIFFICULTY_MULTIPLIER.get(), 0.1, 10.0,
+                value -> { Config.INVASION.CUSTOM_DIFFICULTY_MULTIPLIER.set(value); markChanged(); }),
+            widgetX);
+        currentY = addConfigEntry(currentY, "adaptive_nemesis.config.initial_cooldown_minutes",
+            "adaptive_nemesis.config.tooltip.initial_cooldown_minutes",
+            createIntEditBox(Config.INVASION.INITIAL_COOLDOWN_MINUTES.get(), 1, 60,
+                value -> { Config.INVASION.INITIAL_COOLDOWN_MINUTES.set(value); markChanged(); }),
+            widgetX);
+        currentY = addConfigEntry(currentY, "adaptive_nemesis.config.warning_seconds_before_invasion",
+            "adaptive_nemesis.config.tooltip.warning_seconds_before_invasion",
+            createIntEditBox(Config.INVASION.WARNING_SECONDS_BEFORE_INVASION.get(), 1, 60,
+                value -> { Config.INVASION.WARNING_SECONDS_BEFORE_INVASION.set(value); markChanged(); }),
             widgetX);
 
         // ===== 调试选项 =====

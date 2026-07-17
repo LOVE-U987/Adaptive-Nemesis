@@ -4,6 +4,7 @@ import org.slf4j.Logger;
 
 import com.adaptive_nemesis.adaptive_nemesismod.boss.BossDamageCapHandler;
 import com.adaptive_nemesis.adaptive_nemesismod.boss.BossIdentificationService;
+import com.adaptive_nemesis.adaptive_nemesismod.command.InvasionCommand;
 import com.adaptive_nemesis.adaptive_nemesismod.command.ModCommands;
 import com.adaptive_nemesis.adaptive_nemesismod.damage.TrueDamageHandler;
 import com.adaptive_nemesis.adaptive_nemesismod.enemy.EnemyScalingHandler;
@@ -11,8 +12,11 @@ import com.adaptive_nemesis.adaptive_nemesismod.enemy.DifficultyTracker;
 import com.adaptive_nemesis.adaptive_nemesismod.enemy.EnchantmentScalingHandler;
 import com.adaptive_nemesis.adaptive_nemesismod.enemy.WorldStageManager;
 import com.adaptive_nemesis.adaptive_nemesismod.event.ModEventHandler;
+import com.adaptive_nemesis.adaptive_nemesismod.invasion.InvasionKubeJsSupport;
+import com.adaptive_nemesis.adaptive_nemesismod.invasion.InvasionSystem;
 import com.adaptive_nemesis.adaptive_nemesismod.memory.NemesisMemorySystem;
 import com.adaptive_nemesis.adaptive_nemesismod.network.ModNetworking;
+import com.adaptive_nemesis.adaptive_nemesismod.nemesis.NemesisSystem;
 import com.adaptive_nemesis.adaptive_nemesismod.player.PlayerStrengthEvaluator;
 import com.adaptive_nemesis.adaptive_nemesismod.protection.NewbieProtectionHandler;
 import com.adaptive_nemesis.adaptive_nemesismod.watchdog.WatchdogService;
@@ -128,6 +132,18 @@ public class AdaptiveNemesisMod {
             if (Config.ENABLE_WATCHDOG.get()) {
                 WatchdogService.getInstance().start();
             }
+
+            // 初始化宿敌日常生成系统
+            new NemesisSystem();
+            LOGGER.info("👹 宿敌日常生成系统已初始化");
+
+            // 初始化入侵事件系统
+            InvasionSystem invasionSystem = new InvasionSystem();
+            InvasionCommand.setInvasionSystem(invasionSystem);
+            
+            // 初始化 KubeJS 支持
+            new InvasionKubeJsSupport(invasionSystem);
+            LOGGER.info("⚔️ 入侵事件系统已初始化");
 
             LOGGER.info("✅ 各子系统初始化完成！");
         });

@@ -347,6 +347,13 @@ public class EnchantmentScalingHandler {
             }
         }
 
+        // 如果配置了禁用装备掉落，设置所有装备槽位的掉落概率为0
+        if (Config.DISABLE_EQUIPMENT_DROP.get()) {
+            for (EquipmentSlot slot : EquipmentSlot.values()) {
+                mob.setDropChance(slot, 0.0F);
+            }
+        }
+
         // 装备生成后验证怪物状态
         validateMobState(mob);
     }

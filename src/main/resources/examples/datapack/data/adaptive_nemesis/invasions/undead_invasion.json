@@ -1,0 +1,101 @@
+{
+  "type": "adaptive_nemesis:invasion",
+  "name": "亡灵入侵",
+  "description": "亡灵大军从四方袭来，考验你的战斗能力！",
+  
+  "base_wave_count": 3,
+  "max_wave_count": 6,
+  "spawn_distance": 40,
+  
+  "enable_frost_walker_on_water": true,
+  "enable_glowing_effect": true,
+  
+  "difficulty_decrease_on_victory": 0.1,
+  "loot_rarity_bonus": 0.15,
+  "loot_rarity_bonus_duration": 30,
+  
+  "waves": [
+    {
+      "wave_number": 1,
+      "enemies": [
+        { "entity_type": "minecraft:zombie", "count": 5, "weight": 10 },
+        { "entity_type": "minecraft:skeleton", "count": 3, "weight": 8 },
+        { "entity_type": "minecraft:spider", "count": 2, "weight": 5 }
+      ],
+      "difficulty_multiplier": 1.0
+    },
+    {
+      "wave_number": 2,
+      "enemies": [
+        { "entity_type": "minecraft:zombie", "count": 8, "weight": 10 },
+        { "entity_type": "minecraft:skeleton", "count": 5, "weight": 8 },
+        { "entity_type": "minecraft:creeper", "count": 2, "weight": 6 },
+        { "entity_type": "minecraft:drowned", "count": 3, "weight": 7 }
+      ],
+      "difficulty_multiplier": 1.2
+    },
+    {
+      "wave_number": 3,
+      "enemies": [
+        { "entity_type": "minecraft:zombie_villager", "count": 4, "weight": 8 },
+        { "entity_type": "minecraft:wither_skeleton", "count": 3, "weight": 10 },
+        { "entity_type": "minecraft:husk", "count": 4, "weight": 7 },
+        { "entity_type": "minecraft:stray", "count": 3, "weight": 8 },
+        { "entity_type": "minecraft:zoglin", "count": 1, "weight": 12 }
+      ],
+      "difficulty_multiplier": 1.5
+    },
+    {
+      "wave_number": 4,
+      "enemies": [
+        { "entity_type": "minecraft:wither_skeleton", "count": 5, "weight": 10 },
+        { "entity_type": "minecraft:zombie", "count": 10, "weight": 8 },
+        { "entity_type": "minecraft:skeleton", "count": 6, "weight": 7 },
+        { "entity_type": "minecraft:creeper", "count": 4, "weight": 6 },
+        { "entity_type": "minecraft:silverfish", "count": 5, "weight": 5 }
+      ],
+      "difficulty_multiplier": 1.8
+    },
+    {
+      "wave_number": 5,
+      "enemies": [
+        { "entity_type": "minecraft:wither_skeleton", "count": 6, "weight": 10 },
+        { "entity_type": "minecraft:zombie_villager", "count": 6, "weight": 8 },
+        { "entity_type": "minecraft:husk", "count": 5, "weight": 7 },
+        { "entity_type": "minecraft:zoglin", "count": 2, "weight": 12 },
+        { "entity_type": "minecraft:pillager", "count": 3, "weight": 9 }
+      ],
+      "difficulty_multiplier": 2.0
+    },
+    {
+      "wave_number": 6,
+      "enemies": [
+        { "entity_type": "minecraft:wither_skeleton", "count": 8, "weight": 10 },
+        { "entity_type": "minecraft:zombie", "count": 15, "weight": 8 },
+        { "entity_type": "minecraft:skeleton", "count": 8, "weight": 7 },
+        { "entity_type": "minecraft:creeper", "count": 6, "weight": 6 },
+        { "entity_type": "minecraft:zoglin", "count": 3, "weight": 12 },
+        { "entity_type": "minecraft:pillager", "count": 5, "weight": 9 }
+      ],
+      "difficulty_multiplier": 2.5
+    }
+  ],
+  
+  "rewards": {
+    "common": [
+      { "item": "minecraft:iron_ingot", "count": 8, "chance": 0.5 },
+      { "item": "minecraft:gold_ingot", "count": 4, "chance": 0.3 },
+      { "item": "minecraft:diamond", "count": 1, "chance": 0.1 },
+      { "item": "minecraft:experience_bottle", "count": 10, "chance": 0.8 }
+    ],
+    "rare": [
+      { "item": "minecraft:netherite_scrap", "count": 2, "chance": 0.1 },
+      { "item": "minecraft:enchanted_golden_apple", "count": 1, "chance": 0.05 },
+      { "item": "minecraft:totem_of_undying", "count": 1, "chance": 0.02 }
+    ],
+    "legendary": [
+      { "item": "minecraft:diamond_sword", "chance": 0.03 },
+      { "item": "minecraft:diamond_armor", "chance": 0.02 }
+    ]
+  }
+}

@@ -1,5 +1,6 @@
 package com.adaptive_nemesis.adaptive_nemesismod.boss;
 
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
 
@@ -13,12 +14,31 @@ import java.util.Set;
  * 通过实体注册ID或名称中的关键词识别模组添加的Boss。
  * 关键词列表可通过配置文件动态调整，支持模组兼容性扩展。
  * 
+ * 🛡️ 防误判机制：
+ * 部分普通怪物（如凋零骷髅 wither_skeleton）的实体注册名中可能包含 Boss 关键词（如"wither"），
+ * 通过排除实体列表过滤这些假阳性，防止它们获得Boss额外加成。
+ * 
+ * 例如：minecraft:wither_skeleton 包含 "wither" 关键词，匹配成功，
+ * 但它只是普通怪物，不应获得Boss的5倍血量+3倍伤害加成。
+ * 
  * @author Adaptive Nemesis Team
- * @version 1.0.0
+ * @version 1.1.0
  */
 public class NameBasedBossIdentifier implements BossIdentifier {
 
     private final Set<String> bossKeywords;
+
+    /**
+     * 名称匹配Boss识别排除列表
+     * 
+     * 这些实体的注册名中包含Boss关键词，但它们并非真正的Boss，
+     * 不应通过名称匹配策略被识别为Boss。
+     * 例如：
+     * - minecraft:wither_skeleton → 包含 "wither"，但只是普通怪物
+     */
+    private static final Set<String> EXCLUDED_ENTITY_IDS = Collections.unmodifiableSet(new HashSet<>(Set.of(
+        "minecraft:wither_skeleton"
+    )));
 
     /**
      * 创建基于名称的Boss识别策略
@@ -31,13 +51,37 @@ public class NameBasedBossIdentifier implements BossIdentifier {
 
     @Override
     public boolean isBoss(LivingEntity entity) {
+        // 🚫 检查是否在排除列表中
+        // 防止实体名称中包含 Boss 关键词但不是真正 Boss 的普通怪物被误判
+        if (isExcluded(entity)) {
+            return false;
+        }
         return matchesBossKeywords(EntityType.getKey(entity.getType()).toString(), bossKeywords);
     }
 
     @Override
     public String getBossType(LivingEntity entity) {
+        // 🚫 排除列表中的实体不进行 Boss 类型推断
+        if (isExcluded(entity)) {
+            return null;
+        }
         String entityName = EntityType.getKey(entity.getType()).toString().toLowerCase();
         return inferBossType(entityName, bossKeywords);
+    }
+
+    /**
+     * 检查实体是否在名称匹配的排除列表中
+     * 
+     * @param entity 目标实体
+     * @return 如果在排除列表中返回true
+     */
+    private boolean isExcluded(LivingEntity entity) {
+        EntityType<?> entityType = entity.getType();
+        ResourceLocation key = EntityType.getKey(entityType);
+        if (key == null) {
+            return false;
+        }
+        return EXCLUDED_ENTITY_IDS.contains(key.toString());
     }
 
     /**

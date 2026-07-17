@@ -38,9 +38,10 @@ public class BossIdentificationService {
      * 初始化Boss识别服务（从配置加载策略）
      * 
      * 按优先级创建识别策略：
-     * 1. TypeBasedBossIdentifier - 类型识别（最高优先级）
-     * 2. NameBasedBossIdentifier - 名称识别
-     * 3. HealthThresholdBossIdentifier - 血量阈值识别
+     * 1. TagBasedBossIdentifier - BOSS标签识别（最高优先级）
+     * 2. TypeBasedBossIdentifier - 类型识别
+     * 3. NameBasedBossIdentifier - 名称识别
+     * 4. HealthThresholdBossIdentifier - 血量阈值识别（最低优先级）
      */
     public static synchronized void initialize() {
         if (INSTANCE != null) {
@@ -49,14 +50,18 @@ public class BossIdentificationService {
 
         List<BossIdentifier> identifiers = new ArrayList<>();
 
-        // 1. 类型识别策略（最高优先级）
+        // 1. BOSS标签识别策略（最高优先级）
+        // 通过实体类型标签判断是否为Boss，最精准可靠的方式
+        identifiers.add(new TagBasedBossIdentifier());
+
+        // 2. 类型识别策略
         identifiers.add(new TypeBasedBossIdentifier());
 
-        // 2. 名称识别策略
+        // 3. 名称识别策略
         Set<String> bossKeywords = parseKeywords(Config.BOSS_IDENTIFICATION_KEYWORDS.get());
         identifiers.add(new NameBasedBossIdentifier(bossKeywords));
 
-        // 3. 血量阈值识别策略（最低优先级）
+        // 4. 血量阈值识别策略（最低优先级）
         double healthThreshold = Config.BOSS_HEALTH_THRESHOLD.get();
         identifiers.add(new HealthThresholdBossIdentifier(healthThreshold));
 
