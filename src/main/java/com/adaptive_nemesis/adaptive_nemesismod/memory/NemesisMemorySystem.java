@@ -5,6 +5,7 @@ import java.util.*;
 import com.adaptive_nemesis.adaptive_nemesismod.AdaptiveNemesisMod;
 import com.adaptive_nemesis.adaptive_nemesismod.kubejs.KubeJSEventTrigger;
 
+import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.entity.EntityType;
@@ -260,18 +261,32 @@ public class NemesisMemorySystem {
      * 战斗风格枚举
      */
     public enum CombatStyle {
-        MELEE("近战"),
-        RANGED("远程"),
-        MAGIC("法术");
+        MELEE("adaptive_nemesis.combat_style.melee"),
+        RANGED("adaptive_nemesis.combat_style.ranged"),
+        MAGIC("adaptive_nemesis.combat_style.magic");
 
-        private final String displayName;
+        private final String translationKey;
 
-        CombatStyle(String displayName) {
-            this.displayName = displayName;
+        CombatStyle(String translationKey) {
+            this.translationKey = translationKey;
         }
 
-        public String getDisplayName() {
-            return displayName;
+        /**
+         * 获取战斗风格的显示名称组件
+         *
+         * @return 已本地化的显示名称组件
+         */
+        public Component getDisplayName() {
+            return Component.translatable(translationKey);
+        }
+
+        /**
+         * 获取战斗风格的翻译键
+         *
+         * @return 翻译键
+         */
+        public String getTranslationKey() {
+            return translationKey;
         }
     }
 }

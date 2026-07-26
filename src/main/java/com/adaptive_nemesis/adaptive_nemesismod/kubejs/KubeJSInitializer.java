@@ -1,6 +1,7 @@
 package com.adaptive_nemesis.adaptive_nemesismod.kubejs;
 
 import com.adaptive_nemesis.adaptive_nemesismod.AdaptiveNemesisMod;
+import com.adaptive_nemesis.adaptive_nemesismod.invasion.InvasionRewardData;
 import com.adaptive_nemesis.adaptive_nemesismod.invasion.InvasionSystem;
 import com.adaptive_nemesis.adaptive_nemesismod.invasion.InvasionSystem.InvasionType;
 import com.adaptive_nemesis.adaptive_nemesismod.memory.NemesisProfile;
@@ -43,9 +44,25 @@ public class KubeJSInitializer implements KubeJSPlugin {
     public static final EventHandler PLAYER_STRENGTH_EVALUATION =
         ADAPTIVE_NEMESIS_EVENTS.server("player_strength_evaluation", () -> PlayerStrengthEvaluationEventJS.class);
 
+    /** 世界阶段变化事件 */
+    public static final EventHandler WORLD_STAGE_CHANGE =
+        ADAPTIVE_NEMESIS_EVENTS.server("world_stage_change", () -> WorldStageChangeEventJS.class);
+
     /** 宿敌记忆更新事件 */
     public static final EventHandler NEMESIS_MEMORY_UPDATE =
         ADAPTIVE_NEMESIS_EVENTS.server("nemesis_memory_update", () -> NemesisMemoryUpdateEventJS.class);
+
+    /** 入侵开始事件 */
+    public static final EventHandler INVASION_START =
+        ADAPTIVE_NEMESIS_EVENTS.server("invasion_start", () -> InvasionStartEventJS.class);
+
+    /** 入侵波次开始事件 */
+    public static final EventHandler INVASION_WAVE_START =
+        ADAPTIVE_NEMESIS_EVENTS.server("invasion_wave_start", () -> InvasionWaveStartEventJS.class);
+
+    /** 入侵结束事件 */
+    public static final EventHandler INVASION_END =
+        ADAPTIVE_NEMESIS_EVENTS.server("invasion_end", () -> InvasionEndEventJS.class);
 
     @Override
     public void init() {
@@ -130,6 +147,33 @@ public class KubeJSInitializer implements KubeJSPlugin {
         } catch (Exception e) {
             AdaptiveNemesisMod.LOGGER.error("触发 KubeJS 玩家强度评估事件失败: {}", e.getMessage());
             return baseStrength;
+        }
+    }
+
+    /**
+     * 触发世界阶段变化事件
+     *
+     * @param player 触发玩家
+     * @param oldStage 旧阶段
+     * @param newStage 新阶段
+     * @param stageMultiplier 阶段倍率
+     * @param defeatedBossCount 已击杀 Boss 数量
+     * @return 事件处理后的阶段倍率
+     */
+    public static double fireWorldStageChange(ServerPlayer player, int oldStage, int newStage,
+                                               double stageMultiplier, int defeatedBossCount) {
+        try {
+            WorldStageChangeEventJS event = new WorldStageChangeEventJS(
+                player, oldStage, newStage, stageMultiplier, defeatedBossCount
+            );
+            WORLD_STAGE_CHANGE.post(event);
+            if (event.isEventCancelled()) {
+                return stageMultiplier;
+            }
+            return event.getStageMultiplier();
+        } catch (Exception e) {
+            AdaptiveNemesisMod.LOGGER.error("触发 KubeJS 世界阶段变化事件失败: {}", e.getMessage());
+            return stageMultiplier;
         }
     }
 
@@ -228,6 +272,81 @@ public class KubeJSInitializer implements KubeJSPlugin {
         } catch (Exception e) {
             AdaptiveNemesisMod.LOGGER.error("KubeJS 获取入侵进度失败: {}", e.getMessage());
             return null;
+        }
+    }
+
+    /**
+     * 触发入侵开始事件
+     *
+     * @param player 触发玩家
+     * @param type 入侵类型
+     * @param totalWaves 总波次数
+     * @param difficultyMultiplier 难度倍率
+     * @return 事件处理后的配置数组 [totalWaves, difficultyMultiplier]，取消则返回 null
+     */
+    public static double[] fireInvasionStart(ServerPlayer player, InvasionSystem.InvasionType type,
+                                              int totalWaves, double difficultyMultiplier) {
+        try {
+            InvasionStartEventJS event = new InvasionStartEventJS(
+                player, type, totalWaves, difficultyMultiplier
+            );
+            INVASION_START.post(event);
+            if (event.isEventCancelled()) {
+                return null;
+            }
+            return new double[]{event.getTotalWaves(), event.getDifficultyMultiplier()};
+        } catch (Exception e) {
+            AdaptiveNemesisMod.LOGGER.error("触发 KubeJS 入侵开始事件失败: {}", e.getMessage());
+            return new double[]{totalWaves, difficultyMultiplier};
+        }
+    }
+
+    /**
+     * 触发入侵波次开始事件
+     *
+     * @param player 触发玩家
+     * @param type 入侵类型
+     * @param currentWave 当前波次
+     * @param totalWaves 总波次数
+     * @param difficultyMultiplier 难度倍率
+     */
+    public static void fireInvasionWaveStart(ServerPlayer player, InvasionSystem.InvasionType type,
+                                              int currentWave, int totalWaves, double difficultyMultiplier) {
+        try {
+            InvasionWaveStartEventJS event = new InvasionWaveStartEventJS(
+                player, type, currentWave, totalWaves, difficultyMultiplier
+            );
+            INVASION_WAVE_START.post(event);
+        } catch (Exception e) {
+            AdaptiveNemesisMod.LOGGER.error("触发 KubeJS 入侵波次开始事件失败: {}", e.getMessage());
+        }
+    }
+
+    /**
+     * 触发入侵结束事件
+     *
+     * @param player 触发玩家
+     * @param type 入侵类型
+     * @param victory 是否胜利
+     * @param totalWaves 总波次数
+     * @param difficultyMultiplier 难度倍率
+     * @param wavesCompleted 完成波次数
+     * @param rewards 奖励配置
+     * @return 可能被 KubeJS 修改过的奖励配置
+     */
+    public static InvasionRewardData fireInvasionEnd(ServerPlayer player, InvasionSystem.InvasionType type,
+                                                      boolean victory, int totalWaves,
+                                                      double difficultyMultiplier, int wavesCompleted,
+                                                      InvasionRewardData rewards) {
+        try {
+            InvasionEndEventJS event = new InvasionEndEventJS(
+                player, type, victory, totalWaves, difficultyMultiplier, wavesCompleted, rewards
+            );
+            INVASION_END.post(event);
+            return event.getRewards();
+        } catch (Exception e) {
+            AdaptiveNemesisMod.LOGGER.error("触发 KubeJS 入侵结束事件失败: {}", e.getMessage());
+            return rewards;
         }
     }
 }

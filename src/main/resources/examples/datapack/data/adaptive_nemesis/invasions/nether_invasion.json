@@ -1,91 +1,68 @@
 {
-  "type": "adaptive_nemesis:invasion",
-  "name": "下界入侵",
-  "description": "来自下界的恶魔大军突破维度屏障，带来毁灭与火焰！",
-  
-  "base_wave_count": 3,
-  "max_wave_count": 5,
-  "spawn_distance": 35,
-  
-  "enable_frost_walker_on_water": false,
-  "enable_glowing_effect": true,
-  
-  "difficulty_decrease_on_victory": 0.15,
-  "loot_rarity_bonus": 0.2,
-  "loot_rarity_bonus_duration": 45,
-  
+  "name": "adaptive_nemesis.invasion.nether.name",
+  "max_waves": 5,
+  "spawn_distance": 60,
+  "rewards": {
+    "loot_tables": [
+      "minecraft:chests/nether_bridge",
+      "minecraft:chests/bastion_treasure"
+    ],
+    "experience": 800,
+    "effects": [
+      {"id": "minecraft:fire_resistance", "duration": 600, "amplifier": 0},
+      {"id": "minecraft:strength", "duration": 120, "amplifier": 0}
+    ]
+  },
   "waves": [
     {
-      "wave_number": 1,
+      "wave": 1,
+      "difficulty_multiplier": 1.2,
       "enemies": [
-        { "entity_type": "minecraft:zombie_piglin", "count": 6, "weight": 10 },
-        { "entity_type": "minecraft:magma_cube", "count": 3, "weight": 8 },
-        { "entity_type": "minecraft:ghast", "count": 1, "weight": 6 }
-      ],
-      "difficulty_multiplier": 1.2
+        {"entity_type": "minecraft:zombified_piglin", "count": 4, "weight": 1},
+        {"entity_type": "minecraft:wither_skeleton", "count": 3, "weight": 1}
+      ]
     },
     {
-      "wave_number": 2,
+      "wave": 2,
+      "difficulty_multiplier": 1.4,
       "enemies": [
-        { "entity_type": "minecraft:zombie_piglin", "count": 8, "weight": 10 },
-        { "entity_type": "minecraft:magma_cube", "count": 5, "weight": 8 },
-        { "entity_type": "minecraft:ghast", "count": 2, "weight": 7 },
-        { "entity_type": "minecraft:blaze", "count": 3, "weight": 9 }
-      ],
-      "difficulty_multiplier": 1.5
+        {"entity_type": "minecraft:zombified_piglin", "count": 5, "weight": 1},
+        {"entity_type": "minecraft:wither_skeleton", "count": 4, "weight": 1},
+        {"entity_type": "minecraft:blaze", "count": 2, "weight": 1}
+      ]
     },
     {
-      "wave_number": 3,
+      "wave": 3,
+      "difficulty_multiplier": 1.6,
       "enemies": [
-        { "entity_type": "minecraft:blaze", "count": 5, "weight": 10 },
-        { "entity_type": "minecraft:wither_skeleton", "count": 4, "weight": 9 },
-        { "entity_type": "minecraft:magma_cube", "count": 6, "weight": 8 },
-        { "entity_type": "minecraft:ghast", "count": 3, "weight": 7 },
-        { "entity_type": "minecraft:strider", "count": 2, "weight": 5 }
-      ],
-      "difficulty_multiplier": 1.8
+        {"entity_type": "minecraft:zombified_piglin", "count": 4, "weight": 1},
+        {"entity_type": "minecraft:wither_skeleton", "count": 4, "weight": 1},
+        {"entity_type": "minecraft:blaze", "count": 3, "weight": 1},
+        {"entity_type": "minecraft:magma_cube", "count": 3, "weight": 1}
+      ]
     },
     {
-      "wave_number": 4,
+      "wave": 4,
+      "difficulty_multiplier": 1.8,
       "enemies": [
-        { "entity_type": "minecraft:wither_skeleton", "count": 6, "weight": 10 },
-        { "entity_type": "minecraft:blaze", "count": 7, "weight": 9 },
-        { "entity_type": "minecraft:magma_cube", "count": 8, "weight": 8 },
-        { "entity_type": "minecraft:ghast", "count": 4, "weight": 7 },
-        { "entity_type": "minecraft:hoglin", "count": 2, "weight": 12 }
-      ],
-      "difficulty_multiplier": 2.2
+        {"entity_type": "minecraft:zombified_piglin", "count": 3, "weight": 1},
+        {"entity_type": "minecraft:wither_skeleton", "count": 5, "weight": 1},
+        {"entity_type": "minecraft:blaze", "count": 4, "weight": 1},
+        {"entity_type": "minecraft:magma_cube", "count": 4, "weight": 1},
+        {"entity_type": "minecraft:piglin_brute", "count": 2, "weight": 1}
+      ]
     },
     {
-      "wave_number": 5,
+      "wave": 5,
+      "difficulty_multiplier": 2.2,
       "enemies": [
-        { "entity_type": "minecraft:wither_skeleton", "count": 8, "weight": 10 },
-        { "entity_type": "minecraft:blaze", "count": 10, "weight": 9 },
-        { "entity_type": "minecraft:magma_cube", "count": 10, "weight": 8 },
-        { "entity_type": "minecraft:ghast", "count": 5, "weight": 7 },
-        { "entity_type": "minecraft:hoglin", "count": 3, "weight": 12 },
-        { "entity_type": "minecraft:piglin_brute", "count": 2, "weight": 15 }
-      ],
-      "difficulty_multiplier": 2.8
+        {"entity_type": "minecraft:zombified_piglin", "count": 2, "weight": 1},
+        {"entity_type": "minecraft:wither_skeleton", "count": 4, "weight": 1},
+        {"entity_type": "minecraft:blaze", "count": 4, "weight": 1},
+        {"entity_type": "minecraft:magma_cube", "count": 4, "weight": 1},
+        {"entity_type": "minecraft:piglin_brute", "count": 3, "weight": 1},
+        {"entity_type": "minecraft:wither", "count": 1, "weight": 1, "is_boss": true}
+      ]
     }
-  ],
-  
-  "rewards": {
-    "common": [
-      { "item": "minecraft:netherite_scrap", "count": 2, "chance": 0.2 },
-      { "item": "minecraft:gold_ingot", "count": 12, "chance": 0.6 },
-      { "item": "minecraft:nether_wart", "count": 16, "chance": 0.8 },
-      { "item": "minecraft:experience_bottle", "count": 15, "chance": 0.8 }
-    ],
-    "rare": [
-      { "item": "minecraft:nether_star", "count": 1, "chance": 0.03 },
-      { "item": "minecraft:dragon_egg", "count": 1, "chance": 0.01 },
-      { "item": "minecraft:enchanted_golden_apple", "count": 2, "chance": 0.05 },
-      { "item": "minecraft:totem_of_undying", "count": 1, "chance": 0.04 }
-    ],
-    "legendary": [
-      { "item": "minecraft:netherite_sword", "chance": 0.02 },
-      { "item": "minecraft:netherite_armor", "chance": 0.01 }
-    ]
-  }
+  ]
 }

@@ -1,23 +1,22 @@
 package com.adaptive_nemesis.adaptive_nemesismod.nemesis;
 
 import com.adaptive_nemesis.adaptive_nemesismod.Config;
-import com.adaptive_nemesis.adaptive_nemesismod.AdaptiveNemesisMod;
 import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.monster.Monster;
 
 import java.util.*;
-import java.util.stream.Collectors;
 
 /**
  * 宿敌名称生成器
- * 
+ *
  * 根据敌人的类型和强化属性生成中世纪魔法风格的宿敌称号
+ * 称号文本从语言文件中读取，支持多语言本地化
  * 如："法师克星—弑神者"、"近战克星—暗影领主"等
- * 
+ *
  * @author Adaptive Nemesis Team
- * @version 1.0.0
+ * @version 1.1.0
  */
 public class NemesisNameGenerator {
 
@@ -54,41 +53,23 @@ public class NemesisNameGenerator {
     );
 
     /**
-     * 近战强化称号前缀
+     * 称号前缀语言文件基础键
      */
-    private static final List<String> DEFAULT_MELEE_PREFIXES = Arrays.asList(
-        "近战克星", "战神", "屠夫", "狂战士", "嗜血者",
-        "毁灭者", "斩击者", "狂暴者", "无畏勇士", "死亡使者",
-        "杀戮机器", "血腥猎手", "利刃舞者", "钢铁战士", "暗影刺客"
-    );
+    private static final String PREFIX_MELEE_KEY = "adaptive_nemesis.nemesis.name.prefix.melee";
+    private static final String PREFIX_RANGED_KEY = "adaptive_nemesis.nemesis.name.prefix.ranged";
+    private static final String PREFIX_MAGIC_KEY = "adaptive_nemesis.nemesis.name.prefix.magic";
 
     /**
-     * 远程强化称号前缀
+     * 称号后缀语言文件基础键
      */
-    private static final List<String> DEFAULT_RANGED_PREFIXES = Arrays.asList(
-        "弓术克星", "狙击者", "鹰眼", "暗影猎手", "迅捷杀手",
-        "远程大师", "箭雨使者", "冰霜射手", "火焰射手", "致命射手",
-        "黑暗射手", "风暴使者", "精准打击", "致命距离", "无声猎手"
-    );
+    private static final String SUFFIX_NORMAL_KEY = "adaptive_nemesis.nemesis.name.suffix.normal";
+    private static final String SUFFIX_LEGENDARY_KEY = "adaptive_nemesis.nemesis.name.suffix.legendary";
+    private static final String SUFFIX_EPIC_KEY = "adaptive_nemesis.nemesis.name.suffix.epic";
 
     /**
-     * 魔法强化称号前缀
+     * 翻译键数量缓存，避免重复探测
      */
-    private static final List<String> DEFAULT_MAGIC_PREFIXES = Arrays.asList(
-        "魔法克星", "弑神者", "咒术师", "虚空行者", "奥术大师",
-        "黑暗法师", "元素使者", "灵魂收割者", "死灵法师", "混沌法师",
-        "暗影巫师", "深渊行者", "符文大师", "魔力主宰", "虚空领主"
-    );
-
-    /**
-     * 通用称号后缀
-     */
-    private static final List<String> DEFAULT_SUFFIXES = Arrays.asList(
-        "—末日使者", "—暗影领主", "—死亡骑士", "—深渊行者", "—地狱使者",
-        "—黑暗先知", "—亡灵统帅", "—恐惧化身", "—毁灭化身", "—虚空使者",
-        "—暗影主宰", "—亡灵君主", "—地狱领主", "—黑暗君王", "—深渊领主",
-        "—死亡主宰", "—毁灭领主", "—恐惧领主", "—混沌领主", "—虚空领主"
-    );
+    private final Map<String, Integer> translationCounts = new HashMap<>();
 
     private final Random random;
 
@@ -102,7 +83,7 @@ public class NemesisNameGenerator {
 
     /**
      * 使用指定随机种子构造
-     * 
+     *
      * @param seed 随机种子
      */
     public NemesisNameGenerator(long seed) {
@@ -111,7 +92,7 @@ public class NemesisNameGenerator {
 
     /**
      * 根据敌人类型和强化属性生成宿敌名称
-     * 
+     *
      * @param entity 敌人实体
      * @param multiplier 强化倍率
      * @return 格式化的宿敌名称组件
@@ -121,135 +102,124 @@ public class NemesisNameGenerator {
             return Component.empty();
         }
 
-        String prefix = determinePrefix(entity);
-        String suffix = determineSuffix(multiplier);
-        String fullName = prefix + suffix;
-
-        return createColoredComponent(fullName);
+        Component prefix = determinePrefix(entity);
+        Component suffix = determineSuffix(multiplier);
+        return Component.translatable("adaptive_nemesis.nemesis.name.format", prefix, suffix)
+            .withStyle(ChatFormatting.RED);
     }
 
     /**
      * 根据敌人类型决定称号前缀
-     * 
+     *
      * @param entity 敌人实体
-     * @return 称号前缀
+     * @return 称号前缀组件
      */
-    private String determinePrefix(Monster entity) {
+    private Component determinePrefix(Monster entity) {
         EntityType<?> type = entity.getType();
-        List<String> availablePrefixes = new ArrayList<>();
+        List<String> availableConfigPrefixes = new ArrayList<>();
 
+        String magicConfig = Config.MAGIC_NEMESIS_PREFIXES.get();
+        String rangedConfig = Config.RANGED_NEMESIS_PREFIXES.get();
+        String meleeConfig = Config.MELEE_NEMESIS_PREFIXES.get();
+
+        if (MAGIC_TYPES.contains(type) && magicConfig != null && !magicConfig.isEmpty()) {
+            availableConfigPrefixes.addAll(Arrays.asList(magicConfig.split(",")));
+        }
+        if (RANGED_TYPES.contains(type) && rangedConfig != null && !rangedConfig.isEmpty()) {
+            availableConfigPrefixes.addAll(Arrays.asList(rangedConfig.split(",")));
+        }
+        if (MELEE_TYPES.contains(type) && meleeConfig != null && !meleeConfig.isEmpty()) {
+            availableConfigPrefixes.addAll(Arrays.asList(meleeConfig.split(",")));
+        }
+
+        if (!availableConfigPrefixes.isEmpty()) {
+            return Component.literal(availableConfigPrefixes.get(random.nextInt(availableConfigPrefixes.size())));
+        }
+
+        // 未配置覆盖时使用语言文件中的翻译键
+        List<String> baseKeys = new ArrayList<>();
         if (MAGIC_TYPES.contains(type)) {
-            availablePrefixes.addAll(getMagicPrefixes());
+            baseKeys.add(PREFIX_MAGIC_KEY);
         }
         if (RANGED_TYPES.contains(type)) {
-            availablePrefixes.addAll(getRangedPrefixes());
+            baseKeys.add(PREFIX_RANGED_KEY);
         }
-        if (MELEE_TYPES.contains(type) || availablePrefixes.isEmpty()) {
-            availablePrefixes.addAll(getMeleePrefixes());
-        }
-
-        if (availablePrefixes.isEmpty()) {
-            availablePrefixes.addAll(DEFAULT_MELEE_PREFIXES);
+        if (MELEE_TYPES.contains(type) || baseKeys.isEmpty()) {
+            baseKeys.add(PREFIX_MELEE_KEY);
         }
 
-        return availablePrefixes.get(random.nextInt(availablePrefixes.size()));
+        List<String> candidateKeys = new ArrayList<>();
+        for (String baseKey : baseKeys) {
+            int count = getTranslationCount(baseKey);
+            for (int i = 0; i < count; i++) {
+                candidateKeys.add(baseKey + "." + i);
+            }
+        }
+
+        if (candidateKeys.isEmpty()) {
+            return Component.empty();
+        }
+        return Component.translatable(candidateKeys.get(random.nextInt(candidateKeys.size())));
     }
 
     /**
      * 根据强化倍率决定称号后缀
      * 倍率越高，称号越强大
-     * 
+     *
      * @param multiplier 强化倍率
-     * @return 称号后缀
+     * @return 称号后缀组件
      */
-    private String determineSuffix(double multiplier) {
-        List<String> suffixes = getSuffixes();
-        
-        if (multiplier >= 3.0) {
-            List<String> epicSuffixes = suffixes.stream()
-                .filter(s -> s.contains("主宰") || s.contains("君主") || s.contains("弑神") || s.contains("毁灭"))
-                .collect(Collectors.toList());
-            if (!epicSuffixes.isEmpty()) {
-                return epicSuffixes.get(random.nextInt(epicSuffixes.size()));
-            }
-        } else if (multiplier >= 2.5) {
-            List<String> legendarySuffixes = suffixes.stream()
-                .filter(s -> s.contains("领主") || s.contains("化身") || s.contains("统帅"))
-                .collect(Collectors.toList());
-            if (!legendarySuffixes.isEmpty()) {
-                return legendarySuffixes.get(random.nextInt(legendarySuffixes.size()));
-            }
-        }
-
-        return suffixes.get(random.nextInt(suffixes.size()));
-    }
-
-    /**
-     * 创建带颜色的名称组件
-     * 
-     * @param name 名称文本
-     * @return 格式化的组件
-     */
-    private Component createColoredComponent(String name) {
-        return Component.literal(name)
-            .withStyle(ChatFormatting.RED);
-    }
-
-    /**
-     * 获取近战称号前缀列表
-     * 
-     * @return 前缀列表
-     */
-    private List<String> getMeleePrefixes() {
-        String configValue = Config.MELEE_NEMESIS_PREFIXES.get();
-        if (configValue == null || configValue.isEmpty()) {
-            return DEFAULT_MELEE_PREFIXES;
-        }
-        return Arrays.asList(configValue.split(","));
-    }
-
-    /**
-     * 获取远程称号前缀列表
-     * 
-     * @return 前缀列表
-     */
-    private List<String> getRangedPrefixes() {
-        String configValue = Config.RANGED_NEMESIS_PREFIXES.get();
-        if (configValue == null || configValue.isEmpty()) {
-            return DEFAULT_RANGED_PREFIXES;
-        }
-        return Arrays.asList(configValue.split(","));
-    }
-
-    /**
-     * 获取魔法称号前缀列表
-     * 
-     * @return 前缀列表
-     */
-    private List<String> getMagicPrefixes() {
-        String configValue = Config.MAGIC_NEMESIS_PREFIXES.get();
-        if (configValue == null || configValue.isEmpty()) {
-            return DEFAULT_MAGIC_PREFIXES;
-        }
-        return Arrays.asList(configValue.split(","));
-    }
-
-    /**
-     * 获取称号后缀列表
-     * 
-     * @return 后缀列表
-     */
-    private List<String> getSuffixes() {
+    private Component determineSuffix(double multiplier) {
         String configValue = Config.NEMESIS_SUFFIXES.get();
-        if (configValue == null || configValue.isEmpty()) {
-            return DEFAULT_SUFFIXES;
+        if (configValue != null && !configValue.isEmpty()) {
+            List<String> suffixes = Arrays.asList(configValue.split(","));
+            return Component.literal(suffixes.get(random.nextInt(suffixes.size())));
         }
-        return Arrays.asList(configValue.split(","));
+
+        String tierKey;
+        if (multiplier >= 3.0) {
+            tierKey = SUFFIX_EPIC_KEY;
+        } else if (multiplier >= 2.5) {
+            tierKey = SUFFIX_LEGENDARY_KEY;
+        } else {
+            tierKey = SUFFIX_NORMAL_KEY;
+        }
+
+        int count = getTranslationCount(tierKey);
+        if (count == 0) {
+            return Component.empty();
+        }
+        return Component.translatable(tierKey + "." + random.nextInt(count));
+    }
+
+    /**
+     * 获取指定基础键下的翻译条目数量
+     *
+     * @param baseKey 基础翻译键
+     * @return 可用条目数量
+     */
+    private int getTranslationCount(String baseKey) {
+        Integer cached = translationCounts.get(baseKey);
+        if (cached != null) {
+            return cached;
+        }
+
+        int count = 0;
+        while (true) {
+            String key = baseKey + "." + count;
+            String resolved = Component.translatable(key).getString();
+            if (resolved.equals(key)) {
+                break;
+            }
+            count++;
+        }
+        translationCounts.put(baseKey, count);
+        return count;
     }
 
     /**
      * 判断敌人是否应该获得魔法前缀
-     * 
+     *
      * @param type 实体类型
      * @return 是否为魔法类型
      */
@@ -259,7 +229,7 @@ public class NemesisNameGenerator {
 
     /**
      * 判断敌人是否应该获得远程前缀
-     * 
+     *
      * @param type 实体类型
      * @return 是否为远程类型
      */
@@ -269,7 +239,7 @@ public class NemesisNameGenerator {
 
     /**
      * 判断敌人是否应该获得近战前缀
-     * 
+     *
      * @param type 实体类型
      * @return 是否为近战类型
      */
@@ -279,7 +249,7 @@ public class NemesisNameGenerator {
 
     /**
      * 获取当前使用的随机数生成器
-     * 
+     *
      * @return 随机数生成器
      */
     public Random getRandom() {

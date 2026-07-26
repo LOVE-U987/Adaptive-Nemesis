@@ -7,6 +7,7 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerBossEvent;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.effect.MobEffectInstance;
 import net.minecraft.util.Mth;
 import net.minecraft.world.BossEvent;
 import net.minecraft.world.entity.Entity;
@@ -838,10 +839,22 @@ public class ActiveInvasion {
         public boolean isBoss = false;
         /** 实体UUID（null表示尚未生成） */
         public UUID uuid = null;
+        /** 药水效果列表 */
+        public List<MobEffectInstance> effects = new ArrayList<>();
+        /** 是否发光 */
+        public boolean glowing = false;
+        /** 是否冰霜行者 */
+        public boolean frostWalker = false;
+        /** 自定义名称翻译键 */
+        public String customNameKey = null;
+        /** 血量倍率 */
+        public double healthMultiplier = 1.0;
+        /** 攻击倍率 */
+        public double damageMultiplier = 1.0;
 
         /**
          * 构造函数
-         * 
+         *
          * @param type 实体类型
          * @param position 生成位置
          * @param isBoss 是否为BOSS

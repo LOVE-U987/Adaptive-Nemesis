@@ -1,6 +1,8 @@
 package com.adaptive_nemesis.adaptive_nemesismod.kubejs;
 
 import com.adaptive_nemesis.adaptive_nemesismod.AdaptiveNemesisMod;
+import com.adaptive_nemesis.adaptive_nemesismod.invasion.InvasionRewardData;
+import com.adaptive_nemesis.adaptive_nemesismod.invasion.InvasionSystem;
 import com.adaptive_nemesis.adaptive_nemesismod.memory.NemesisProfile;
 
 import net.minecraft.server.level.ServerPlayer;
@@ -154,6 +156,35 @@ public class KubeJSEventTrigger {
     }
 
     /**
+     * 触发世界阶段变化事件
+     *
+     * @param player 触发玩家
+     * @param oldStage 旧阶段
+     * @param newStage 新阶段
+     * @param stageMultiplier 阶段倍率
+     * @param defeatedBossCount 已击杀 Boss 数量
+     * @return 事件处理后的阶段倍率
+     */
+    public static double triggerWorldStageChange(ServerPlayer player, int oldStage, int newStage,
+                                                  double stageMultiplier, int defeatedBossCount) {
+        if (!KubeJSLoader.isKubeJSLoaded()) {
+            return stageMultiplier;
+        }
+
+        try {
+            Object result = invokeStatic("fireWorldStageChange",
+                new Class<?>[]{ServerPlayer.class, int.class, int.class, double.class, int.class},
+                new Object[]{player, oldStage, newStage, stageMultiplier, defeatedBossCount});
+            if (result instanceof Double) {
+                return (Double) result;
+            }
+        } catch (Exception e) {
+            // fall through
+        }
+        return stageMultiplier;
+    }
+
+    /**
      * 触发宿敌记忆更新事件
      *
      * @param playerUUID 玩家UUID
@@ -182,5 +213,119 @@ public class KubeJSEventTrigger {
      */
     public static boolean isKubeJSActive() {
         return KubeJSLoader.isKubeJSLoaded();
+    }
+
+    /**
+     * 触发入侵开始事件
+     *
+     * @param player 触发玩家
+     * @param type 入侵类型
+     * @param totalWaves 总波次数
+     * @param difficultyMultiplier 难度倍率
+     * @return 事件处理后的配置，如果取消则返回 null
+     */
+    public static InvasionStartResult triggerInvasionStart(ServerPlayer player, InvasionSystem.InvasionType type,
+                                                            int totalWaves, double difficultyMultiplier) {
+        if (!KubeJSLoader.isKubeJSLoaded()) {
+            return new InvasionStartResult(totalWaves, difficultyMultiplier);
+        }
+
+        try {
+            Object result = invokeStatic("fireInvasionStart",
+                new Class<?>[]{ServerPlayer.class, InvasionSystem.InvasionType.class, int.class, double.class},
+                new Object[]{player, type, totalWaves, difficultyMultiplier});
+            // 返回 null 表示 KubeJS 事件取消了入侵
+            if (result == null) {
+                return null;
+            }
+            // 处理 double[] 数组返回值
+            if (result instanceof double[] values) {
+                if (values.length >= 2) {
+                    return new InvasionStartResult((int) values[0], values[1]);
+                }
+                AdaptiveNemesisMod.LOGGER.warn(
+                    "KubeJS 入侵开始事件返回的 double[] 长度不足 ({} < 2)，使用默认配置", values.length
+                );
+                return new InvasionStartResult(totalWaves, difficultyMultiplier);
+            }
+            // 其他类型均视为意外返回，使用默认配置而非取消入侵
+            AdaptiveNemesisMod.LOGGER.warn(
+                "KubeJS 入侵开始事件返回了意外类型 {}，使用默认配置", result.getClass().getName()
+            );
+            return new InvasionStartResult(totalWaves, difficultyMultiplier);
+        } catch (Exception e) {
+            return new InvasionStartResult(totalWaves, difficultyMultiplier);
+        }
+    }
+
+    /**
+     * 触发入侵波次开始事件
+     *
+     * @param player 触发玩家
+     * @param type 入侵类型
+     * @param currentWave 当前波次
+     * @param totalWaves 总波次数
+     * @param difficultyMultiplier 难度倍率
+     */
+    public static void triggerInvasionWaveStart(ServerPlayer player, InvasionSystem.InvasionType type,
+                                                 int currentWave, int totalWaves, double difficultyMultiplier) {
+        if (!KubeJSLoader.isKubeJSLoaded()) {
+            return;
+        }
+
+        try {
+            invokeStatic("fireInvasionWaveStart",
+                new Class<?>[]{ServerPlayer.class, InvasionSystem.InvasionType.class, int.class, int.class, double.class},
+                new Object[]{player, type, currentWave, totalWaves, difficultyMultiplier});
+        } catch (Exception e) {
+            // ignore
+        }
+    }
+
+    /**
+     * 触发入侵结束事件
+     *
+     * @param player 触发玩家
+     * @param type 入侵类型
+     * @param victory 是否胜利
+     * @param totalWaves 总波次数
+     * @param difficultyMultiplier 难度倍率
+     * @param wavesCompleted 完成波次数
+     * @param rewards 奖励配置
+     * @return 可能被 KubeJS 修改过的奖励配置
+     */
+    public static InvasionRewardData triggerInvasionEnd(ServerPlayer player, InvasionSystem.InvasionType type,
+                                                         boolean victory, int totalWaves,
+                                                         double difficultyMultiplier, int wavesCompleted,
+                                                         InvasionRewardData rewards) {
+        if (!KubeJSLoader.isKubeJSLoaded()) {
+            return rewards;
+        }
+
+        try {
+            Object result = invokeStatic("fireInvasionEnd",
+                new Class<?>[]{ServerPlayer.class, InvasionSystem.InvasionType.class, boolean.class,
+                    int.class, double.class, int.class, InvasionRewardData.class},
+                new Object[]{player, type, victory, totalWaves, difficultyMultiplier, wavesCompleted, rewards});
+            if (result instanceof InvasionRewardData modifiedRewards) {
+                return modifiedRewards;
+            }
+            return rewards;
+        } catch (Exception e) {
+            return rewards;
+        }
+    }
+
+    /**
+     * 入侵开始事件结果
+     */
+    public static class InvasionStartResult {
+        public final int totalWaves;
+        public final double difficultyMultiplier;
+
+        public InvasionStartResult(int totalWaves, double difficultyMultiplier) {
+            this.totalWaves = totalWaves;
+            this.difficultyMultiplier = difficultyMultiplier;
+        }
     }
 }

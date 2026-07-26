@@ -10,6 +10,16 @@
 2. 将 `server_scripts` 文件夹中的脚本复制到你的整合包的 `kubejs/server_scripts` 目录
 3. 重启服务器或执行 `/kubejs reload` 命令
 
+## 文件说明
+
+| 文件 | 内容 |
+|------|------|
+| `entity_scaling.js` | 实体强化 / 玩家强度评估 / 伤害计算 / 宿敌记忆 综合示例 |
+| `custom_difficulty.js` | 自定义全局难度系统 + `/an_difficulty` 命令 |
+| `world_stage_change.js` | 世界阶段变化事件示例 |
+| `invasion_events.js` | 入侵开始 / 波次 / 结束 完整事件示例 |
+| `advanced_helpers.js` | 通过 `Java.loadClass` 调用模组辅助方法 |
+
 ## 可用事件
 
 ### 1. 实体强化事件 (`adaptive_nemesis.entity_scale`)

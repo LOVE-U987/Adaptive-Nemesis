@@ -360,7 +360,7 @@ public class TestCommand {
             if (source.getEntity() instanceof ServerPlayer player) {
                 double armorValue = player.getAttributeValue(net.minecraft.world.entity.ai.attributes.Attributes.ARMOR);
                 double playerTrueDamagePercent = handler.getTrueDamagePercent(armorValue);
-                String armorLevel = handler.getArmorLevelDescription(armorValue);
+                Component armorLevel = handler.getArmorLevelDescription(armorValue);
 
                 printTestLog(source, Component.translatable("adaptive_nemesis.command.test.label_your_armor"), String.format("%.1f", armorValue));
                 printTestLog(source, Component.translatable("adaptive_nemesis.command.test.label_your_armor_level"), armorLevel);
@@ -371,7 +371,8 @@ public class TestCommand {
                 double trueDamage = exampleDamage * (playerTrueDamagePercent / 100.0);
                 double reducedDamage = exampleDamage - trueDamage;
 
-                printTestLog(source, Component.translatable("adaptive_nemesis.command.test.label_damage_example"), String.format("%.1f 伤害", exampleDamage));
+                printTestLog(source, Component.translatable("adaptive_nemesis.command.test.label_damage_example"),
+                    Component.translatable("adaptive_nemesis.command.test.label_damage_example_value", String.format("%.1f", exampleDamage)));
                 printTestLog(source, Component.translatable("adaptive_nemesis.command.test.label_true_damage_part"), String.format("%.1f", trueDamage));
                 printTestLog(source, Component.translatable("adaptive_nemesis.command.test.label_mitigated_part"), String.format("%.1f", reducedDamage));
             }
@@ -547,9 +548,11 @@ public class TestCommand {
             // 测试配置
             printTestLog(source, Component.translatable("adaptive_nemesis.command.test.label_protection_enabled"), String.valueOf(Config.ENABLE_NEWBIE_PROTECTION.get()));
             printTestLog(source, Component.translatable("adaptive_nemesis.command.test.label_strength_threshold"), String.valueOf(Config.NEWBIE_STRENGTH_THRESHOLD.get()));
-            printTestLog(source, Component.translatable("adaptive_nemesis.command.test.label_duration_info"), Config.NEWBIE_PROTECTION_DURATION.get() + "分钟");
+            printTestLog(source, Component.translatable("adaptive_nemesis.command.test.label_duration_info"),
+                Component.translatable("adaptive_nemesis.command.test.label_duration_info_value", Config.NEWBIE_PROTECTION_DURATION.get()));
             printTestLog(source, Component.translatable("adaptive_nemesis.command.test.label_reduction"), String.format("%.0f%%", Config.NEWBIE_PROTECTION_REDUCTION.get() * 100));
-            printTestLog(source, Component.translatable("adaptive_nemesis.command.test.label_death_bonus"), Config.DEATH_PROTECTION_BONUS.get() + "分钟");
+            printTestLog(source, Component.translatable("adaptive_nemesis.command.test.label_death_bonus"),
+                Component.translatable("adaptive_nemesis.command.test.label_duration_info_value", Config.DEATH_PROTECTION_BONUS.get()));
             printTestLog(source, Component.translatable("adaptive_nemesis.command.test.label_death_streak"), String.valueOf(Config.DEATH_STREAK_THRESHOLD.get()));
 
             // 测试玩家保护状态
@@ -642,6 +645,19 @@ public class TestCommand {
      * @param value 测试结果
      */
     private static void printTestLog(CommandSourceStack source, Component key, String value) {
+        source.sendSuccess(() -> Component.translatable(
+            "adaptive_nemesis.command.test.log", key, value
+        ), false);
+    }
+
+    /**
+     * 打印测试日志（本地化值版本）
+     *
+     * @param source 命令来源
+     * @param key 测试项组件
+     * @param value 测试结果组件
+     */
+    private static void printTestLog(CommandSourceStack source, Component key, Component value) {
         source.sendSuccess(() -> Component.translatable(
             "adaptive_nemesis.command.test.log", key, value
         ), false);

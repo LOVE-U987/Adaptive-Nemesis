@@ -4,6 +4,7 @@ import com.adaptive_nemesis.adaptive_nemesismod.AdaptiveNemesisMod;
 import com.adaptive_nemesis.adaptive_nemesismod.Config;
 import com.adaptive_nemesis.adaptive_nemesismod.kubejs.KubeJSEventTrigger;
 
+import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.tags.DamageTypeTags;
 import net.minecraft.world.damagesource.DamageSource;
@@ -222,22 +223,22 @@ public class TrueDamageHandler {
      * 获取护甲等级描述
      *
      * @param armorValue 玩家护甲值
-     * @return 护甲等级描述
+     * @return 护甲等级描述组件（已本地化）
      */
-    public String getArmorLevelDescription(double armorValue) {
+    public Component getArmorLevelDescription(double armorValue) {
         double baseArmor = Config.LOW_ARMOR_THRESHOLD.get();
         double armorMultiplier = armorValue / baseArmor;
 
         if (armorMultiplier <= 1.0) {
-            return "标准护甲";
+            return Component.translatable("adaptive_nemesis.armor_level.standard");
         } else if (armorMultiplier <= 2.0) {
-            return "强化护甲";
+            return Component.translatable("adaptive_nemesis.armor_level.reinforced");
         } else if (armorMultiplier <= 3.0) {
-            return "高护甲";
+            return Component.translatable("adaptive_nemesis.armor_level.high");
         } else if (armorMultiplier <= 5.0) {
-            return "铁乌龟";
+            return Component.translatable("adaptive_nemesis.armor_level.turtle");
         } else {
-            return "终极铁乌龟";
+            return Component.translatable("adaptive_nemesis.armor_level.ultimate_turtle");
         }
     }
 }

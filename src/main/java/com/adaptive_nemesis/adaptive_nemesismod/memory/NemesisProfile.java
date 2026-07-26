@@ -199,17 +199,27 @@ public class NemesisProfile {
     }
 
     /**
+     * 获取当前生效的宿敌全局配置
+     *
+     * @return 宿敌配置数据
+     */
+    private NemesisConfigData getConfig() {
+        return NemesisDataLoader.getInstance().getConfig();
+    }
+
+    /**
      * 获取宿敌等级
      * 基于击杀数和死亡数计算
      *
      * @return 宿敌等级
      */
     public int getNemesisLevel() {
+        NemesisConfigData config = getConfig();
         // 基础等级由击杀数决定
-        int baseLevel = totalKills / 10;
+        int baseLevel = totalKills / Math.max(1, config.getKillsPerLevel());
         // 死亡数增加额外等级（敌人学会了更多）
-        int deathBonus = totalDeaths / 5;
-        return Math.min(baseLevel + deathBonus, 50); // 最高50级
+        int deathBonus = totalDeaths / Math.max(1, config.getDeathsPerLevel());
+        return Math.min(baseLevel + deathBonus, config.getMaxLevel());
     }
 
     /**
@@ -238,60 +248,65 @@ public class NemesisProfile {
     /**
      * 获取近战抗性加成（针对近战玩家）
      *
-     * @return 抗性加成百分比 (0.0 - 0.3)
+     * @return 抗性加成百分比
      */
     public double getMeleeResistanceBonus() {
         int meleeKills = getKillStyleCount(CombatStyle.MELEE);
         if (totalKills == 0) return 0.0;
+        double cap = getConfig().getMeleeResistanceCap();
         double ratio = (double) meleeKills / totalKills;
-        return Math.min(ratio * 0.3, 0.3); // 最高30%
+        return Math.min(ratio * cap, cap);
     }
 
     /**
      * 获取远程抗性加成（针对远程玩家）
      *
-     * @return 抗性加成百分比 (0.0 - 0.3)
+     * @return 抗性加成百分比
      */
     public double getRangedResistanceBonus() {
         int rangedKills = getKillStyleCount(CombatStyle.RANGED);
         if (totalKills == 0) return 0.0;
+        double cap = getConfig().getRangedResistanceCap();
         double ratio = (double) rangedKills / totalKills;
-        return Math.min(ratio * 0.3, 0.3); // 最高30%
+        return Math.min(ratio * cap, cap);
     }
 
     /**
      * 获取魔法抗性加成（针对法师玩家）
      *
-     * @return 抗性加成百分比 (0.0 - 0.3)
+     * @return 抗性加成百分比
      */
     public double getMagicResistanceBonus() {
         int magicKills = getKillStyleCount(CombatStyle.MAGIC);
         if (totalKills == 0) return 0.0;
+        double cap = getConfig().getMagicResistanceCap();
         double ratio = (double) magicKills / totalKills;
-        return Math.min(ratio * 0.3, 0.3); // 最高30%
+        return Math.min(ratio * cap, cap);
     }
 
     /**
      * 获取攻击加成（基于玩家死亡记录）
      *
-     * @return 攻击加成百分比 (0.0 - 0.25)
+     * @return 攻击加成百分比
      */
     public double getAttackBonus() {
         if (totalDeaths == 0) return 0.0;
+        double cap = getConfig().getAttackBonusCap();
         // 死亡越多，敌人攻击加成越高（敌人学会了玩家的弱点）
-        return Math.min(totalDeaths * 0.02, 0.25); // 最高25%
+        return Math.min(totalDeaths * 0.02, cap);
     }
 
     /**
      * 获取速度加成（基于玩家KDA）
      *
-     * @return 速度加成百分比 (0.0 - 0.2)
+     * @return 速度加成百分比
      */
     public double getSpeedBonus() {
+        double cap = getConfig().getSpeedBonusCap();
         double kda = getKdaRatio();
         if (kda > 3.0) {
             // KDA高的玩家，敌人获得速度加成以应对
-            return Math.min((kda - 3.0) * 0.03, 0.2); // 最高20%
+            return Math.min((kda - 3.0) * 0.03, cap);
         }
         return 0.0;
     }
@@ -299,10 +314,11 @@ public class NemesisProfile {
     /**
      * 获取生命加成（基于玩家总击杀数）
      *
-     * @return 生命加成百分比 (0.0 - 0.5)
+     * @return 生命加成百分比
      */
     public double getHealthBonus() {
-        return Math.min(totalKills * 0.01, 0.5); // 最高50%
+        double cap = getConfig().getHealthBonusCap();
+        return Math.min(totalKills * 0.01, cap);
     }
 
     /**
@@ -352,7 +368,7 @@ public class NemesisProfile {
             totalKills,
             totalDeaths,
             getKdaRatio(),
-            getDominantStyle().getDisplayName(),
+            getDominantStyle().getDisplayName().getString(),
             getMostUsedWeapon()
         );
     }

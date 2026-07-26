@@ -4,19 +4,34 @@ import com.adaptive_nemesis.adaptive_nemesismod.Config;
 import com.adaptive_nemesis.adaptive_nemesismod.AdaptiveNemesisMod;
 import com.adaptive_nemesis.adaptive_nemesismod.enemy.EnchantmentScalingHandler;
 import com.adaptive_nemesis.adaptive_nemesismod.enemy.WorldStageManager;
+import com.adaptive_nemesis.adaptive_nemesismod.kubejs.KubeJSEventTrigger;
 import com.adaptive_nemesis.adaptive_nemesismod.player.PlayerStrengthData;
 import com.adaptive_nemesis.adaptive_nemesismod.player.PlayerStrengthEvaluator;
 import net.minecraft.ChatFormatting;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Holder;
+import net.minecraft.core.Registry;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.core.registries.Registries;
+import net.minecraft.resources.ResourceKey;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.server.packs.resources.ResourceManager;
 import net.minecraft.world.Difficulty;
+import net.minecraft.world.effect.MobEffectInstance;
+import net.minecraft.world.entity.player.Inventory;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.storage.loot.LootParams;
+import net.minecraft.world.level.storage.loot.LootTable;
+import net.minecraft.world.level.storage.loot.parameters.LootContextParamSets;
+import net.minecraft.world.level.storage.loot.parameters.LootContextParams;
 import net.minecraft.world.entity.*;
 import net.minecraft.world.entity.ai.goal.Goal;
+import net.minecraft.world.item.enchantment.Enchantments;
 import net.minecraft.world.entity.ai.navigation.PathNavigation;
 import net.minecraft.world.entity.player.Player;
-import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.levelgen.Heightmap;
@@ -132,7 +147,7 @@ public class InvasionSystem {
                 case CREATED -> {
                     // 触发时立即进入STARTED状态
                     invasion.setState(ActiveInvasion.Phase.State.STARTED, ActiveInvasion.START_DURATION);
-                    invasion.setWaveInfoText(Component.literal("亡灵军团正在逼近...").withStyle(ChatFormatting.WHITE));
+                    invasion.setWaveInfoText(Component.translatable("adaptive_nemesis.invasion.approaching").withStyle(ChatFormatting.WHITE));
                     invasion.setWaveInfoVisible(true);
                     triggerLightningEffect(invasion);
                     if (Config.ENABLE_DEBUG_LOG.get()) {
@@ -166,7 +181,7 @@ public class InvasionSystem {
                     float maxTicks = ActiveInvasion.WAVE_MAX_DURATION * 20.0f;
                     if (elapsedTicks >= maxTicks) {
                         invasion.setState(ActiveInvasion.Phase.State.UNDEAD_WON, 0);
-                        invasion.setWaveInfoText(Component.literal("亡灵军团获胜！").withStyle(ChatFormatting.DARK_RED));
+                        invasion.setWaveInfoText(Component.translatable("adaptive_nemesis.invasion.won").withStyle(ChatFormatting.DARK_RED));
                         if (Config.ENABLE_DEBUG_LOG.get()) {
                             AdaptiveNemesisMod.LOGGER.debug("[入侵状态] {} 波次超时", invasion.getPlayerName());
                         }
@@ -176,12 +191,12 @@ public class InvasionSystem {
                     // 检查是否所有怪物已死亡
                     if (invasion.areAllMobsDead()) {
                         invasion.setState(ActiveInvasion.Phase.State.UNDEAD_DEFEATED, 0);
-                        invasion.setWaveInfoText(Component.literal(
-                            String.format("第 %s 波已清除！", getRomanNumeral(invasion.currentWave))
+                        invasion.setWaveInfoText(Component.translatable(
+                            "adaptive_nemesis.invasion.wave_cleared", getRomanNumeral(invasion.currentWave)
                         ).withStyle(ChatFormatting.GREEN));
 
-                        notifyAllPlayersInArea(invasion, Component.literal(
-                            String.format("第 %s 波已被清除！", getRomanNumeral(invasion.currentWave))
+                        notifyAllPlayersInArea(invasion, Component.translatable(
+                            "adaptive_nemesis.invasion.wave_cleared_broadcast", getRomanNumeral(invasion.currentWave)
                         ).withStyle(ChatFormatting.GREEN));
 
                         if (Config.ENABLE_DEBUG_LOG.get()) {
@@ -197,9 +212,10 @@ public class InvasionSystem {
                         // 最后一波：胜利
                         invasion.setState(ActiveInvasion.Phase.State.FINISHED, 0);
                         invasion.setCompleted(true);
-                        invasion.setWaveInfoText(Component.literal("亡灵军团已被击败！").withStyle(ChatFormatting.GREEN));
+                        invasion.setWaveInfoText(Component.translatable("adaptive_nemesis.invasion.defeated").withStyle(ChatFormatting.GREEN));
                         handleInvasionVictory(invasion);
                         hasCompletedFirstInvasion.put(invasion.getPlayerUUID(), true);
+                        triggerInvasionEndEvent(invasion, true);
                         if (Config.ENABLE_DEBUG_LOG.get()) {
                             AdaptiveNemesisMod.LOGGER.debug("[入侵状态] {} 全部波次完成，胜利！", invasion.getPlayerName());
                         }
@@ -211,10 +227,11 @@ public class InvasionSystem {
                     invasion.setCompleted(true);
                     invasion.setDefeated(true);
 
-                    notifyAllPlayersInArea(invasion, Component.literal(
-                        "亡灵军团击溃了防线..."
+                    notifyAllPlayersInArea(invasion, Component.translatable(
+                        "adaptive_nemesis.invasion.won"
                     ).withStyle(ChatFormatting.DARK_RED));
 
+                    triggerInvasionEndEvent(invasion, false);
                     if (Config.ENABLE_DEBUG_LOG.get()) {
                         AdaptiveNemesisMod.LOGGER.debug("[入侵状态] {} 超时失败", invasion.getPlayerName());
                     }
@@ -237,12 +254,12 @@ public class InvasionSystem {
         invasion.startNextWave();
         invasion.setState(ActiveInvasion.Phase.State.WAVE_PREPARING, ActiveInvasion.PREPARING_DURATION);
 
-        invasion.setWaveInfoText(Component.literal(
-            String.format("亡灵军团 - 第 %s 波 (准备中...)", getRomanNumeral(invasion.currentWave))
+        invasion.setWaveInfoText(Component.translatable(
+            "adaptive_nemesis.invasion.wave_preparing", getRomanNumeral(invasion.currentWave)
         ).withStyle(ChatFormatting.WHITE));
 
         // 生成MobInfo列表
-        List<EnemySpawnConfig> configs = getWaveEnemyConfig(invasion.currentWave);
+        List<EnemySpawnConfig> configs = getWaveEnemyConfig(invasion.currentWave, invasion.getType());
         invasion.mobsLeft.clear();
         invasion.boss = null;
         invasion.hideBossBar();
@@ -250,12 +267,18 @@ public class InvasionSystem {
         int totalHealth = 0;
         for (EnemySpawnConfig config : configs) {
             for (int i = 0; i < config.count(); i++) {
-                boolean isBoss = config.entityType() == EntityType.GIANT;
                 ActiveInvasion.MobInfo mobInfo = new ActiveInvasion.MobInfo(
                     config.entityType(),
                     null,
-                    isBoss
+                    config.isBoss()
                 );
+                mobInfo.equipment = config.equipmentLootTable();
+                mobInfo.effects = config.effects() != null ? new ArrayList<>(config.effects()) : new ArrayList<>();
+                mobInfo.glowing = config.glowing();
+                mobInfo.frostWalker = config.frostWalker();
+                mobInfo.customNameKey = config.customNameKey();
+                mobInfo.healthMultiplier = config.healthMultiplier();
+                mobInfo.damageMultiplier = config.damageMultiplier();
                 invasion.mobsLeft.add(mobInfo);
                 totalHealth += getBaseHealth(config.entityType());
             }
@@ -269,8 +292,8 @@ public class InvasionSystem {
 
         triggerLightningEffect(invasion);
 
-        notifyAllPlayersInArea(invasion, Component.literal(
-            String.format("第 %s 波敌人即将来袭！准备战斗！", getRomanNumeral(invasion.currentWave))
+        notifyAllPlayersInArea(invasion, Component.translatable(
+            "adaptive_nemesis.invasion.wave_starting", getRomanNumeral(invasion.currentWave)
         ).withStyle(ChatFormatting.GOLD));
 
         if (Config.ENABLE_DEBUG_LOG.get()) {
@@ -288,12 +311,24 @@ public class InvasionSystem {
         invasion.isProcessingWave = true;
         invasion.resetSpawnTickCounter();
 
-        invasion.setWaveInfoText(Component.literal(
-            String.format("亡灵军团 - 第 %s 波", getRomanNumeral(invasion.currentWave))
+        // 触发 KubeJS 波次开始事件
+        Player player = invasion.getPlayer();
+        if (player instanceof ServerPlayer serverPlayer) {
+            KubeJSEventTrigger.triggerInvasionWaveStart(
+                serverPlayer,
+                invasion.getType(),
+                invasion.currentWave,
+                invasion.getTotalWaves(),
+                invasion.getDifficultyMultiplier()
+            );
+        }
+
+        invasion.setWaveInfoText(Component.translatable(
+            "adaptive_nemesis.invasion.wave_ongoing", getRomanNumeral(invasion.currentWave)
         ).withStyle(ChatFormatting.WHITE));
 
-        notifyAllPlayersInArea(invasion, Component.literal(
-            String.format("第 %s 波已降临！", getRomanNumeral(invasion.currentWave))
+        notifyAllPlayersInArea(invasion, Component.translatable(
+            "adaptive_nemesis.invasion.wave_arrived", getRomanNumeral(invasion.currentWave)
         ).withStyle(ChatFormatting.RED));
 
         if (Config.ENABLE_DEBUG_LOG.get()) {
@@ -348,7 +383,8 @@ public class InvasionSystem {
         mobInfo.uuid = null; // 先在设置位置后再获取UUID
 
         // 应用增强
-        applyInvasionEnhancements(enemy, invasion.getDifficultyMultiplier());
+        applyInvasionEnhancements(enemy, invasion.getDifficultyMultiplier(),
+            mobInfo.healthMultiplier, mobInfo.damageMultiplier);
 
         if (enemy instanceof Mob mob) {
             // 分配基础武器（骷髅弓、凋灵骷髅石剑等）
@@ -363,6 +399,9 @@ public class InvasionSystem {
             addCustomAI(mob, center);
         }
 
+        // 应用数据包自定义效果
+        applyMobInfoEnhancements(enemy, mobInfo);
+
         applyGlowingEffect(enemy);
         enemy.setPos(spawnPos.getX() + 0.5, spawnPos.getY(), spawnPos.getZ() + 0.5);
 
@@ -373,12 +412,64 @@ public class InvasionSystem {
         if (mobInfo.isBoss) {
             invasion.boss = enemy;
             invasion.showBossBar();
-            invasion.setBossInfoText(Component.literal("巨人 (BOSS)"));
+            invasion.setBossInfoText(Component.translatable("adaptive_nemesis.invasion.boss_name"));
         }
 
         if (Config.ENABLE_DEBUG_LOG.get()) {
             AdaptiveNemesisMod.LOGGER.debug("[入侵] 生成怪物: {} 于 {} (方向={})", mobInfo.type, spawnPos, invasion.direction);
         }
+    }
+
+    /**
+     * 应用 MobInfo 中的自定义增强效果
+     *
+     * @param enemy 目标实体
+     * @param mobInfo 怪物信息
+     */
+    private void applyMobInfoEnhancements(LivingEntity enemy, ActiveInvasion.MobInfo mobInfo) {
+        // 自定义名称
+        if (mobInfo.customNameKey != null && !mobInfo.customNameKey.isEmpty()) {
+            enemy.setCustomName(Component.translatable(mobInfo.customNameKey));
+            enemy.setCustomNameVisible(true);
+        }
+
+        // 药水效果
+        for (MobEffectInstance effect : mobInfo.effects) {
+            enemy.addEffect(new MobEffectInstance(effect));
+        }
+
+        // 发光
+        if (mobInfo.glowing) {
+            enemy.setGlowingTag(true);
+        }
+
+        // 冰霜行者：通过装备靴子实现
+        if (mobInfo.frostWalker && enemy instanceof Mob mob) {
+            applyFrostWalkerBoots(mob);
+        }
+    }
+
+    /**
+     * 给怪物装备冰霜行者靴子
+     *
+     * @param mob 目标怪物
+     */
+    private void applyFrostWalkerBoots(Mob mob) {
+        if (!(mob.level() instanceof ServerLevel serverLevel)) {
+            return;
+        }
+        Registry<net.minecraft.world.item.enchantment.Enchantment> enchantmentRegistry =
+            serverLevel.registryAccess().registryOrThrow(Registries.ENCHANTMENT);
+        Holder.Reference<net.minecraft.world.item.enchantment.Enchantment> holder =
+            enchantmentRegistry.getHolder(ResourceKey.create(Registries.ENCHANTMENT,
+                ResourceLocation.fromNamespaceAndPath("minecraft", "frost_walker"))).orElse(null);
+        if (holder == null) {
+            return;
+        }
+        ItemStack boots = new ItemStack(Items.IRON_BOOTS);
+        boots.enchant(holder, 1);
+        mob.setItemSlot(EquipmentSlot.FEET, boots);
+        mob.setDropChance(EquipmentSlot.FEET, 0.0f);
     }
 
     /**
@@ -665,8 +756,8 @@ public class InvasionSystem {
 
         int remaining = requiredKills - currentKills;
         if (remaining <= 5 && remaining > 0 && Config.INVASION.ENABLE_PLAYER_NOTIFICATION.get()) {
-            player.sendSystemMessage(Component.literal(
-                String.format("亡灵军团即将来袭！还需击杀 %d 只亡灵生物！", remaining)
+            player.sendSystemMessage(Component.translatable(
+                "adaptive_nemesis.invasion.kill_count_warning", remaining
             ).withStyle(ChatFormatting.YELLOW));
         }
     }
@@ -709,8 +800,23 @@ public class InvasionSystem {
             return false;
         }
 
-        int waveCount = calculateWaveCount();
+        int waveCount = calculateWaveCount(type);
         double difficultyMultiplier = getDifficultyMultiplier();
+
+        // 触发 KubeJS 入侵开始事件
+        if (player instanceof ServerPlayer serverPlayer) {
+            KubeJSEventTrigger.InvasionStartResult result = KubeJSEventTrigger.triggerInvasionStart(
+                serverPlayer, type, waveCount, difficultyMultiplier
+            );
+            if (result == null) {
+                if (Config.ENABLE_DEBUG_LOG.get()) {
+                    AdaptiveNemesisMod.LOGGER.debug("[入侵] KubeJS 取消了玩家 {} 的入侵事件", player.getName().getString());
+                }
+                return false;
+            }
+            waveCount = result.totalWaves;
+            difficultyMultiplier = result.difficultyMultiplier;
+        }
 
         ActiveInvasion invasion = new ActiveInvasion(
             player.getUUID(),
@@ -724,8 +830,8 @@ public class InvasionSystem {
         activeInvasions.put(player.getUUID(), invasion);
         setThunderstormWeather(level);
 
-        notifyAllPlayersInArea(invasion, Component.literal(
-            "亡灵军团来袭！"
+        notifyAllPlayersInArea(invasion, Component.translatable(
+            "adaptive_nemesis.invasion.triggered"
         ).withStyle(ChatFormatting.DARK_RED));
 
         if (Config.ENABLE_DEBUG_LOG.get()) {
@@ -751,8 +857,20 @@ public class InvasionSystem {
             return false;
         }
 
-        int waveCount = customWaves != null ? customWaves : calculateWaveCount();
+        int waveCount = customWaves != null ? customWaves : calculateWaveCount(type);
         double difficultyMultiplier = customDifficulty != null ? customDifficulty : getDifficultyMultiplier();
+
+        // 触发 KubeJS 入侵开始事件
+        if (player instanceof ServerPlayer serverPlayer) {
+            KubeJSEventTrigger.InvasionStartResult result = KubeJSEventTrigger.triggerInvasionStart(
+                serverPlayer, type, waveCount, difficultyMultiplier
+            );
+            if (result == null) {
+                return false;
+            }
+            waveCount = result.totalWaves;
+            difficultyMultiplier = result.difficultyMultiplier;
+        }
 
         ActiveInvasion invasion = new ActiveInvasion(
             player.getUUID(),
@@ -766,8 +884,8 @@ public class InvasionSystem {
         activeInvasions.put(player.getUUID(), invasion);
         setThunderstormWeather(player.level());
 
-        notifyAllPlayersInArea(invasion, Component.literal(
-            "☠️ 亡灵军团来袭！"
+        notifyAllPlayersInArea(invasion, Component.translatable(
+            "adaptive_nemesis.invasion.triggered_manual"
         ).withStyle(ChatFormatting.DARK_RED));
 
         return true;
@@ -803,8 +921,9 @@ public class InvasionSystem {
 
     /**
      * 计算波次数量
+     * 如果启用了数据包支持且存在对应数据包配置，优先使用数据包中的 max_waves
      */
-    private int calculateWaveCount() {
+    private int calculateWaveCount(InvasionType type) {
         int worldStage = WorldStageManager.getInstance().getWorldStage();
 
         int maxWaves = switch (worldStage) {
@@ -813,7 +932,24 @@ public class InvasionSystem {
             default -> 6;
         };
 
+        if (Config.INVASION.ENABLE_DATA_PACK_SUPPORT.get()) {
+            InvasionData data = getDataPackInvasion(type);
+            if (data != null) {
+                maxWaves = data.getMaxWaves();
+            }
+        }
+
         return Math.min(maxWaves, Config.INVASION.MAX_WAVE_COUNT.get());
+    }
+
+    /**
+     * 根据入侵类型获取对应的数据包配置
+     *
+     * @param type 入侵类型
+     * @return 数据包入侵配置，不存在时返回 null
+     */
+    private InvasionData getDataPackInvasion(InvasionType type) {
+        return InvasionDataLoader.getInstance().getInvasion(type.getId());
     }
 
     /**
@@ -881,12 +1017,134 @@ public class InvasionSystem {
      * 处理入侵胜利
      */
     private void handleInvasionVictory(ActiveInvasion invasion) {
-        notifyAllPlayersInArea(invasion, Component.literal(
-            "亡灵军团已被击败！"
+        notifyAllPlayersInArea(invasion, Component.translatable(
+            "adaptive_nemesis.invasion.defeated"
         ).withStyle(ChatFormatting.GREEN));
+
+        Player player = invasion.getPlayer();
+        if (player instanceof ServerPlayer serverPlayer) {
+            InvasionRewardData rewards = getInvasionRewards(invasion.getType());
+            int wavesCompleted = invasion.getTotalWaves();
+            rewards = KubeJSEventTrigger.triggerInvasionEnd(
+                serverPlayer, invasion.getType(), true, invasion.getTotalWaves(),
+                invasion.getDifficultyMultiplier(), wavesCompleted, rewards
+            );
+            grantRewards(serverPlayer, rewards);
+        }
 
         if (Config.ENABLE_DEBUG_LOG.get()) {
             AdaptiveNemesisMod.LOGGER.debug("[入侵] 胜利: 玩家={}", invasion.getPlayerName());
+        }
+    }
+
+    /**
+     * 触发入侵结束 KubeJS 事件（失败时仅触发事件，不发奖励）
+     *
+     * @param invasion 活动入侵
+     * @param victory 是否胜利
+     */
+    private void triggerInvasionEndEvent(ActiveInvasion invasion, boolean victory) {
+        Player player = invasion.getPlayer();
+        if (!(player instanceof ServerPlayer serverPlayer)) {
+            return;
+        }
+        int wavesCompleted = victory ? invasion.getTotalWaves() : Math.max(0, invasion.currentWave - 1);
+        InvasionRewardData rewards = victory ? getInvasionRewards(invasion.getType()) : new InvasionRewardData();
+        KubeJSEventTrigger.triggerInvasionEnd(
+            serverPlayer,
+            invasion.getType(),
+            victory,
+            invasion.getTotalWaves(),
+            invasion.getDifficultyMultiplier(),
+            wavesCompleted,
+            rewards
+        );
+    }
+
+    /**
+     * 根据入侵类型获取奖励配置
+     *
+     * @param type 入侵类型
+     * @return 奖励配置
+     */
+    private InvasionRewardData getInvasionRewards(InvasionType type) {
+        if (!Config.INVASION.ENABLE_DATA_PACK_SUPPORT.get()) {
+            return new InvasionRewardData();
+        }
+        InvasionData data = InvasionDataLoader.getInstance().getInvasion(type.getId());
+        return data != null ? data.getRewards() : new InvasionRewardData();
+    }
+
+    /**
+     * 发放入侵奖励
+     *
+     * @param player 获奖玩家
+     * @param rewards 奖励配置
+     */
+    private void grantRewards(ServerPlayer player, InvasionRewardData rewards) {
+        if (rewards == null || !rewards.isEnabled() || !rewards.hasRewards()) {
+            return;
+        }
+
+        ServerLevel level = player.serverLevel();
+
+        // 发放战利品表
+        for (ResourceLocation lootTableId : rewards.getLootTables()) {
+            ResourceKey<LootTable> lootKey = ResourceKey.create(Registries.LOOT_TABLE, lootTableId);
+            LootTable lootTable = level.getServer().reloadableRegistries().getLootTable(lootKey);
+            if (lootTable == LootTable.EMPTY) {
+                AdaptiveNemesisMod.LOGGER.warn("入侵奖励战利品表不存在: {}", lootTableId);
+                continue;
+            }
+            LootParams params = new LootParams.Builder(level)
+                .withParameter(LootContextParams.ORIGIN, player.position())
+                .withParameter(LootContextParams.THIS_ENTITY, player)
+                .create(LootContextParamSets.GIFT);
+            List<ItemStack> loot = lootTable.getRandomItems(params);
+            for (ItemStack stack : loot) {
+                giveItem(player, stack);
+            }
+        }
+
+        // 发放额外物品
+        for (ItemStack stack : rewards.getExtraItems()) {
+            giveItem(player, stack.copy());
+        }
+
+        // 发放经验值
+        if (rewards.getExperience() > 0) {
+            player.giveExperiencePoints(rewards.getExperience());
+        }
+
+        // 施加药水效果
+        for (MobEffectInstance effect : rewards.getEffects()) {
+            player.addEffect(new MobEffectInstance(effect));
+        }
+
+        if (Config.ENABLE_DEBUG_LOG.get()) {
+            AdaptiveNemesisMod.LOGGER.debug(
+                "[入侵] 已发放奖励给玩家 {}: 战利品表={}, 经验={}, 效果={}",
+                player.getName().getString(),
+                rewards.getLootTables().size(),
+                rewards.getExperience(),
+                rewards.getEffects().size()
+            );
+        }
+    }
+
+    /**
+     * 安全地给予玩家物品，背包满时掉落地面
+     *
+     * @param player 玩家
+     * @param stack 物品
+     */
+    private void giveItem(ServerPlayer player, ItemStack stack) {
+        if (stack.isEmpty()) {
+            return;
+        }
+        Inventory inventory = player.getInventory();
+        if (!inventory.add(stack)) {
+            player.drop(stack, false);
         }
     }
 
@@ -911,17 +1169,36 @@ public class InvasionSystem {
 
     /**
      * 应用入侵增强
+     *
+     * @param enemy 目标实体
+     * @param multiplier 基础难度倍率
      */
     private void applyInvasionEnhancements(LivingEntity enemy, double multiplier) {
+        applyInvasionEnhancements(enemy, multiplier, 1.0, 1.0);
+    }
+
+    /**
+     * 应用入侵增强（支持数据包自定义倍率）
+     *
+     * @param enemy 目标实体
+     * @param multiplier 基础难度倍率
+     * @param healthMultiplier 血量额外倍率
+     * @param damageMultiplier 攻击额外倍率
+     */
+    private void applyInvasionEnhancements(LivingEntity enemy, double multiplier,
+                                            double healthMultiplier, double damageMultiplier) {
+        double effectiveHealth = multiplier * healthMultiplier;
+        double effectiveDamage = multiplier * damageMultiplier;
+
         var maxHealthAttr = enemy.getAttribute(net.minecraft.world.entity.ai.attributes.Attributes.MAX_HEALTH);
         if (maxHealthAttr != null) {
-            maxHealthAttr.setBaseValue(maxHealthAttr.getBaseValue() * multiplier);
+            maxHealthAttr.setBaseValue(maxHealthAttr.getBaseValue() * effectiveHealth);
             enemy.setHealth(enemy.getMaxHealth());
         }
 
         var attackDamageAttr = enemy.getAttribute(net.minecraft.world.entity.ai.attributes.Attributes.ATTACK_DAMAGE);
         if (attackDamageAttr != null) {
-            attackDamageAttr.setBaseValue(attackDamageAttr.getBaseValue() * multiplier);
+            attackDamageAttr.setBaseValue(attackDamageAttr.getBaseValue() * effectiveDamage);
         }
 
         var movementSpeedAttr = enemy.getAttribute(net.minecraft.world.entity.ai.attributes.Attributes.MOVEMENT_SPEED);
@@ -1048,7 +1325,9 @@ public class InvasionSystem {
 
     /**
      * 获取指定波次的敌人配置
-     * 
+     *
+     * 优先从数据包读取，未启用或不存在时回退到硬编码配置：
+     *
      * | 波数 | 僵尸 | 骷髅 | 尸壳 | 流浪者 | Tank(僵尸村民) | 凋灵骷髅 | 地狱犬(Zoglin) | 巨人(BOSS) |
      * | --- | --- | --- | --- | --- | --- | --- | --- | --- |
      * | 1 | 4 | 4 | - | - | - | - | - | - |
@@ -1057,60 +1336,124 @@ public class InvasionSystem {
      * | 4 | 2 | 2 | 3 | 3 | 1 | 4 | - | - |
      * | 5 | 1 | 1 | 3 | 3 | 1 | 4 | 1 | - |
      * | 6 | 1 | 1 | 1 | 1 | 1 | 1 | 1 | 1 |
+     *
+     * @param waveNumber 波次编号
+     * @param type 入侵类型
+     * @return 敌人生成配置列表
      */
-    private List<EnemySpawnConfig> getWaveEnemyConfig(int waveNumber) {
+    private List<EnemySpawnConfig> getWaveEnemyConfig(int waveNumber, InvasionType type) {
         List<EnemySpawnConfig> configs = new ArrayList<>();
 
+        // 尝试从数据包读取配置
+        if (Config.INVASION.ENABLE_DATA_PACK_SUPPORT.get()) {
+            InvasionData data = getDataPackInvasion(type);
+            if (data != null) {
+                InvasionData.WaveData waveData = data.getWave(waveNumber);
+                if (waveData != null) {
+                    for (InvasionData.EnemyData enemy : waveData.getEnemies()) {
+                        configs.add(new EnemySpawnConfig(
+                            enemy.getEntityType(),
+                            enemy.getCount(),
+                            enemy.isBoss(),
+                            enemy.getEquipmentLootTable(),
+                            enemy.getEffects(),
+                            enemy.isGlowing(),
+                            enemy.isFrostWalker(),
+                            enemy.getSpawnDirection(),
+                            enemy.getCustomNameKey(),
+                            enemy.getHealthMultiplier(),
+                            enemy.getDamageMultiplier()
+                        ));
+                    }
+                    if (Config.ENABLE_DEBUG_LOG.get()) {
+                        AdaptiveNemesisMod.LOGGER.debug(
+                            "[入侵] 从数据包读取第 {} 波配置，敌人类型数={}",
+                            waveNumber, configs.size()
+                        );
+                    }
+                    return configs;
+                }
+            }
+        }
+
+        // 硬编码回退配置
         switch (waveNumber) {
             case 1 -> {
-                configs.add(new EnemySpawnConfig(EntityType.ZOMBIE, 4));
-                configs.add(new EnemySpawnConfig(EntityType.SKELETON, 4));
+                configs.add(fallbackConfig(EntityType.ZOMBIE, 4));
+                configs.add(fallbackConfig(EntityType.SKELETON, 4));
             }
             case 2 -> {
-                configs.add(new EnemySpawnConfig(EntityType.ZOMBIE, 5));
-                configs.add(new EnemySpawnConfig(EntityType.SKELETON, 5));
+                configs.add(fallbackConfig(EntityType.ZOMBIE, 5));
+                configs.add(fallbackConfig(EntityType.SKELETON, 5));
             }
             case 3 -> {
-                configs.add(new EnemySpawnConfig(EntityType.ZOMBIE, 3));
-                configs.add(new EnemySpawnConfig(EntityType.SKELETON, 3));
-                configs.add(new EnemySpawnConfig(EntityType.HUSK, 3));
-                configs.add(new EnemySpawnConfig(EntityType.STRAY, 3));
-                configs.add(new EnemySpawnConfig(EntityType.ZOMBIE_VILLAGER, 1));
+                configs.add(fallbackConfig(EntityType.ZOMBIE, 3));
+                configs.add(fallbackConfig(EntityType.SKELETON, 3));
+                configs.add(fallbackConfig(EntityType.HUSK, 3));
+                configs.add(fallbackConfig(EntityType.STRAY, 3));
+                configs.add(fallbackConfig(EntityType.ZOMBIE_VILLAGER, 1));
             }
             case 4 -> {
-                configs.add(new EnemySpawnConfig(EntityType.ZOMBIE, 2));
-                configs.add(new EnemySpawnConfig(EntityType.SKELETON, 2));
-                configs.add(new EnemySpawnConfig(EntityType.HUSK, 3));
-                configs.add(new EnemySpawnConfig(EntityType.STRAY, 3));
-                configs.add(new EnemySpawnConfig(EntityType.ZOMBIE_VILLAGER, 1));
-                configs.add(new EnemySpawnConfig(EntityType.WITHER_SKELETON, 4));
+                configs.add(fallbackConfig(EntityType.ZOMBIE, 2));
+                configs.add(fallbackConfig(EntityType.SKELETON, 2));
+                configs.add(fallbackConfig(EntityType.HUSK, 3));
+                configs.add(fallbackConfig(EntityType.STRAY, 3));
+                configs.add(fallbackConfig(EntityType.ZOMBIE_VILLAGER, 1));
+                configs.add(fallbackConfig(EntityType.WITHER_SKELETON, 4));
             }
             case 5 -> {
-                configs.add(new EnemySpawnConfig(EntityType.ZOMBIE, 1));
-                configs.add(new EnemySpawnConfig(EntityType.SKELETON, 1));
-                configs.add(new EnemySpawnConfig(EntityType.HUSK, 3));
-                configs.add(new EnemySpawnConfig(EntityType.STRAY, 3));
-                configs.add(new EnemySpawnConfig(EntityType.ZOMBIE_VILLAGER, 1));
-                configs.add(new EnemySpawnConfig(EntityType.WITHER_SKELETON, 4));
-                configs.add(new EnemySpawnConfig(EntityType.ZOGLIN, 1));
+                configs.add(fallbackConfig(EntityType.ZOMBIE, 1));
+                configs.add(fallbackConfig(EntityType.SKELETON, 1));
+                configs.add(fallbackConfig(EntityType.HUSK, 3));
+                configs.add(fallbackConfig(EntityType.STRAY, 3));
+                configs.add(fallbackConfig(EntityType.ZOMBIE_VILLAGER, 1));
+                configs.add(fallbackConfig(EntityType.WITHER_SKELETON, 4));
+                configs.add(fallbackConfig(EntityType.ZOGLIN, 1));
             }
             case 6 -> {
-                configs.add(new EnemySpawnConfig(EntityType.ZOMBIE, 1));
-                configs.add(new EnemySpawnConfig(EntityType.SKELETON, 1));
-                configs.add(new EnemySpawnConfig(EntityType.HUSK, 1));
-                configs.add(new EnemySpawnConfig(EntityType.STRAY, 1));
-                configs.add(new EnemySpawnConfig(EntityType.ZOMBIE_VILLAGER, 1));
-                configs.add(new EnemySpawnConfig(EntityType.WITHER_SKELETON, 1));
-                configs.add(new EnemySpawnConfig(EntityType.ZOGLIN, 1));
-                configs.add(new EnemySpawnConfig(EntityType.GIANT, 1));
+                configs.add(fallbackConfig(EntityType.ZOMBIE, 1));
+                configs.add(fallbackConfig(EntityType.SKELETON, 1));
+                configs.add(fallbackConfig(EntityType.HUSK, 1));
+                configs.add(fallbackConfig(EntityType.STRAY, 1));
+                configs.add(fallbackConfig(EntityType.ZOMBIE_VILLAGER, 1));
+                configs.add(fallbackConfig(EntityType.WITHER_SKELETON, 1));
+                configs.add(fallbackConfig(EntityType.ZOGLIN, 1));
+                configs.add(fallbackConfig(EntityType.GIANT, 1, true));
             }
             default -> {
-                configs.add(new EnemySpawnConfig(EntityType.ZOMBIE, 5));
-                configs.add(new EnemySpawnConfig(EntityType.SKELETON, 5));
+                configs.add(fallbackConfig(EntityType.ZOMBIE, 5));
+                configs.add(fallbackConfig(EntityType.SKELETON, 5));
             }
         }
 
         return configs;
+    }
+
+    /**
+     * 创建默认回退配置
+     *
+     * @param entityType 实体类型
+     * @param count 数量
+     * @return 敌人生成配置
+     */
+    private EnemySpawnConfig fallbackConfig(EntityType<?> entityType, int count) {
+        return fallbackConfig(entityType, count, entityType == EntityType.GIANT);
+    }
+
+    /**
+     * 创建默认回退配置
+     *
+     * @param entityType 实体类型
+     * @param count 数量
+     * @param isBoss 是否为 BOSS
+     * @return 敌人生成配置
+     */
+    private EnemySpawnConfig fallbackConfig(EntityType<?> entityType, int count, boolean isBoss) {
+        return new EnemySpawnConfig(
+            entityType, count, isBoss, null,
+            new ArrayList<>(), false, false,
+            null, null, 1.0, 1.0
+        );
     }
 
     // ======================== 公开方法 ========================
@@ -1131,9 +1474,76 @@ public class InvasionSystem {
         return hasCompletedFirstInvasion.getOrDefault(player.getUUID(), false);
     }
 
-    public enum InvasionType {
-        UNDEAD
+    /**
+     * 入侵类型
+     *
+     * 由资源位置标识，支持数据包自定义新的入侵类型。
+     */
+    public static final class InvasionType {
+
+        /**
+         * 亡灵军团
+         */
+        public static final InvasionType UNDEAD =
+            new InvasionType(ResourceLocation.fromNamespaceAndPath(AdaptiveNemesisMod.MODID, "undead_invasion"));
+
+        private final ResourceLocation id;
+
+        private InvasionType(ResourceLocation id) {
+            this.id = id;
+        }
+
+        /**
+         * 根据资源位置获取入侵类型
+         *
+         * @param id 入侵配置标识符
+         * @return 入侵类型
+         */
+        public static InvasionType of(ResourceLocation id) {
+            if (UNDEAD.id.equals(id)) {
+                return UNDEAD;
+            }
+            return new InvasionType(id);
+        }
+
+        /**
+         * 获取入侵类型标识符
+         *
+         * @return 资源位置
+         */
+        public ResourceLocation getId() {
+            return id;
+        }
+
+        @Override
+        public String toString() {
+            return id.toString();
+        }
+
+        @Override
+        public boolean equals(Object obj) {
+            if (this == obj) return true;
+            if (!(obj instanceof InvasionType other)) return false;
+            return id.equals(other.id);
+        }
+
+        @Override
+        public int hashCode() {
+            return id.hashCode();
+        }
     }
 
-    private record EnemySpawnConfig(EntityType<?> entityType, int count) {}
+    private record EnemySpawnConfig(
+        EntityType<?> entityType,
+        int count,
+        boolean isBoss,
+        ResourceLocation equipmentLootTable,
+        List<MobEffectInstance> effects,
+        boolean glowing,
+        boolean frostWalker,
+        String spawnDirection,
+        String customNameKey,
+        double healthMultiplier,
+        double damageMultiplier
+    ) {}
 }

@@ -1,0 +1,10 @@
+{
+  "stage": 2,
+  "multiplier": 2.0,
+  "max_health_multiplier": 4.0,
+  "max_damage_multiplier": 3.0,
+  "max_armor_multiplier": 2.5,
+  "float_min": 0.85,
+  "float_max": 1.15,
+  "invasion_max_waves": 5
+}

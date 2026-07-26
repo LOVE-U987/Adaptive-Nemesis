@@ -9,6 +9,7 @@ import net.minecraft.world.effect.MobEffects;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.Mob;
+import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.monster.Monster;
 import net.minecraft.world.entity.player.Player;
 import net.neoforged.bus.api.SubscribeEvent;
@@ -80,6 +81,16 @@ public class NemesisSystem {
             return;
         }
 
+        if (!hasRequiredAttributes(monster)) {
+            if (Config.ENABLE_DEBUG_LOG.get()) {
+                AdaptiveNemesisMod.LOGGER.debug(
+                    "宿敌生成跳过: {} 缺少攻击力属性",
+                    monster.getType().getDescriptionId()
+                );
+            }
+            return;
+        }
+
         convertToNemesis(monster);
     }
 
@@ -92,6 +103,20 @@ public class NemesisSystem {
     private boolean shouldConvertToNemesis() {
         double chance = Config.NEMESIS_SPAWN_CHANCE.get();
         return random.nextDouble() < chance;
+    }
+
+    /**
+     * 检查敌人是否具有宿敌转化所需的属性
+     * 当配置要求攻击力属性时，缺少 generic.attack_damage 的生物会被剔除
+     * 
+     * @param monster 敌人实体
+     * @return 是否具有所需属性
+     */
+    private boolean hasRequiredAttributes(Mob monster) {
+        if (!Config.NEMESIS_REQUIRE_ATTACK_DAMAGE.get()) {
+            return true;
+        }
+        return monster.getAttribute(Attributes.ATTACK_DAMAGE) != null;
     }
 
     /**
@@ -142,7 +167,7 @@ public class NemesisSystem {
 
         if (monster.level().getNearestPlayer(monster, 32.0) != null) {
             Player player = monster.level().getNearestPlayer(monster, 32.0);
-            player.sendSystemMessage(Component.literal("⚠ 宿敌出现！").withStyle(ChatFormatting.RED));
+            player.sendSystemMessage(Component.translatable("adaptive_nemesis.nemesis.appearance_warning").withStyle(ChatFormatting.RED));
             player.sendSystemMessage(nemesisName.copy().withStyle(ChatFormatting.YELLOW));
         }
     }
@@ -170,27 +195,43 @@ public class NemesisSystem {
     /**
      * 应用属性强化
      * 包括生命值、攻击力、护甲等
+     * 对缺失的属性进行空指针保护，避免非攻击型生物或模组生物导致崩溃
      * 
      * @param monster 敌人实体
      * @param multiplier 强化倍率
      */
     private void applyStatsMultiplier(Mob monster, double multiplier) {
-        monster.getAttribute(net.minecraft.world.entity.ai.attributes.Attributes.MAX_HEALTH)
-            .setBaseValue(monster.getAttribute(net.minecraft.world.entity.ai.attributes.Attributes.MAX_HEALTH).getBaseValue() * multiplier);
-        monster.setHealth(monster.getMaxHealth());
+        double effectiveMultiplier = Math.max(1.0, multiplier);
 
-        monster.getAttribute(net.minecraft.world.entity.ai.attributes.Attributes.ATTACK_DAMAGE)
-            .setBaseValue(monster.getAttribute(net.minecraft.world.entity.ai.attributes.Attributes.ATTACK_DAMAGE).getBaseValue() * multiplier);
+        var maxHealthAttr = monster.getAttribute(Attributes.MAX_HEALTH);
+        if (maxHealthAttr != null) {
+            double originalHealth = maxHealthAttr.getBaseValue();
+            maxHealthAttr.setBaseValue(Math.max(originalHealth, originalHealth * effectiveMultiplier));
+            monster.setHealth(monster.getMaxHealth());
+        }
 
-        monster.getAttribute(net.minecraft.world.entity.ai.attributes.Attributes.ARMOR)
-            .setBaseValue(monster.getAttribute(net.minecraft.world.entity.ai.attributes.Attributes.ARMOR).getBaseValue() * (0.5 + multiplier * 0.5));
+        var attackDamageAttr = monster.getAttribute(Attributes.ATTACK_DAMAGE);
+        if (attackDamageAttr != null) {
+            double originalDamage = attackDamageAttr.getBaseValue();
+            attackDamageAttr.setBaseValue(Math.max(originalDamage, originalDamage * effectiveMultiplier));
+        }
 
-        monster.getAttribute(net.minecraft.world.entity.ai.attributes.Attributes.MOVEMENT_SPEED)
-            .setBaseValue(monster.getAttribute(net.minecraft.world.entity.ai.attributes.Attributes.MOVEMENT_SPEED).getBaseValue() * (0.8 + multiplier * 0.2));
+        var armorAttr = monster.getAttribute(Attributes.ARMOR);
+        if (armorAttr != null) {
+            double originalArmor = armorAttr.getBaseValue();
+            armorAttr.setBaseValue(Math.max(originalArmor, originalArmor * (0.5 + effectiveMultiplier * 0.5)));
+        }
 
-        if (monster.getAttribute(net.minecraft.world.entity.ai.attributes.Attributes.KNOCKBACK_RESISTANCE) != null) {
-            monster.getAttribute(net.minecraft.world.entity.ai.attributes.Attributes.KNOCKBACK_RESISTANCE)
-                .setBaseValue(Math.min(0.9, monster.getAttribute(net.minecraft.world.entity.ai.attributes.Attributes.KNOCKBACK_RESISTANCE).getBaseValue() + (multiplier - 1.0) * 0.3));
+        var movementSpeedAttr = monster.getAttribute(Attributes.MOVEMENT_SPEED);
+        if (movementSpeedAttr != null) {
+            double originalSpeed = movementSpeedAttr.getBaseValue();
+            movementSpeedAttr.setBaseValue(Math.max(originalSpeed, originalSpeed * (0.8 + effectiveMultiplier * 0.2)));
+        }
+
+        var knockbackResistanceAttr = monster.getAttribute(Attributes.KNOCKBACK_RESISTANCE);
+        if (knockbackResistanceAttr != null) {
+            double originalKnockback = knockbackResistanceAttr.getBaseValue();
+            knockbackResistanceAttr.setBaseValue(Math.min(0.9, originalKnockback + (effectiveMultiplier - 1.0) * 0.3));
         }
     }
 

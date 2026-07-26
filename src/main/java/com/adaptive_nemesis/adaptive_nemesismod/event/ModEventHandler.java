@@ -5,11 +5,14 @@ import java.util.UUID;
 import com.adaptive_nemesis.adaptive_nemesismod.AdaptiveNemesisMod;
 import com.adaptive_nemesis.adaptive_nemesismod.Config;
 import com.adaptive_nemesis.adaptive_nemesismod.boss.BossDamageCapHandler;
+import com.adaptive_nemesis.adaptive_nemesismod.data.WorldStageDataLoader;
 import com.adaptive_nemesis.adaptive_nemesismod.data.WorldStageSavedData;
 import com.adaptive_nemesis.adaptive_nemesismod.enemy.DifficultyTracker;
+import com.adaptive_nemesis.adaptive_nemesismod.memory.NemesisDataLoader;
 import com.adaptive_nemesis.adaptive_nemesismod.enemy.EntityFilterHelper;
 import com.adaptive_nemesis.adaptive_nemesismod.enemy.EnemyScalingHandler;
 import com.adaptive_nemesis.adaptive_nemesismod.enemy.WorldStageManager;
+import com.adaptive_nemesis.adaptive_nemesismod.invasion.InvasionDataLoader;
 import com.adaptive_nemesis.adaptive_nemesismod.memory.NemesisMemorySystem;
 import com.adaptive_nemesis.adaptive_nemesismod.player.PlayerStrengthEvaluator;
 import com.adaptive_nemesis.adaptive_nemesismod.protection.NewbieProtectionHandler;
@@ -21,6 +24,7 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.monster.Enemy;
 import net.neoforged.bus.api.SubscribeEvent;
+import net.neoforged.neoforge.event.AddReloadListenerEvent;
 import net.neoforged.neoforge.event.entity.EntityJoinLevelEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerEvent;
 import net.neoforged.neoforge.event.server.ServerStartedEvent;
@@ -88,6 +92,19 @@ public class ModEventHandler {
             }
             break; // 只需要从一个维度加载（全服共享）
         }
+    }
+
+    /**
+     * 注册数据包重新加载监听器
+     *
+     * @param event 重新加载监听器事件
+     */
+    @SubscribeEvent
+    public void onAddReloadListeners(AddReloadListenerEvent event) {
+        event.addListener(InvasionDataLoader.getInstance());
+        event.addListener(WorldStageDataLoader.getInstance());
+        event.addListener(NemesisDataLoader.getInstance());
+        AdaptiveNemesisMod.LOGGER.debug("入侵、世界阶段与宿敌数据包加载器已注册");
     }
 
     /**

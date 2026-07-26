@@ -73,6 +73,12 @@ public class NemesisConfig {
      */
     public final ModConfigSpec.ConfigValue<String> NEMESIS_NAME_COLOR;
 
+    /**
+     * 宿敌转化是否要求目标具有攻击力属性
+     * 开启后，缺少 generic.attack_damage 的生物不会被转化为宿敌
+     */
+    public final ModConfigSpec.BooleanValue NEMESIS_REQUIRE_ATTACK_DAMAGE;
+
     public NemesisConfig(ModConfigSpec.Builder builder) {
         builder.push("nemesis");
         
@@ -111,6 +117,9 @@ public class NemesisConfig {
         
         NEMESIS_NAME_COLOR = builder.comment("宿敌名称颜色（十六进制，如 FF0000 = 红色）")
             .define("nemesisNameColor", "FF0000");
+
+        NEMESIS_REQUIRE_ATTACK_DAMAGE = builder.comment("宿敌转化是否要求目标具有攻击力属性，缺失时跳过转化")
+            .define("nemesisRequireAttackDamage", true);
         
         builder.pop();
     }

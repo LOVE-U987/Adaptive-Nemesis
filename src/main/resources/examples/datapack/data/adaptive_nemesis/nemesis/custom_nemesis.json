@@ -1,0 +1,11 @@
+{
+  "melee_resistance_cap": 0.4,
+  "ranged_resistance_cap": 0.4,
+  "magic_resistance_cap": 0.4,
+  "attack_bonus_cap": 0.3,
+  "speed_bonus_cap": 0.25,
+  "health_bonus_cap": 0.6,
+  "kills_per_level": 8,
+  "deaths_per_level": 4,
+  "max_level": 100
+}

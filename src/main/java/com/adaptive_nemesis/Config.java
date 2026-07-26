@@ -147,6 +147,7 @@ public class Config {
     public static final ModConfigSpec.BooleanValue SHOW_NEMESIS_NAME = NEMESIS.SHOW_NEMESIS_NAME;
     public static final ModConfigSpec.BooleanValue NEMESIS_NAME_ALWAYS_VISIBLE = NEMESIS.NEMESIS_NAME_ALWAYS_VISIBLE;
     public static final ModConfigSpec.ConfigValue<String> NEMESIS_NAME_COLOR = NEMESIS.NEMESIS_NAME_COLOR;
+    public static final ModConfigSpec.BooleanValue NEMESIS_REQUIRE_ATTACK_DAMAGE = NEMESIS.NEMESIS_REQUIRE_ATTACK_DAMAGE;
 
     public static final ModConfigSpec.BooleanValue ENABLE_INVASION = INVASION.ENABLE_INVASION;
     public static final ModConfigSpec.DoubleValue INVASION_TRIGGER_CHANCE = INVASION.INVASION_TRIGGER_CHANCE;
