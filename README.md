@@ -1,183 +1,224 @@
-<!-- 
-Adaptive Nemesis
-Dynamic Difficulty Balancing Mod - Designed for Modpacks
-English Version
--->
-
-<div align="center">
+div align="center">
 
 <h1>
   ⚔️
-  <span style="color: #ff4444; text-shadow: 0 0 20px #ff0000;">Adaptive Nemesis / 自适应宿敌</span>
+  <span style="color: #ff4444; text-shadow: 0 0 20px #ff0000;">Adaptive Nemesis</span>
+  <span style="color: #888888;">v1.0.12</span>
   ⚔️
 </h1>
 
-<p><i>"Your power feeds their evolution"</i></p>
+<img src="https://img.shields.io/badge/🎯_Dynamic_Difficulty-FF6B6B?style=for-the-badge&logo=minecraft&logoColor=white">
+<img src="https://img.shields.io/badge/⚖️_Smart_Balance-9B59B6?style=for-the-badge&logo=shield&logoColor=white">
+<img src="https://img.shields.io/badge/📦_KubeJS_Support-2ECC71?style=for-the-badge&logo=code&logoColor=white">
+<img src="https://img.shields.io/badge/🌩️_Invasion_Events-F39C12?style=for-the-badge&logo=fire&logoColor=white">
 
-<img src="https://img.shields.io/badge/🎯_Dynamic_Difficulty-FF6B6B?style=flat-square">
-<img src="https://img.shields.io/badge/⚖️_Smart_Balance-9B59B6?style=flat-square">
-<img src="https://img.shields.io/badge/📦_KubeJS_Support-2ECC71?style=flat-square">
-<img src="https://img.shields.io/badge/🌩️_Invasion_Events-F39C12?style=flat-square">
+<p><i>"Your power feeds their evolution."</i></p>
+<p><i>They weren't kidding.</i></p>
 
 </div>
 
 ---
 
-## 📖 Overview
+## 🎬 What Is This?
 
-**Adaptive Nemesis** is a **NeoForge 1.21.1** dynamic difficulty balancing mod designed specifically for Minecraft modpacks.
+You know the drill. You start a modpack. Early game: you're scratching zombies with a wooden stick, questioning your life choices. Late game: you're in full god gear one-shotting everything that moves, bored out of your mind.
 
-It solves the common modpack problem where early game feels like "scratching with a toothpick" while late game becomes "one-shotting everything." By intelligently evaluating player strength and dynamically adjusting enemy attributes, combat always maintains that "a bit hard, but not too much" thrilling tension.
+**Adaptive Nemesis** breaks that loop.
+
+It watches you. It learns. And it makes sure the world stays dangerous — no matter how strong you get.
 
 ---
 
-## ⚔️ Core Mechanics
+## ⚔️ Core Systems
 
-### 1. Player Strength Evaluation System
+### 🧠 Player Strength Evaluation
 
-The mod continuously monitors each player's comprehensive combat power, assessing based on multi-dimensional data:
+The mod doesn't just look at your armor bar. It reads your entire combat profile:
 
 <div align="center">
 
-| Dimension | Description | Weight |
-|---------|------|:---:|
-| 🛡️ **Defense** | Armor value, max health, armor toughness | High |
-| ⚔️ **Offense** | Attack damage, attack speed, total enchantment coverage | High |
-| ✨ **Mythic Affixes** | [Apotheosis](https://www.curseforge.com/minecraft/mc-mods/apotheosis) equipment quality and tier | Medium |
-| 🔮 **Iron's Spells** | [Iron's Spells 'n Spellbooks](https://www.curseforge.com/minecraft/mc-mods/irons-spells-n-spellbooks) mana pool, spell power | Medium |
-| ⚔️ **Epic Fight** | [Epic Fight](https://www.curseforge.com/minecraft/mc-mods/epic-fight-mod) stamina value, combat style | Medium |
+| What It Sees | Why It Matters |
+|:---|:---|
+| 🛡️ **Armor & Health** | Tank builds don't go unpunished |
+| ⚔️ **Attack Stats** | Glass cannons meet glass resistance |
+| ✨ **Apotheosis Gear** | That mythic affix? They noticed. |
+| 🔮 **Iron's Spells Mana** | Mages get scaled against too |
+| ⚔️ **Epic Fight Stamina** | Your combat style is on file |
 
 </div>
 
-> All weights can be customized via configuration files, with KubeJS script support for extended evaluation logic!
+> 💡 *Everything is weighted. Everything counts. And yes — you can tweak the weights in config.*
 
-### 2. Dynamic Enemy Scaling
+---
 
-When hostile mobs spawn, the mod provides adaptive attribute bonuses based on the **average strength of nearby players**:
+### 📈 Dynamic Enemy Scaling
 
-| Scaling Type | Description | Cap |
-|:---|:---|:---|
-| **Health** | Max health increase | 500% |
-| **Damage** | Attack damage increase | 500% |
-| **Armor** | Physical defense increase | 300% |
-| **Attack Speed** | Prevents infinite stunlock | 2.0x |
-| **Movement Speed** | Keeps pressure during combat | 2.0x |
-| **Armor Toughness** | Additional damage mitigation | - |
-| **Spell Power** | Iron's Spells compatibility | - |
-| **Spell Resistance** | Iron's Spells compatibility | - |
-| **Hit Resistance** | Epic Fight compatibility | - |
-| **Knockdown Resistance** | Epic Fight compatibility | - |
-| **Stamina / Weight** | Epic Fight compatibility | - |
+Every hostile mob that spawns gets a personal gift from the system:
 
-**Attribute Random Distribution**: Each spawned enemy's attributes will fluctuate around the base value (70%~130%), making every battle unpredictable!
+<div align="center">
 
-```
-Base Scaling = Player Comprehensive Strength × Difficulty Coefficient
-Float Adjustment = Base Scaling × (0.7 ~ 1.3)  // Attribute random distribution
-```
+| Attribute | Scaling | Hard Cap |
+|:---|:---|:---:|
+| **Health** | Based on nearby player strength | 500% |
+| **Damage** | You hit hard? They hit harder. | 500% |
+| **Armor** | Your sword will feel it. | 300% |
+| **Attack Speed** | No more infinite stunlock. | 2.0x |
+| **Movement Speed** | Running won't save you. | 2.0x |
 
-> 🔧 **Anti-Explosion Safeguards**: Original base values are stored in entity NBT and fall back to `DefaultAttributes` when tags are cleared, preventing repeated scaling from causing exponential HP inflation.
+</div>
 
-**Equipment & Enchantment Scaling**: Humanoid enemies may spawn with scaled gear and enchantments. The system scans `ItemTags` to integrate modded weapons and armor, with a configurable chance to replace vanilla equipment. Dangerous enchantments are automatically blacklisted, and gear drops can be disabled to prevent loot flooding.
+**The twist:** Every mob rolls 70%~130% of the base scaling. Two zombies from the same spawn? Different personalities. Different threat levels. You'll never know which one is the problem child.
 
-### 3. World Stage System
+> 🔥 *"I saw a zombie with 80 HP and laughed. Then I saw the one next to it had 240 HP and a diamond sword. I stopped laughing."*
 
-A **server-wide shared** progression layer that permanently raises difficulty as bosses fall:
+**Anti-Explosion Safeguards:** Base values are stored in NBT. If tags get cleared, the mod falls back to `DefaultAttributes`. No exponential HP inflation. No broken saves.
 
-| Stage | Trigger | Effect |
-|:---|:---|:---|
-| **Stage 0** | Fresh world | Baseline difficulty |
-| **Stage 1+** | Boss killed by a player (Ender Dragon / Wither / Warden, etc.) | +50% enemy strength per stage (configurable) |
+**Equipment Scaling:** Humanoid enemies can spawn with scaled gear and enchantments. The system scans `ItemTags` to pull from your modpack's weapon/armor pool. Dangerous enchants are blacklisted. Drops can be disabled so you don't drown in loot.
 
-> World stage advancement only counts **player kills**, and the stage is shared across all dimensions and players on the server. Maximum stage is configurable to prevent infinite growth.
+---
 
-### 4. Adaptive Float System
+### 🌍 World Stage System
 
-Dynamically adjusts difficulty based on real-time player performance:
+This is server-wide. Permanent. And it doesn't care about your feelings.
 
-| Player Behavior | System Response |
+<div align="center">
+
+| Stage | How You Got Here | What Changes |
+|:---:|:---|:---|
+| **0** | Fresh world | Baseline. Enjoy it while it lasts. |
+| **1+** | A player killed a Boss (Dragon, Wither, Warden...) | +50% enemy strength per stage |
+
+</div>
+
+> ⚡ *Only player kills count. The stage is shared across all dimensions. And it only goes up.*
+
+---
+
+### 🎚️ Adaptive Float System
+
+The mod doesn't just scale once and call it a day. It watches your **performance in real time**:
+
+<div align="center">
+
+| You Do This | The World Does This |
 |:---|:---|
-| **Consecutive Kills** | Float multiplier **+10%** (enemies grow stronger) |
-| **Frequent Deaths** | Float multiplier **-15%** (giving you breathing room) |
-| **Long Inactivity** | Float multiplier decays toward baseline, then resets |
-| **Low Combat Efficiency** | Float multiplier gradually decreases |
+| Chain kills like a maniac | Float multiplier **+10%** — they grow |
+| Die. A lot. | Float multiplier **-15%** — breathing room |
+| AFK at your mob farm | Decay kicks in. The world forgets you were scary. |
+| Glass cannon build (high damage, low survivability) | Efficiency check. Difficulty reels back. |
 
-> 💡 **Goal**: Always make players feel "a bit hard, but not too much" — just the right challenge.
+</div>
 
-### 5. True Damage Conversion (Iron Turtle Terminator)
+> 🧠 *"The system learned to read your true skill. Not just your DPS."*
 
-For high-armor players, the mod forcibly converts a portion of damage into **armor-ignoring true damage**:
+---
 
-| Armor Level | True Damage Ratio |
-|---------|------------|
-| Standard Armor (≤20) | 5% |
-| Enhanced Armor (20~50) | 15% |
-| High Armor (50~100) | 25% |
-| Iron Turtle (>100) | 35% |
+### 💀 True Damage Conversion (Iron Turtle Terminator)
 
-> Never fear becoming invincible with god gear! Enemies will find your weakness 🔥
+Wearing 100+ armor and feeling invinc? Cute.
 
-### 6. Nemesis Memory System
+<div align="center">
 
-Each player has an independent **Nemesis profile**. Enemies remember your combat style and evolve accordingly:
+| Your Armor | What Gets Through |
+|:---:|:---:|
+| ≤20 | 5% true damage |
+| 20~50 | 15% true damage |
+| 50~100 | 25% true damage |
+| >100 | 35% true damage |
 
-| Memory Type | Records | Enemy Evolution Direction |
+</div>
+
+> *Armor still matters. But it no longer makes you a god.*
+
+---
+
+### 👹 Nemesis Memory System
+
+Every player gets a **personal file**. The enemies remember:
+
+<div align="center">
+
+| Memory Type | What They Learn | How They Adapt |
 |:---|:---|:---|
-| **Kill Preference** | Player's common kill methods | Enemies gain corresponding resistances |
-| **Death Records** | Damage sources when player dies | Enemies learn corresponding attack patterns |
-| **Equipment History** | Equipment combinations player has used | Enemies evolve targeted counter-strategies |
-| **Behavior Patterns** | Melee/ranged/magic preferences | Enemies adjust AI behavior |
+| **Kill Preference** | How you usually kill | They gain resistances to your favorite method |
+| **Death Records** | What killed you last | They start using that against you |
+| **Equipment History** | What gear you run | They evolve counters to your build |
+| **Behavior Patterns** | Melee / Ranged / Magic | Their AI shifts to exploit your habits |
 
-### 7. Newbie Protection Mechanism
+</div>
 
-Provides thoughtful protection for low-strength players:
+> *"I always opened with a fireball. Then the skeletons started spawning with Fire Resistance. Every. Single. Time."*
 
-| Trigger Condition | Effect | Duration |
-|:---|:---|:---|
-| Player Comprehensive Strength < Threshold | Monster attributes **-30%** | Configurable |
-| First Death | Protection time **+10 minutes** | Cumulative cap |
-| 3 Consecutive Deaths | Force enable protection | Until any enemy is killed |
+---
 
-### 8. Boss Mechanics
+### 🛡️ Newbie Protection
 
-Prevents players from one-shotting Bosses, extending epic combat experiences:
+Not everyone starts as a legend. The mod knows:
 
-- ✅ **Damage Cap**: Single-hit damage has an upper limit (default 100), which increases as Boss health decreases
-- ✅ **Attribute Amplification**: Boss health ×5, damage ×3
-- ✅ **Combat Tracking**: Records combat duration and cumulative damage
-- ✅ **Phase Evolution**: Bosses dynamically adjust attack patterns based on combat duration
-- ✅ **Smart Identification**: Recognizes Bosses by keywords, health threshold, or built-in tags
+<div align="center">
 
-### 9. Invasion Event System
-
-A state-machine driven Undead Invasion that escalates tension across the server:
-
-| Feature | Description |
+| Trigger | Effect |
 |:---|:---|
-| **Trigger** | Surface undead kill count (25 for first, 100 for subsequent) |
-| **Weather** | Triggers thunderstorm on activation |
+| Player strength below threshold | Monster stats **-30%** |
+| First death | Protection extended by 10 minutes |
+| 3 deaths in a row | Forced protection until you kill something |
+
+</div>
+
+> *The system wants you to suffer. But it wants you to stick around to suffer more.*
+
+---
+
+### 🐉 Boss Mechanics
+
+Boss fights shouldn't end in two hits.
+
+<div align="center">
+
+| Mechanic | What It Does |
+|:---|:---|
+| **Damage Cap** | Single-hit damage capped (default 100), cap rises as Boss HP drops |
+| **Attribute Amp** | Boss HP ×5, damage ×3 |
+| **Combat Tracking** | Records fight duration and total damage dealt |
+| **Phase Evolution** | Attack patterns shift as the fight drags on |
+| **Smart ID** | Recognizes Bosses by tag, type, name, or health threshold |
+
+</div>
+
+---
+
+### 🌩️ Invasion Event System
+
+Sometimes the world doesn't wait for you to find trouble.
+
+<div align="center">
+
+| Feature | Detail |
+|:---|:---|
+| **Trigger** | Kill 25 surface undead (first time), 100 (after) |
+| **Weather** | Thunderstorm. Because atmosphere matters. |
 | **Waves** | Multi-wave assaults scaling with world stage |
-| **Spawn Pattern** | Enemies approach from one of four cardinal directions |
-| **Boss Bar UI** | Wave progress and elite enemy health bars |
-| **Rewards** | Loot tables, experience, and effects for nearby players |
+| **Direction** | Enemies come from North, South, East, or West |
+| **UI** | Boss bar tracks wave progress |
+| **Rewards** | Loot, XP, and effects for nearby players |
 
-> Custom invasion types can be defined via datapack at `data/<namespace>/invasions/<name>.json`.
+</div>
+
+> Custom invasions via datapack: `data/<namespace>/invasions/<name>.json`
 
 ---
 
 ## 🔗 Mod Compatibility
 
-Adaptive Nemesis natively supports the following popular mods:
-
 <div align="center">
 
-| Mod | Compatible Content |
-|:-----|:---------|
-| 🔮 **Iron's Spells 'n Spellbooks** | Spell power, mana pool, cooldown reduction, magic resistance |
+| Mod | What Gets Integrated |
+|:---|:---|
+| 🔮 **Iron's Spells 'n Spellbooks** | Spell power, mana, cooldowns, magic resistance |
 | ⚔️ **Epic Fight** | Hit resistance, impact, armor breaking, combos, stamina |
-| ✨ **Apotheosis** | Equipment quality, mythic affix tier evaluation |
-| 🐗 **L2Hostility** | Compatibility mode skips overlapping health/speed scaling |
-| 📦 **KubeJS** | Custom events, script extensions, config hot reload |
+| ✨ **Apotheosis** | Gear quality, mythic affix tier evaluation |
+| 🐗 **L2Hostility** | Compatibility mode skips overlapping scaling |
+| 📦 **KubeJS** | Full event API, script extensions, config hot reload |
 
 </div>
 
@@ -185,110 +226,94 @@ Adaptive Nemesis natively supports the following popular mods:
 
 ## ⌨️ Commands
 
-All commands use `/an` prefix, requiring OP permission (level 2):
+All `/an` commands. OP level 2 required.
 
-| Command | Description |
-|-----|------|
-| `/an status` | View mod current running status |
-| `/an strength [player]` | View specified player's strength evaluation data |
-| `/an difficulty` | View/adjust difficulty settings |
-| `/an protection [player]` | View/manage newbie protection status |
-| `/an memory [player]` | View Nemesis memory profile |
-| `/an scan [range]` | Scan surrounding enemies' scaling data |
-| `/an nemesis [type]` | Summon Nemesis |
-| `/an invasion trigger [type] [waves] [difficulty]` | Manually trigger an invasion |
-| `/an test [module]` | Test mod module functions |
-| `/an reload` | Reload configuration files |
-| `/an help` | Display help information |
+<div align="center">
 
----
+| Command | What It Does |
+|:---|:---|
+| `/an status` | Is the mod alive? What's it thinking? |
+| `/an strength [player]` | Full combat profile breakdown |
+| `/an difficulty` | Tweak the numbers |
+| `/an protection [player]` | Manage newbie shields |
+| `/an memory [player]` | Read the Nemesis file |
+| `/an scan [range]` | Inspect nearby scaled enemies |
+| `/an nemesis [type]` | Summon a personal nightmare |
+| `/an invasion trigger [type] [waves] [difficulty]` | Start the storm manually |
+| `/an test [module]` | Debug tools |
+| `/an reload` | Hot reload configs |
+| `/an help` | When you forget the above |
 
-## ⚙️ Configuration System
-
-All mod mechanisms can be finely adjusted through configuration files.
-
-- Config file path: `config/adaptive_nemesis-common.toml`
-- Configuration changes made through the in-game config screen are persisted to disk.
+</div>
 
 ---
 
 ## 🔧 KubeJS Integration
 
-Automate mod configuration through scripts:
+Script your own chaos.
 
-### Available Events
+<div align="center">
 
-| Event Name | Trigger Timing | Purpose |
+| Event | When It Fires | What You Can Do |
 |:---|:---|:---|
-| `adaptive_nemesis.entity_scale` | When entity attributes are scaled | Customize specific entity scaling multipliers |
-| `adaptive_nemesis.damage_calculation` | When true damage is calculated | Adjust damage values or cancel conversion |
-| `adaptive_nemesis.player_strength_evaluation` | When player strength is evaluated | Modify final strength calculation |
-| `adaptive_nemesis.nemesis_memory_update` | When Nemesis memory updates | Listen for milestones or custom rewards |
-| `adaptive_nemesis.world_stage_change` | When world stage advances | React to global progression |
-| `adaptive_nemesis.invasion_start` | When invasion begins | Customize waves/difficulty or cancel |
-| `adaptive_nemesis.invasion_wave_start` | When each invasion wave starts | Inject custom logic |
-| `adaptive_nemesis.invasion_end` | When invasion ends | Modify rewards based on victory/defeat |
+| `adaptive_nemesis.entity_scale` | Mob spawns | Override scaling multipliers per entity |
+| `adaptive_nemesis.damage_calculation` | True damage triggers | Adjust or cancel conversion |
+| `adaptive_nemesis.player_strength_evaluation` | Strength recalculated | Modify final score |
+| `adaptive_nemesis.nemesis_memory_update` | Memory milestone | Custom rewards, triggers |
+| `adaptive_nemesis.world_stage_change` | Stage advances | React to global progression |
+| `adaptive_nemesis.invasion_start` | Invasion begins | Modify waves/difficulty or **cancel** |
+| `adaptive_nemesis.invasion_wave_start` | Each wave starts | Inject custom logic |
+| `adaptive_nemesis.invasion_end` | Invasion ends | Modify rewards based on outcome |
 
-### Practical Scenarios
-
-| Scenario | Implementation |
-|:---|:---|
-| Extra zombie scaling | Check entity ID, multiply scaling |
-| Boss double scaling | Check boss type, multiply scaling |
-| High-level player difficulty | Add strength based on player level |
-| Milestone rewards | Listen for every-10-kills event, grant rewards |
-| Global difficulty adjustment | Define global coefficient, unified multiplication |
-| Custom invasion types | Create datapacks + hook into KubeJS events |
+</div>
 
 ---
 
 ## 📦 Datapack Support
 
-Extend mod content through datapacks without writing code:
+No code required. Just JSON and spite.
 
-- `data/<namespace>/world_stages/<name>.json` — Define stage multipliers, caps, and invasion parameters
-- `data/<namespace>/invasions/<name>.json` — Define custom invasion types, waves, enemies, effects, and rewards
-- `data/<namespace>/nemesis/<name>.json` — Configure Nemesis profiles and behaviors
+- `data/<namespace>/world_stages/<name>.json` — Stage rules, caps, invasion params
+- `data/<namespace>/invasions/<name>.json` — Custom invasions: waves, enemies, effects, rewards
+- `data/<namespace>/nemesis/<name>.json` — Nemesis profiles and behaviors
 
-Datapacks are hot-reloaded alongside Minecraft's resource reload system.
-
----
-
-## 🚀 Performance Optimization
-
-| Optimization | Solution | Effect |
-|:---|:---|:---|
-| **Entity Calculation** | Regional caching + async update | Reduce real-time calculation overhead |
-| **Multiplayer Server TPS** | Player-list traversal + distance checks | Reduce server load and avoid chunk-loading deadlocks |
-| **Config Hot-Update** | Incremental sync, not full reload | Avoid lag spikes |
-| **Memory System Storage** | On-demand loading, periodic archiving | Control save file size |
-| **Watchdog Service** | Detects scaling timeouts and marks problematic entities | Prevents server freezes |
+Hot-reloaded with F3+T.
 
 ---
 
-## 📖 Design Philosophy
+## 🚀 Performance
 
-> *"Your power feeds their evolution"*
+| Problem | Solution |
+|:---|:---|
+| Entity calculation lag | Regional caching + async updates |
+| TPS drops on servers | Player-list traversal + distance checks |
+| Config reload lag | Incremental sync, not full rebuild |
+| Memory bloat | On-demand loading, periodic archiving |
+| Scaling timeout | Watchdog detects and marks bad entities |
 
-Adaptive Nemesis's core concept is **dynamic balance**:
+---
 
-1. **Never weaken players** — Players can still enjoy the thrill of growing stronger
-2. **Match enemies to strength** — Enemies always scale with player power
-3. **Learn and counter** — Enemies learn player combat styles and evolve targeted counters
-4. **Protect newbies** — Give new players enough room to grow
-5. **Challenge veterans** — Keep experienced players constantly challenged
-6. **Reward progression milestones** — World stages and invasions turn power spikes into memorable events
+## ⚔️ The Point
 
-Whether you're a newcomer just starting a modpack or a veteran in full god gear, Adaptive Nemesis provides the right combat experience!
+> *"Your power feeds their evolution."*
+
+This isn't a mod that makes the game harder. It's a mod that makes the game **pay attention**.
+
+You want to feel your progression? You'll feel it. The enemies will make sure of it.
+
+You want to coast in god gear? Not here. The world scales. It learns. It remembers.
+
+**Adaptive Nemesis** doesn't nerf you. It respects you enough to stay dangerous.
 
 ---
 
 <div align="center">
 
-**⚔️ Every time you grow stronger, your Nemesis evolves ⚔️**
+**⚔️ Every time you grow stronger, your Nemesis evolves. ⚔️**
 
 [![CurseForge](https://img.shields.io/badge/CurseForge-Download-F16436?style=for-the-badge&logo=curseforge&logoColor=white)](https://curseforge.com)
-[![Modrinth](https://img.shields.io/badge/Modrinth-Download-00AF5C?style=for-the-badge&logo=modrinth&logoColor=white)](https://modrinth.com/mod/anadaptive-nemesis)
-[![GitHub](https://img.shields.io/badge/GitHub-Source-181717?style=for-the-badge&logo=github&logoColor=white)](https://github.com/LOVE-U987/Adaptive-Nemesis/issues)
+[![Modrinth](https://img.shields.io/badge/Modrinth-Download-00AF5C?style=for-the-badge&logo=modrinth&logoColor=white)](https://modrinth.com)
+[![GitHub](https://img.shields.io/badge/GitHub-Source-181717?style=for-the-badge&logo=github&logoColor=white)](https://github.com)
 
 </div>
+
