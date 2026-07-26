@@ -22,6 +22,8 @@ import net.minecraft.server.packs.resources.ResourceManager;
 import net.minecraft.world.Difficulty;
 import net.minecraft.world.effect.MobEffectInstance;
 import net.minecraft.world.entity.player.Inventory;
+import net.minecraft.world.item.ArmorItem;
+import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.storage.loot.LootParams;
 import net.minecraft.world.level.storage.loot.LootTable;
@@ -447,6 +449,67 @@ public class InvasionSystem {
         if (mobInfo.frostWalker && enemy instanceof Mob mob) {
             applyFrostWalkerBoots(mob);
         }
+
+        // 数据包自定义装备战利品表
+        if (mobInfo.equipment != null && enemy instanceof Mob mob && mob.level() instanceof ServerLevel serverLevel) {
+            applyEquipmentLootTable(mob, mobInfo.equipment, serverLevel);
+        }
+    }
+
+    /**
+     * 从战利品表生成装备并给怪物穿上
+     *
+     * @param mob 目标怪物
+     * @param lootTableId 装备战利品表资源位置
+     * @param serverLevel 服务端世界
+     */
+    private void applyEquipmentLootTable(Mob mob, ResourceLocation lootTableId, ServerLevel serverLevel) {
+        ResourceKey<LootTable> lootKey = ResourceKey.create(Registries.LOOT_TABLE, lootTableId);
+        LootTable lootTable = serverLevel.getServer().reloadableRegistries().getLootTable(lootKey);
+        if (lootTable == LootTable.EMPTY) {
+            if (Config.ENABLE_DEBUG_LOG.get()) {
+                AdaptiveNemesisMod.LOGGER.warn("[入侵] 找不到装备战利品表: {}", lootTableId);
+            }
+            return;
+        }
+
+        LootParams lootParams = new LootParams.Builder(serverLevel)
+            .withParameter(LootContextParams.THIS_ENTITY, mob)
+            .withParameter(LootContextParams.ORIGIN, mob.position())
+            .withLuck(0.0F)
+            .create(LootContextParamSets.GIFT);
+
+        List<ItemStack> items = lootTable.getRandomItems(lootParams);
+        for (ItemStack stack : items) {
+            if (stack.isEmpty()) {
+                continue;
+            }
+            EquipmentSlot slot = resolveEquipmentSlot(stack);
+            ItemStack existing = mob.getItemBySlot(slot);
+            // 仅当对应槽位为空或当前物品为护甲时才装备（避免覆盖已有的主手武器）
+            if (existing.isEmpty() || stack.getItem() instanceof ArmorItem) {
+                mob.setItemSlot(slot, stack);
+                mob.setDropChance(slot, 0.0F);
+            }
+        }
+
+        if (Config.ENABLE_DEBUG_LOG.get()) {
+            AdaptiveNemesisMod.LOGGER.debug("[入侵] 从战利品表 {} 为 {} 生成了 {} 件装备", lootTableId, mob.getName().getString(), items.size());
+        }
+    }
+
+    /**
+     * 根据物品类型判断应装备的槽位
+     *
+     * @param stack 物品堆
+     * @return 对应的装备槽位
+     */
+    private static EquipmentSlot resolveEquipmentSlot(ItemStack stack) {
+        Item item = stack.getItem();
+        if (item instanceof ArmorItem armorItem) {
+            return armorItem.getEquipmentSlot();
+        }
+        return EquipmentSlot.MAINHAND;
     }
 
     /**
@@ -1015,22 +1078,12 @@ public class InvasionSystem {
 
     /**
      * 处理入侵胜利
+     * 仅发送胜利通知，奖励与 KubeJS 事件由 triggerInvasionEndEvent 统一处理
      */
     private void handleInvasionVictory(ActiveInvasion invasion) {
         notifyAllPlayersInArea(invasion, Component.translatable(
             "adaptive_nemesis.invasion.defeated"
         ).withStyle(ChatFormatting.GREEN));
-
-        Player player = invasion.getPlayer();
-        if (player instanceof ServerPlayer serverPlayer) {
-            InvasionRewardData rewards = getInvasionRewards(invasion.getType());
-            int wavesCompleted = invasion.getTotalWaves();
-            rewards = KubeJSEventTrigger.triggerInvasionEnd(
-                serverPlayer, invasion.getType(), true, invasion.getTotalWaves(),
-                invasion.getDifficultyMultiplier(), wavesCompleted, rewards
-            );
-            grantRewards(serverPlayer, rewards);
-        }
 
         if (Config.ENABLE_DEBUG_LOG.get()) {
             AdaptiveNemesisMod.LOGGER.debug("[入侵] 胜利: 玩家={}", invasion.getPlayerName());
@@ -1038,7 +1091,7 @@ public class InvasionSystem {
     }
 
     /**
-     * 触发入侵结束 KubeJS 事件（失败时仅触发事件，不发奖励）
+     * 触发入侵结束 KubeJS 事件（胜利时同时发放奖励）
      *
      * @param invasion 活动入侵
      * @param victory 是否胜利
@@ -1050,7 +1103,7 @@ public class InvasionSystem {
         }
         int wavesCompleted = victory ? invasion.getTotalWaves() : Math.max(0, invasion.currentWave - 1);
         InvasionRewardData rewards = victory ? getInvasionRewards(invasion.getType()) : new InvasionRewardData();
-        KubeJSEventTrigger.triggerInvasionEnd(
+        rewards = KubeJSEventTrigger.triggerInvasionEnd(
             serverPlayer,
             invasion.getType(),
             victory,
@@ -1059,6 +1112,9 @@ public class InvasionSystem {
             wavesCompleted,
             rewards
         );
+        if (victory && rewards != null) {
+            grantRewards(serverPlayer, rewards);
+        }
     }
 
     /**
