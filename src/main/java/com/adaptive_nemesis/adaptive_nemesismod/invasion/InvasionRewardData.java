@@ -1,6 +1,6 @@
 package com.adaptive_nemesis.adaptive_nemesismod.invasion;
 
-import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraftforge.registries.ForgeRegistries;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.effect.MobEffect;
 import net.minecraft.world.effect.MobEffectInstance;
@@ -125,8 +125,7 @@ public class InvasionRewardData {
      * @param amplifier 等级
      */
     public void addEffect(MobEffect effect, int duration, int amplifier) {
-        var holder = BuiltInRegistries.MOB_EFFECT.wrapAsHolder(effect);
-        this.effects.add(new MobEffectInstance(holder, duration, amplifier));
+        this.effects.add(new MobEffectInstance(effect, duration, amplifier));
     }
 
     /**
@@ -191,10 +190,10 @@ public class InvasionRewardData {
         if (id == null) {
             return null;
         }
-        var holder = BuiltInRegistries.MOB_EFFECT.getHolder(id).orElse(null);
-        if (holder == null) {
+        MobEffect effect = ForgeRegistries.MOB_EFFECTS.getValue(id);
+        if (effect == null) {
             return null;
         }
-        return new MobEffectInstance(holder, duration * 20, amplifier);
+        return new MobEffectInstance(effect, duration * 20, amplifier);
     }
 }

@@ -1,1 +1,0 @@
-copy .\src\main\resources\assets\irons_spellbooks\player_animations\casting_animations.json .\src\main\resources\assets\irons_spellbooks\animations\casting_animations.json

@@ -1,7 +1,0 @@
-{
-    "name": "Vanilla Değişiklikleri",
-    "description": " Bu bölüm yeni büyülenebilir eşyalar ve mekanik değişiklikleri kapsar.$(p)Herhangi bir küçük içerik değişikliği olursa, burada belirtilecektir.",
-    "icon": "minecraft:trident",
-	"flag": "apotheosis:enchanting",
-	"parent": "apotheosis:enchanting/enchanting"
-}

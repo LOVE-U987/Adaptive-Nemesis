@@ -1,6 +1,6 @@
 package com.adaptive_nemesis.adaptive_nemesismod.config;
 
-import net.neoforged.neoforge.common.ModConfigSpec;
+import net.minecraftforge.common.ForgeConfigSpec;
 
 /**
  * Boss 特殊机制配置
@@ -10,39 +10,39 @@ public class BossConfig {
     /**
      * 是否启用 Boss 伤害上限
      */
-    public final ModConfigSpec.BooleanValue ENABLE_BOSS_DAMAGE_CAP;
+    public final ForgeConfigSpec.BooleanValue ENABLE_BOSS_DAMAGE_CAP;
 
     /**
      * Boss 伤害上限值
      */
-    public final ModConfigSpec.DoubleValue BOSS_DAMAGE_CAP;
+    public final ForgeConfigSpec.DoubleValue BOSS_DAMAGE_CAP;
 
     /**
      * Boss 生命值额外倍率
      */
-    public final ModConfigSpec.DoubleValue BOSS_HEALTH_MULTIPLIER;
+    public final ForgeConfigSpec.DoubleValue BOSS_HEALTH_MULTIPLIER;
 
     /**
      * Boss 伤害额外倍率
      */
-    public final ModConfigSpec.DoubleValue BOSS_DAMAGE_MULTIPLIER;
+    public final ForgeConfigSpec.DoubleValue BOSS_DAMAGE_MULTIPLIER;
 
     /**
      * Boss限伤排除实体列表（按实体ID，逗号分隔）
      */
-    public final ModConfigSpec.ConfigValue<String> BOSS_DAMAGE_CAP_EXCLUSIONS;
+    public final ForgeConfigSpec.ConfigValue<String> BOSS_DAMAGE_CAP_EXCLUSIONS;
 
     /**
      * Boss识别关键词列表（逗号分隔）
      */
-    public final ModConfigSpec.ConfigValue<String> BOSS_IDENTIFICATION_KEYWORDS;
+    public final ForgeConfigSpec.ConfigValue<String> BOSS_IDENTIFICATION_KEYWORDS;
 
     /**
      * Boss血量识别阈值
      */
-    public final ModConfigSpec.DoubleValue BOSS_HEALTH_THRESHOLD;
+    public final ForgeConfigSpec.DoubleValue BOSS_HEALTH_THRESHOLD;
 
-    public BossConfig(ModConfigSpec.Builder builder) {
+    public BossConfig(ForgeConfigSpec.Builder builder) {
         builder.push("boss");
         ENABLE_BOSS_DAMAGE_CAP = builder
             .comment("是否启用 Boss 伤害上限 - 防止玩家秒杀 Boss")

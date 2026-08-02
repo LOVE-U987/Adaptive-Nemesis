@@ -8,13 +8,13 @@ import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.ai.attributes.AttributeInstance;
 import net.minecraft.world.entity.ai.attributes.AttributeModifier;
 import net.minecraft.world.entity.ai.attributes.Attributes;
-import net.neoforged.fml.ModList;
+import net.minecraftforge.fml.ModList;
 
 public class L2HostilityCompat {
 
     private static Boolean loaded = null;
 
-    private static final ResourceLocation TANK_HEALTH_ID = ResourceLocation.parse("l2hostility:tank_health");
+    private static final ResourceLocation TANK_HEALTH_ID = ResourceLocation.fromNamespaceAndPath("l2hostility", "tank_health");
 
     private L2HostilityCompat() {}
 
@@ -61,9 +61,17 @@ public class L2HostilityCompat {
         }
 
         for (AttributeModifier modifier : healthAttr.getModifiers()) {
-            if (TANK_HEALTH_ID.equals(modifier.id())) {
+            String name = modifier.getName() != null ? modifier.getName() : "";
+            String nameLower = name.toLowerCase(java.util.Locale.ROOT);
+            // 1.20.1: getName() is construction-time string (not always a ResourceLocation).
+            // Match common L2Hostility tank labels + RL-style ids.
+            if (nameLower.contains("tank_health")
+                    || nameLower.contains("l2hostility") && nameLower.contains("tank")
+                    || TANK_HEALTH_ID.toString().equals(name)
+                    || "l2hostility:tank_health".equals(name)) {
                 return true;
             }
+            // UUID path: some versions encode stable UUID; log at debug if needed
         }
         return false;
     }

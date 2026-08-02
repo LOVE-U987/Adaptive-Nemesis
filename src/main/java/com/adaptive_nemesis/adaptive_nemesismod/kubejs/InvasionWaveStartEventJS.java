@@ -1,7 +1,7 @@
 package com.adaptive_nemesis.adaptive_nemesismod.kubejs;
 
 import com.adaptive_nemesis.adaptive_nemesismod.invasion.InvasionSystem;
-import dev.latvian.mods.kubejs.event.KubeEvent;
+import dev.latvian.mods.kubejs.event.EventJS;
 import net.minecraft.server.level.ServerPlayer;
 
 /**
@@ -16,7 +16,7 @@ import net.minecraft.server.level.ServerPlayer;
  * @author Adaptive Nemesis Team
  * @version 1.0.0
  */
-public class InvasionWaveStartEventJS implements KubeEvent {
+public class InvasionWaveStartEventJS extends EventJS {
 
     /**
      * 触发入侵的玩家

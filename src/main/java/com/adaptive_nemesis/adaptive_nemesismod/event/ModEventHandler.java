@@ -23,13 +23,14 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.monster.Enemy;
-import net.neoforged.bus.api.SubscribeEvent;
-import net.neoforged.neoforge.event.AddReloadListenerEvent;
-import net.neoforged.neoforge.event.entity.EntityJoinLevelEvent;
-import net.neoforged.neoforge.event.entity.player.PlayerEvent;
-import net.neoforged.neoforge.event.server.ServerStartedEvent;
-import net.neoforged.neoforge.event.server.ServerStoppingEvent;
-import net.neoforged.neoforge.event.tick.ServerTickEvent;
+import net.minecraftforge.eventbus.api.SubscribeEvent;
+import net.minecraftforge.event.AddReloadListenerEvent;
+import net.minecraftforge.event.entity.EntityJoinLevelEvent;
+import net.minecraftforge.event.entity.player.PlayerEvent;
+import net.minecraftforge.event.server.ServerStartedEvent;
+import net.minecraftforge.event.server.ServerStoppingEvent;
+import net.minecraftforge.event.TickEvent;
+import net.minecraftforge.server.ServerLifecycleHooks;
 
 /**
  * 模组通用事件处理器
@@ -234,7 +235,8 @@ public class ModEventHandler {
      * @param event 服务器Tick事件
      */
     @SubscribeEvent
-    public void onServerTick(ServerTickEvent.Post event) {
+    public void onServerTick(TickEvent.ServerTickEvent event) {
+        if (event.phase != TickEvent.Phase.END) return;
         serverTickCount++;
 
         // 看门狗：更新服务端 tick 时间戳
@@ -249,8 +251,9 @@ public class ModEventHandler {
 
         // 每1200 tick（60秒）自动保存一次世界阶段数据
         if (serverTickCount % 1200 == 0) {
-            if (event.getServer().isRunning() && Config.ENABLE_WORLD_STAGE.get()) {
-                ServerLevel level = event.getServer().overworld();
+            var server = ServerLifecycleHooks.getCurrentServer();
+            if (server != null && server.isRunning() && Config.ENABLE_WORLD_STAGE.get()) {
+                ServerLevel level = server.overworld();
                 if (level != null) {
                     WorldStageSavedData.save(level);
                 }

@@ -9,8 +9,8 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
-import net.neoforged.bus.api.SubscribeEvent;
-import net.neoforged.neoforge.event.entity.living.LivingIncomingDamageEvent;
+import net.minecraftforge.eventbus.api.SubscribeEvent;
+import net.minecraftforge.event.entity.living.LivingHurtEvent;
 
 import java.util.Collections;
 import java.util.HashSet;
@@ -107,7 +107,7 @@ public class BossDamageCapHandler {
      * @param event 实体受到伤害事件
      */
     @SubscribeEvent
-    public void onLivingIncomingDamage(LivingIncomingDamageEvent event) {
+    public void onLivingIncomingDamage(LivingHurtEvent event) {
         // 检查是否启用Boss伤害上限
         if (!Config.ENABLE_BOSS_DAMAGE_CAP.get()) {
             return;

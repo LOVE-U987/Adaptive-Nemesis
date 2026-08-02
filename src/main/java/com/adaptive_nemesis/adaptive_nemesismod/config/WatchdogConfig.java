@@ -1,6 +1,6 @@
 package com.adaptive_nemesis.adaptive_nemesismod.config;
 
-import net.neoforged.neoforge.common.ModConfigSpec;
+import net.minecraftforge.common.ForgeConfigSpec;
 
 /**
  * 看门狗服务配置
@@ -10,24 +10,24 @@ public class WatchdogConfig {
     /**
      * 是否启用看门狗服务 - 监控服务端线程卡死/死锁
      */
-    public final ModConfigSpec.BooleanValue ENABLE_WATCHDOG;
+    public final ForgeConfigSpec.BooleanValue ENABLE_WATCHDOG;
 
     /**
      * 看门狗检查间隔（秒）
      */
-    public final ModConfigSpec.IntValue WATCHDOG_CHECK_INTERVAL;
+    public final ForgeConfigSpec.IntValue WATCHDOG_CHECK_INTERVAL;
 
     /**
      * 看门狗警告阈值（秒）- 超过此时间无响应输出警告
      */
-    public final ModConfigSpec.IntValue WATCHDOG_WARN_THRESHOLD;
+    public final ForgeConfigSpec.IntValue WATCHDOG_WARN_THRESHOLD;
 
     /**
      * 看门狗严重阈值（秒）- 超过此时间输出线程堆栈
      */
-    public final ModConfigSpec.IntValue WATCHDOG_CRITICAL_THRESHOLD;
+    public final ForgeConfigSpec.IntValue WATCHDOG_CRITICAL_THRESHOLD;
 
-    public WatchdogConfig(ModConfigSpec.Builder builder) {
+    public WatchdogConfig(ForgeConfigSpec.Builder builder) {
         builder.push("watchdog");
         ENABLE_WATCHDOG = builder
             .comment("是否启用看门狗服务 - 监控服务端线程是否卡死/死锁")

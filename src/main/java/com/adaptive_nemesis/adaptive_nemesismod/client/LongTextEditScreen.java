@@ -279,11 +279,6 @@ public class LongTextEditScreen extends Screen {
         return super.keyPressed(keyCode, scanCode, modifiers);
     }
 
-    @Override
-    protected void renderBlurredBackground(float partialTick) {
-        // 空实现 - 禁用模糊背景（与主界面保持一致）
-    }
-
     /**
      * 主题按钮控件
      * <p>

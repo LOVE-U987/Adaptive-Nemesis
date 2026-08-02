@@ -5,41 +5,23 @@ import com.adaptive_nemesis.adaptive_nemesismod.AdaptiveNemesisMod;
 
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.Mob;
+import net.minecraft.world.entity.ai.attributes.Attribute;
 import net.minecraft.world.entity.ai.attributes.AttributeInstance;
 import net.minecraft.world.item.ItemStack;
-import yesman.epicfight.registry.entries.EpicFightAttributes;
-import yesman.epicfight.world.capabilities.EpicFightCapabilities;
-import yesman.epicfight.world.capabilities.entitypatch.player.PlayerPatch;
+
+import java.lang.reflect.Field;
+import java.lang.reflect.Method;
 
 /**
- * 史诗战斗 (Epic Fight) 兼容处理器
- *
- * 提供与史诗战斗模组的交互功能：
- * - 获取玩家耐力值
- * - 评估玩家战斗风格
- * - 获取战斗相关属性
- * - 为怪物添加史诗战斗属性加成
- *
- * @author Adaptive Nemesis Team
- * @version 1.0.0
+ * 史诗战斗兼容 (Forge 1.20.1) — 纯反射，编译期不依赖 epicfight。
+ * 包名/字段名在 1.20.1 与 1.21 可能不同，见 FORGE_PORT.md。
  */
 public class EpicFightCompat {
 
-    /**
-     * 默认构造函数（非空壳）
-     * 工具类，方法由外部直接调用（如 EnemyScalingHandler），不持有内部状态，故无需初始化。
-     * 保留 public 构造以允许外部实例化。
-     */
     public EpicFightCompat() {}
 
-    /**
-     * 安全设置属性值 - 防止 NaN/Infinity 导致怪物无法被攻击
-     *
-     * @param attr 属性实例
-     * @param value 要设置的值
-     * @param fallback 后备值（NaN/Infinity 时使用）
-     */
     private static void safeSetAttribute(AttributeInstance attr, double value, double fallback) {
+        if (attr == null) return;
         if (Double.isNaN(value) || Double.isInfinite(value)) {
             attr.setBaseValue(fallback);
             return;
@@ -47,264 +29,124 @@ public class EpicFightCompat {
         attr.setBaseValue(value);
     }
 
-    /**
-     * 安全获取双精度浮点数 - 防止 NaN/Infinity 传播
-     *
-     * @param value 待检查的值
-     * @return 如果值有效则返回原值，否则返回 1.0
-     */
     private static double safeDouble(double value) {
-        if (Double.isNaN(value) || Double.isInfinite(value)) {
-            return 1.0;
-        }
-        return value;
+        return (Double.isNaN(value) || Double.isInfinite(value)) ? 1.0 : value;
     }
 
-    /**
-     * 获取玩家的战斗强度评估值
-     *
-     * @param player 目标玩家
-     * @return 战斗强度值
-     */
+    private static Attribute resolveAttr(String fieldName) {
+        String[] classNames = {
+                "yesman.epicfight.world.entity.ai.attribute.EpicFightAttributes",
+                "yesman.epicfight.registry.entries.EpicFightAttributes",
+                "yesman.epicfight.main.EpicFightAttributes"
+        };
+        for (String cn : classNames) {
+            try {
+                Class<?> clazz = Class.forName(cn);
+                Field f = clazz.getField(fieldName);
+                return unwrapAttribute(f.get(null));
+            } catch (Throwable ignored) {}
+        }
+        return null;
+    }
+
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private static Attribute unwrapAttribute(Object ref) {
+        if (ref == null) return null;
+        if (ref instanceof Attribute a) return a;
+        try {
+            Method get = ref.getClass().getMethod("get");
+            Object v = get.invoke(ref);
+            if (v instanceof Attribute a) return a;
+            if (v != null) {
+                try {
+                    Method value = v.getClass().getMethod("value");
+                    Object vv = value.invoke(v);
+                    if (vv instanceof Attribute a2) return a2;
+                } catch (NoSuchMethodException ignored) {}
+            }
+        } catch (Throwable ignored) {}
+        try {
+            Method value = ref.getClass().getMethod("value");
+            Object v = value.invoke(ref);
+            if (v instanceof Attribute a) return a;
+        } catch (Throwable ignored) {}
+        return null;
+    }
+
+    private static AttributeInstance getAttr(Mob mob, String fieldName) {
+        Attribute attr = resolveAttr(fieldName);
+        return attr == null ? null : mob.getAttribute(attr);
+    }
+
     public double getPlayerCombatStrength(ServerPlayer player) {
         double strength = 0.0;
-
         try {
-            // 获取玩家的EpicFight能力 - 使用PlayerPatch而不是MobPatch
-            var playerPatch = EpicFightCapabilities.getEntityPatch(player, PlayerPatch.class);
-            if (playerPatch != null) {
-                // 获取耐力值 - getStamina()返回float
-                float stamina = playerPatch.getStamina();
-                float maxStamina = playerPatch.getMaxStamina();
-                strength += maxStamina * 0.5;
-
-                // 获取冲击值（impact）- 使用Holder<Attribute>传入
-                double impact = player.getAttributeValue(EpicFightAttributes.IMPACT);
-                strength += impact * 2.0;
-
-                // 获取护甲穿透
-                double armorNegation = player.getAttributeValue(EpicFightAttributes.ARMOR_NEGATION);
-                strength += armorNegation * 1.5;
+            Class<?> caps = Class.forName("yesman.epicfight.world.capabilities.EpicFightCapabilities");
+            Class<?> patchClz = Class.forName("yesman.epicfight.world.capabilities.entitypatch.player.PlayerPatch");
+            Method getPatch = caps.getMethod("getEntityPatch", net.minecraft.world.entity.Entity.class, Class.class);
+            Object patch = getPatch.invoke(null, player, patchClz);
+            if (patch != null) {
+                try {
+                    Method getMaxStamina = patch.getClass().getMethod("getMaxStamina");
+                    Object maxStamina = getMaxStamina.invoke(patch);
+                    if (maxStamina instanceof Number n) {
+                        strength += safeDouble(n.doubleValue()) * 0.5;
+                    }
+                } catch (NoSuchMethodException ignored) {}
             }
 
-            // 评估武器类型（史诗战斗对武器类型有特殊处理）
+            Attribute impact = resolveAttr("IMPACT");
+            if (impact != null) strength += player.getAttributeValue(impact) * 2.0;
+            Attribute armorNeg = resolveAttr("ARMOR_NEGATION");
+            if (armorNeg != null) strength += player.getAttributeValue(armorNeg) * 1.5;
+
             ItemStack mainHand = player.getMainHandItem();
             if (!mainHand.isEmpty()) {
-                String itemId = mainHand.getItem().toString();
-
-                // 长剑、太刀等高级武器类型给予更高评分
+                String itemId = String.valueOf(mainHand.getItem());
                 if (itemId.contains("katana") || itemId.contains("longsword") ||
-                    itemId.contains("greatsword") || itemId.contains("spear")) {
+                        itemId.contains("greatsword") || itemId.contains("spear")) {
                     strength += 15.0;
                 } else if (itemId.contains("sword") || itemId.contains("axe")) {
                     strength += 8.0;
                 }
             }
 
-            // 检查护甲（史诗战斗护甲有重量和韧性属性）
             int armorCount = 0;
             for (ItemStack armor : player.getArmorSlots()) {
-                if (!armor.isEmpty()) {
-                    armorCount++;
-                }
+                if (!armor.isEmpty()) armorCount++;
             }
             strength += armorCount * 3.0;
-
-        } catch (Exception e) {
+        } catch (Throwable t) {
             return 0.0;
         }
-
         return strength;
     }
 
-    /**
-     * 为怪物应用史诗战斗属性加成
-     *
-     * @param mob 目标怪物
-     * @param multiplier 强化倍率
-     */
     public void applyMobBuffs(Mob mob, double multiplier) {
+        if (multiplier <= 1.0) return;
         try {
-            // 确保倍率不低于 1.0，防止随机因子导致属性变负数
-            double effectiveMultiplier = safeDouble(Math.max(1.0, multiplier));
-
-            // 1. 增加受击抗性 (Stun Armor) - 防止被无限硬直
-            // NeoForge 1.21.1: DeferredHolder可以直接作为Holder<Attribute>传入
-            AttributeInstance stunArmorAttr = mob.getAttribute(EpicFightAttributes.STUN_ARMOR);
-            if (stunArmorAttr != null) {
-                double originalStunArmor = stunArmorAttr.getBaseValue();
-                // 受击抗性随倍率增加，最高增加大量
-                double newStunArmor = originalStunArmor + (effectiveMultiplier - 1.0) * 5.0;
-                safeSetAttribute(stunArmorAttr, Math.max(originalStunArmor, newStunArmor), originalStunArmor);
-
-                if (Config.ENABLE_DEBUG_LOG.get()) {
-                    AdaptiveNemesisMod.LOGGER.debug(
-                        "怪物 {} 受击抗性: {} -> {}",
-                        mob.getName().getString(),
-                        String.format("%.2f", originalStunArmor),
-                        String.format("%.2f", newStunArmor)
-                    );
-                }
+            scale(mob, "STUN_ARMOR", multiplier, Config.MAX_HIT_RESIST_MULTIPLIER.get());
+            scale(mob, "IMPACT", multiplier, null);
+            scale(mob, "ARMOR_NEGATION", multiplier, null);
+            scale(mob, "MAX_STRIKES", multiplier, null);
+            scale(mob, "WEIGHT", Math.max(1.0, Config.WEIGHT_MIN_BONUS.get() + (multiplier - 1.0) * Config.WEIGHT_PER_MULTIPLIER.get()), null);
+            scale(mob, "MAX_STAMINA", Math.min(multiplier, Config.MAX_STAMINA_MULTIPLIER.get()), null);
+            scale(mob, "STAMINA_REGEN", multiplier, null);
+            scale(mob, "ASSASSINATION_RESISTANCE", Math.min(multiplier, Config.MAX_KNOCKDOWN_RESIST_MULTIPLIER.get()), null);
+        } catch (Throwable t) {
+            if (Config.ENABLE_DEBUG_LOG.get()) {
+                AdaptiveNemesisMod.LOGGER.debug("EpicFightCompat.applyMobBuffs failed: {}", t.toString());
             }
-
-            // 2. 增加冲击值 (Impact) - 更容易打断玩家攻击
-            AttributeInstance impactAttr = mob.getAttribute(EpicFightAttributes.IMPACT);
-            if (impactAttr != null) {
-                double originalImpact = impactAttr.getBaseValue();
-                double newImpact = originalImpact * (1.0 + (effectiveMultiplier - 1.0) * 0.3);
-                safeSetAttribute(impactAttr, Math.max(originalImpact, newImpact), originalImpact);
-
-                if (Config.ENABLE_DEBUG_LOG.get()) {
-                    AdaptiveNemesisMod.LOGGER.debug(
-                        "怪物 {} 冲击值: {} -> {}",
-                        mob.getName().getString(),
-                        String.format("%.2f", originalImpact),
-                        String.format("%.2f", newImpact)
-                    );
-                }
-            }
-
-            // 3. 增加护甲穿透 (Armor Negation) - 无视部分护甲
-            AttributeInstance armorNegationAttr = mob.getAttribute(EpicFightAttributes.ARMOR_NEGATION);
-            if (armorNegationAttr != null) {
-                double originalNegation = armorNegationAttr.getBaseValue();
-                double newNegation = originalNegation + (effectiveMultiplier - 1.0) * 2.0;
-                safeSetAttribute(armorNegationAttr, Math.min(newNegation, 100.0), originalNegation); // 最高100%
-
-                if (Config.ENABLE_DEBUG_LOG.get()) {
-                    AdaptiveNemesisMod.LOGGER.debug(
-                        "怪物 {} 护甲穿透: {} -> {}",
-                        mob.getName().getString(),
-                        String.format("%.2f", originalNegation),
-                        String.format("%.2f", newNegation)
-                    );
-                }
-            }
-
-            // 4. 增加最大连击数 (Max Strikes) - 可以连续攻击更多次
-            AttributeInstance maxStrikesAttr = mob.getAttribute(EpicFightAttributes.MAX_STRIKES);
-            if (maxStrikesAttr != null) {
-                double originalStrikes = maxStrikesAttr.getBaseValue();
-                double newStrikes = originalStrikes + (effectiveMultiplier - 1.0) * 0.5;
-                safeSetAttribute(maxStrikesAttr, Math.max(originalStrikes, newStrikes), originalStrikes);
-
-                if (Config.ENABLE_DEBUG_LOG.get()) {
-                    AdaptiveNemesisMod.LOGGER.debug(
-                        "怪物 {} 最大连击: {} -> {}",
-                        mob.getName().getString(),
-                        String.format("%.2f", originalStrikes),
-                        String.format("%.2f", newStrikes)
-                    );
-                }
-            }
-
-            // 5. 增加重量 (Weight) - 更难被击退，至少保证基础抗性
-            AttributeInstance weightAttr = mob.getAttribute(EpicFightAttributes.WEIGHT);
-            if (weightAttr != null) {
-                double originalWeight = weightAttr.getBaseValue();
-                double minWeight = originalWeight + Config.WEIGHT_MIN_BONUS.get();
-                double newWeight = originalWeight + (effectiveMultiplier - 1.0) * Config.WEIGHT_PER_MULTIPLIER.get();
-                safeSetAttribute(weightAttr, Math.max(minWeight, newWeight), minWeight);
-
-                if (Config.ENABLE_DEBUG_LOG.get()) {
-                    AdaptiveNemesisMod.LOGGER.debug(
-                        "怪物 {} 重量: {} -> {}",
-                        mob.getName().getString(),
-                        String.format("%.2f", originalWeight),
-                        String.format("%.2f", newWeight)
-                    );
-                }
-            }
-
-            // 6. 增加耐力值 (Stamina) - 更多耐力进行战斗
-            AttributeInstance maxStaminaAttr = mob.getAttribute(EpicFightAttributes.MAX_STAMINA);
-            if (maxStaminaAttr != null) {
-                double originalStamina = maxStaminaAttr.getBaseValue();
-                double newStamina = originalStamina * effectiveMultiplier;
-                safeSetAttribute(maxStaminaAttr, Math.max(originalStamina, newStamina), originalStamina);
-
-                if (Config.ENABLE_DEBUG_LOG.get()) {
-                    AdaptiveNemesisMod.LOGGER.debug(
-                        "怪物 {} 耐力: {} -> {}",
-                        mob.getName().getString(),
-                        String.format("%.2f", originalStamina),
-                        String.format("%.2f", newStamina)
-                    );
-                }
-            }
-
-            // 7. 增加耐力恢复 (Stamina Regen)
-            AttributeInstance staminaRegenAttr = mob.getAttribute(EpicFightAttributes.STAMINA_REGEN);
-            if (staminaRegenAttr != null) {
-                double originalRegen = staminaRegenAttr.getBaseValue();
-                double newRegen = originalRegen * (1.0 + (effectiveMultiplier - 1.0) * 0.5);
-                safeSetAttribute(staminaRegenAttr, Math.max(originalRegen, newRegen), originalRegen);
-            }
-
-            // 8. 增加处决抗性 (Execution Resistance) - 防止被处决
-            AttributeInstance executionResistAttr = mob.getAttribute(EpicFightAttributes.ASSASSINATION_RESISTANCE);
-            if (executionResistAttr != null) {
-                double originalResist = executionResistAttr.getBaseValue();
-                double newResist = originalResist + (effectiveMultiplier - 1.0) * 1.0;
-                safeSetAttribute(executionResistAttr, Math.max(originalResist, newResist), originalResist);
-            }
-
-        } catch (Exception e) {
-            AdaptiveNemesisMod.LOGGER.error("应用史诗战斗属性加成失败: {}", e.getMessage());
         }
     }
 
-    /**
-     * 检查玩家是否处于史诗战斗模式
-     *
-     * @param player 目标玩家
-     * @return 如果处于战斗模式返回true
-     */
-    public boolean isInBattleMode(ServerPlayer player) {
-        try {
-            var playerPatch = EpicFightCapabilities.getEntityPatch(player, PlayerPatch.class);
-            if (playerPatch != null) {
-                return playerPatch.isEpicFightMode();
-            }
-            return false;
-        } catch (Exception e) {
-            return false;
-        }
-    }
-
-    /**
-     * 获取玩家当前耐力值
-     *
-     * @param player 目标玩家
-     * @return 当前耐力值
-     */
-    public double getPlayerStamina(ServerPlayer player) {
-        try {
-            var playerPatch = EpicFightCapabilities.getEntityPatch(player, PlayerPatch.class);
-            if (playerPatch != null) {
-                return playerPatch.getStamina();
-            }
-            return 0.0;
-        } catch (Exception e) {
-            return 0.0;
-        }
-    }
-
-    /**
-     * 获取玩家最大耐力值
-     *
-     * @param player 目标玩家
-     * @return 最大耐力值
-     */
-    public double getPlayerMaxStamina(ServerPlayer player) {
-        try {
-            var playerPatch = EpicFightCapabilities.getEntityPatch(player, PlayerPatch.class);
-            if (playerPatch != null) {
-                return playerPatch.getMaxStamina();
-            }
-            return 0.0;
-        } catch (Exception e) {
-            return 0.0;
-        }
+    private void scale(Mob mob, String field, double multiplier, Double cap) {
+        AttributeInstance inst = getAttr(mob, field);
+        if (inst == null) return;
+        double m = multiplier;
+        if (cap != null) m = Math.min(m, cap);
+        double base = inst.getBaseValue();
+        if (base <= 0) base = 1.0;
+        safeSetAttribute(inst, base * m, base);
     }
 }

@@ -692,12 +692,6 @@ public class AdaptiveNemesisConfigScreen extends Screen {
                 (button, value) -> onChange.accept(value));
     }
 
-    /** 禁用背景模糊效果（避免文字模糊） */
-    @Override
-    protected void renderBlurredBackground(float partialTick) {
-        // 空实现 - 完全禁用模糊背景
-    }
-
     @Override
     public void tick() {
         super.tick();
@@ -884,9 +878,9 @@ public class AdaptiveNemesisConfigScreen extends Screen {
     }
 
     @Override
-    public boolean mouseScrolled(double mouseX, double mouseY, double scrollX, double scrollY) {
+    public boolean mouseScrolled(double mouseX, double mouseY, double delta) {
         int maxScroll = Math.max(0, totalContentHeight - (this.height - LIST_TOP - LIST_BOTTOM));
-        scrollOffset = (int) Mth.clamp(scrollOffset - scrollY * 18, 0, maxScroll);
+        scrollOffset = (int) Mth.clamp(scrollOffset - delta * 18, 0, maxScroll);
         return true;
     }
 

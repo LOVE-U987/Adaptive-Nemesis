@@ -10,11 +10,11 @@ import com.adaptive_nemesis.adaptive_nemesismod.Config;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.phys.Vec3;
-import net.neoforged.bus.api.SubscribeEvent;
-import net.neoforged.neoforge.event.entity.living.LivingIncomingDamageEvent;
-import net.neoforged.neoforge.event.entity.living.LivingDeathEvent;
-import net.neoforged.neoforge.event.entity.player.PlayerEvent;
-import net.neoforged.neoforge.event.tick.ServerTickEvent;
+import net.minecraftforge.eventbus.api.SubscribeEvent;
+import net.minecraftforge.event.entity.living.LivingHurtEvent;
+import net.minecraftforge.event.entity.living.LivingDeathEvent;
+import net.minecraftforge.event.entity.player.PlayerEvent;
+import net.minecraftforge.event.TickEvent;
 
 /**
  * 智能浮动系统
@@ -166,7 +166,7 @@ public class AdaptiveFloatSystem {
      * @param event 生物受伤事件
      */
     @SubscribeEvent
-    public void onPlayerDamage(LivingIncomingDamageEvent event) {
+    public void onPlayerDamage(LivingHurtEvent event) {
         if (!(event.getEntity() instanceof ServerPlayer player)) {
             return;
         }
@@ -183,7 +183,7 @@ public class AdaptiveFloatSystem {
      * @param event 生物受伤事件
      */
     @SubscribeEvent
-    public void onEnemyDamage(LivingIncomingDamageEvent event) {
+    public void onEnemyDamage(LivingHurtEvent event) {
         if (event.getSource() == null || event.getSource().getEntity() == null) {
             return;
         }
@@ -238,7 +238,8 @@ public class AdaptiveFloatSystem {
      * @param event 服务器Tick事件
      */
     @SubscribeEvent
-    public void onServerTick(ServerTickEvent.Post event) {
+    public void onServerTick(TickEvent.ServerTickEvent event) {
+        if (event.phase != TickEvent.Phase.END) return;
         tickCounter++;
         
         int checkInterval = Config.IDLE_DECAY_CHECK_INTERVAL.get() * 20;

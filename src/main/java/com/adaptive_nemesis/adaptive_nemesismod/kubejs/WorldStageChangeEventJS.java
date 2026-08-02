@@ -1,6 +1,6 @@
 package com.adaptive_nemesis.adaptive_nemesismod.kubejs;
 
-import dev.latvian.mods.kubejs.event.KubeEvent;
+import dev.latvian.mods.kubejs.event.EventJS;
 import net.minecraft.server.level.ServerPlayer;
 
 /**
@@ -15,7 +15,7 @@ import net.minecraft.server.level.ServerPlayer;
  * @author Adaptive Nemesis Team
  * @version 1.0.0
  */
-public class WorldStageChangeEventJS implements KubeEvent {
+public class WorldStageChangeEventJS extends EventJS {
 
     /**
      * 触发阶段提升的玩家
@@ -140,6 +140,22 @@ public class WorldStageChangeEventJS implements KubeEvent {
     /**
      * 取消事件
      */
+
+    /**
+     * KubeJS 脚本标准 API：event.cancel()
+     * 与 cancelEvent() 同步，并委托基类 EventJS.cancel() 产生 EventResult.interruptFalse。
+     */
+    @Override
+    public Object cancel() throws dev.latvian.mods.kubejs.event.EventExit {
+        this.cancelled = true;
+        return super.cancel();
+    }
+
+    /** 脚本友好别名 */
+    public boolean isCancelled() {
+        return cancelled;
+    }
+
     public void cancelEvent() {
         this.cancelled = true;
     }
