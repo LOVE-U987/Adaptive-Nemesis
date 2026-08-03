@@ -7,9 +7,9 @@ import com.adaptive_nemesis.adaptive_nemesismod.invasion.InvasionSystem.Invasion
 import com.adaptive_nemesis.adaptive_nemesismod.memory.NemesisProfile;
 
 import dev.latvian.mods.kubejs.event.EventGroup;
-import dev.latvian.mods.kubejs.event.EventGroupRegistry;
 import dev.latvian.mods.kubejs.event.EventHandler;
-import dev.latvian.mods.kubejs.plugin.KubeJSPlugin;
+import dev.latvian.mods.kubejs.KubeJSPlugin;
+import dev.latvian.mods.kubejs.event.EventResult;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.Mob;
@@ -27,7 +27,7 @@ import java.util.UUID;
  * @author Adaptive Nemesis Team
  * @version 1.2.0
  */
-public class KubeJSInitializer implements KubeJSPlugin {
+public class KubeJSInitializer extends KubeJSPlugin {
 
     /** 事件组 - 自适应宿敌模组的所有 KubeJS 事件 */
     public static final EventGroup ADAPTIVE_NEMESIS_EVENTS = EventGroup.of("adaptive_nemesis");
@@ -70,9 +70,9 @@ public class KubeJSInitializer implements KubeJSPlugin {
     }
 
     @Override
-    public void registerEvents(EventGroupRegistry registry) {
-        registry.register(ADAPTIVE_NEMESIS_EVENTS);
-        AdaptiveNemesisMod.LOGGER.info("Adaptive Nemesis KubeJS 事件已注册");
+    public void registerEvents() {
+        ADAPTIVE_NEMESIS_EVENTS.register();
+        AdaptiveNemesisMod.LOGGER.info("Adaptive Nemesis KubeJS 事件已注册 (2001.x)");
     }
 
     /**
@@ -85,8 +85,8 @@ public class KubeJSInitializer implements KubeJSPlugin {
     public static double fireEntityScale(Mob entity, double multiplier) {
         try {
             EntityScaleEventJS event = new EntityScaleEventJS(entity, multiplier);
-            ENTITY_SCALE.post(event);
-            if (event.isEventCancelled()) {
+            EventResult r = ENTITY_SCALE.post(event);
+            if (r.interruptFalse() || event.isEventCancelled()) {
                 return -1;
             }
             return event.getMultiplier();
@@ -113,8 +113,8 @@ public class KubeJSInitializer implements KubeJSPlugin {
             DamageCalculationEventJS event = new DamageCalculationEventJS(
                 attacker, target, originalDamage, calculatedDamage, armorMultiplier
             );
-            DAMAGE_CALCULATION.post(event);
-            if (event.isEventCancelled()) {
+            EventResult r = DAMAGE_CALCULATION.post(event);
+            if (r.interruptFalse() || event.isEventCancelled()) {
                 return originalDamage;
             }
             return event.getCalculatedDamage();
@@ -166,8 +166,8 @@ public class KubeJSInitializer implements KubeJSPlugin {
             WorldStageChangeEventJS event = new WorldStageChangeEventJS(
                 player, oldStage, newStage, stageMultiplier, defeatedBossCount
             );
-            WORLD_STAGE_CHANGE.post(event);
-            if (event.isEventCancelled()) {
+            EventResult r = WORLD_STAGE_CHANGE.post(event);
+            if (r.interruptFalse() || event.isEventCancelled()) {
                 return stageMultiplier;
             }
             return event.getStageMultiplier();
@@ -290,8 +290,8 @@ public class KubeJSInitializer implements KubeJSPlugin {
             InvasionStartEventJS event = new InvasionStartEventJS(
                 player, type, totalWaves, difficultyMultiplier
             );
-            INVASION_START.post(event);
-            if (event.isEventCancelled()) {
+            EventResult r = INVASION_START.post(event);
+            if (r.interruptFalse() || event.isEventCancelled()) {
                 return null;
             }
             return new double[]{event.getTotalWaves(), event.getDifficultyMultiplier()};

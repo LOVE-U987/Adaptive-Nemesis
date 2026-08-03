@@ -1,6 +1,6 @@
 package com.adaptive_nemesis.adaptive_nemesismod.config;
 
-import net.neoforged.neoforge.common.ModConfigSpec;
+import net.minecraftforge.common.ForgeConfigSpec;
 
 /**
  * 装备附魔强化配置
@@ -10,29 +10,29 @@ public class EnchantmentScalingConfig {
     /**
     * 是否启用怪物装备/附魔强化
     */
-    public final ModConfigSpec.BooleanValue ENABLE_ENCHANTMENT_SCALING;
+    public final ForgeConfigSpec.BooleanValue ENABLE_ENCHANTMENT_SCALING;
 
     /**
     * 附魔概率基础值
     */
-    public final ModConfigSpec.DoubleValue ENCHANTMENT_CHANCE_BASE;
+    public final ForgeConfigSpec.DoubleValue ENCHANTMENT_CHANCE_BASE;
 
     /**
     * 每单位难度附魔概率增量
     */
-    public final ModConfigSpec.DoubleValue ENCHANTMENT_CHANCE_PER_DIFFICULTY;
+    public final ForgeConfigSpec.DoubleValue ENCHANTMENT_CHANCE_PER_DIFFICULTY;
 
     /**
     * 每单位难度附魔等级增量
     */
-    public final ModConfigSpec.DoubleValue ENCHANTMENT_LEVEL_PER_DIFFICULTY;
+    public final ForgeConfigSpec.DoubleValue ENCHANTMENT_LEVEL_PER_DIFFICULTY;
 
     /**
     * 最高附魔等级
     */
-    public final ModConfigSpec.IntValue ENCHANTMENT_MAX_LEVEL;
+    public final ForgeConfigSpec.IntValue ENCHANTMENT_MAX_LEVEL;
 
-    public EnchantmentScalingConfig(ModConfigSpec.Builder builder) {
+    public EnchantmentScalingConfig(ForgeConfigSpec.Builder builder) {
         builder.push("enchantmentScaling");
         ENABLE_ENCHANTMENT_SCALING = builder.comment("是否启用怪物装备/附魔强化 - 难度越高，怪物装备越好、附魔等级越高").comment("Enable mob equipment/enchantment scaling - higher difficulty = better gear and enchants").define("enableEnchantmentScaling", true);
         ENCHANTMENT_CHANCE_BASE = builder.comment("附魔概率基础值 (0.2 = 20%)").defineInRange("enchantmentChanceBase", 0.2, 0.0, 1.0);

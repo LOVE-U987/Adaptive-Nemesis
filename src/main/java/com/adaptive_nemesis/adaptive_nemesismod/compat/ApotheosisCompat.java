@@ -3,7 +3,6 @@ package com.adaptive_nemesis.adaptive_nemesismod.compat;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.nbt.CompoundTag;
-import net.minecraft.core.component.DataComponents;
 
 /**
  * 神话 (Apotheosis) 兼容处理器
@@ -116,7 +115,7 @@ public class ApotheosisCompat {
 
             // 4. 检查附魔等级（神话模组增强了附魔系统）
             if (stack.isEnchanted()) {
-                int totalEnchantLevel = stack.getEnchantments().size();
+                int totalEnchantLevel = net.minecraft.world.item.enchantment.EnchantmentHelper.getEnchantments(stack).size();
                 value += totalEnchantLevel * 0.3;
             }
 
@@ -134,16 +133,8 @@ public class ApotheosisCompat {
      * @return NBT标签，如果没有则返回null
      */
     private CompoundTag getItemTag(ItemStack stack) {
-        try {
-            // 1.21使用DataComponents获取自定义数据
-            var customData = stack.get(DataComponents.CUSTOM_DATA);
-            if (customData != null) {
-                return customData.copyTag();
-            }
-        } catch (Exception e) {
-            // 如果获取失败，尝试其他方式
-        }
-        return null;
+        // Forge 1.20.1: classic NBT on ItemStack
+        return stack.hasTag() ? stack.getTag() : null;
     }
 
     /**

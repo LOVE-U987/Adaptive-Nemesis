@@ -1,7 +1,0 @@
-{
-    "name": "Ek Özellik Ganimeti",
-    "description": "Maceradayken çeşitli bonuslara sahip eşyalarla karşılaşabilirsin.$(p)Bunlar, geçmişin kalıntıları olan ve farklı güç seviyelerine sahip Ek Özellik Eşyalarıdır.",
-    "icon": "minecraft:chest",
-	"flag": "apotheosis:adventure",
-	"parent": "apotheosis:adventure/adventure"
-}

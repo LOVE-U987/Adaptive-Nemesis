@@ -18,7 +18,6 @@ import com.adaptive_nemesis.adaptive_nemesismod.player.PlayerStrengthData;
 import com.adaptive_nemesis.adaptive_nemesismod.player.PlayerStrengthEvaluator;
 import com.adaptive_nemesis.adaptive_nemesismod.watchdog.WatchdogService;
 
-import net.minecraft.core.Holder;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
@@ -34,10 +33,11 @@ import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.ai.attributes.DefaultAttributes;
 import net.minecraft.world.entity.monster.Enemy;
 import net.minecraft.world.phys.Vec3;
-import net.neoforged.bus.api.SubscribeEvent;
-import net.neoforged.neoforge.event.entity.EntityJoinLevelEvent;
-import net.neoforged.neoforge.event.entity.living.FinalizeSpawnEvent;
-import net.neoforged.neoforge.event.tick.LevelTickEvent;
+import net.minecraftforge.eventbus.api.SubscribeEvent;
+import net.minecraftforge.registries.ForgeRegistries;
+import net.minecraftforge.event.entity.EntityJoinLevelEvent;
+import net.minecraftforge.event.entity.living.MobSpawnEvent;
+import net.minecraftforge.event.TickEvent;
 
 /**
  * 敌人动态强化系统
@@ -297,7 +297,7 @@ public class EnemyScalingHandler {
             // 应用强化
             if (Config.ENABLE_DEBUG_LOG.get()) {
                 // 记录实体模组来源（用于排查第三方模组兼容性问题，如 Cataclysm）
-                ResourceLocation entityId = net.minecraft.core.registries.BuiltInRegistries.ENTITY_TYPE.getKey(mob.getType());
+                ResourceLocation entityId = net.minecraftforge.registries.ForgeRegistries.ENTITY_TYPES.getKey(mob.getType());
                 String modNamespace = entityId != null ? entityId.getNamespace() : "unknown";
                 long tickTime = mob.level().getGameTime();
                 AdaptiveNemesisMod.LOGGER.debug(
@@ -439,8 +439,9 @@ public class EnemyScalingHandler {
      * @param event 维度 tick 事件
      */
     @SubscribeEvent
-    public void onLevelTick(LevelTickEvent.Post event) {
-        if (!(event.getLevel() instanceof ServerLevel serverLevel)) {
+    public void onLevelTick(TickEvent.LevelTickEvent event) {
+        if (event.phase != TickEvent.Phase.END) return;
+        if (!(event.level instanceof ServerLevel serverLevel)) {
             return;
         }
         rebuildSpatialIndex(serverLevel);
@@ -541,7 +542,7 @@ public class EnemyScalingHandler {
 
         // 获取范围内玩家 - 使用玩家列表迭代替代 AABB 扫描
         // 🛡️ AABB + getEntitiesOfClass 会触发范围内所有区块的加载，
-        // 在 EntityJoinLevelEvent / FinalizeSpawnEvent 中可能导致区块加载死锁。
+        // 在 EntityJoinLevelEvent / MobSpawnEvent.FinalizeSpawn 中可能导致区块加载死锁。
         // 使用玩家列表遍历 + 距离平方检查，不触发新的区块加载。
         long scanStart = System.nanoTime();
         List<ServerPlayer> nearbyPlayers = getNearbyPlayersFromIndex(serverLevel, pos, range);
@@ -794,7 +795,7 @@ public class EnemyScalingHandler {
     private boolean applyModCompatBonuses(Mob mob, double multiplier, ScalingContext context) {
         if (ModCompatManager.isEpicFightLoaded()) {
             double epicFightRandomFactor = getRandomFactor();
-            ModCompatManager.getEpicFightCompat().applyMobBuffs(mob, multiplier * epicFightRandomFactor);
+            ModCompatManager.applyEpicFightMobBuffs(mob, multiplier * epicFightRandomFactor);
             if (Config.ENABLE_DEBUG_LOG.get()) {
                 AdaptiveNemesisMod.LOGGER.debug(
                     "敌人 {} 已应用 Epic Fight 属性加成，基础倍率={}, 随机因子={}",
@@ -810,7 +811,7 @@ public class EnemyScalingHandler {
 
         if (ModCompatManager.isIronsSpellsLoaded()) {
             double ironsSpellsRandomFactor = getRandomFactor();
-            ModCompatManager.getIronsSpellsCompat().applyMobBuffs(mob, multiplier * ironsSpellsRandomFactor);
+            ModCompatManager.applyIronsSpellsMobBuffs(mob, multiplier * ironsSpellsRandomFactor);
             if (Config.ENABLE_DEBUG_LOG.get()) {
                 AdaptiveNemesisMod.LOGGER.debug(
                     "敌人 {} 已应用 Iron's Spells 属性加成，基础倍率={}, 随机因子={}",
@@ -922,8 +923,10 @@ public class EnemyScalingHandler {
      * @param fallbackValue 查询失败时的回退值
      * @return 实体类型的默认属性值
      */
-    private double getDefaultAttributeBase(Mob mob, Holder<Attribute> attribute, double fallbackValue) {
-        String attributeKey = attribute.getRegisteredName();
+    private double getDefaultAttributeBase(Mob mob, Attribute attribute, double fallbackValue) {
+        String attributeKey = net.minecraftforge.registries.ForgeRegistries.ATTRIBUTES.getKey(attribute) != null
+            ? net.minecraftforge.registries.ForgeRegistries.ATTRIBUTES.getKey(attribute).toString()
+            : attribute.toString();
         String mobTypeDesc = mob.getType().getDescriptionId();
 
         if (Config.ENABLE_DEBUG_LOG.get()) {
@@ -1108,7 +1111,7 @@ public class EnemyScalingHandler {
      */
     private void applyAttributeBonus(
         Mob mob,
-        Holder<Attribute> attribute,
+        Attribute attribute,
         double multiplier,
         double randomFactor,
         Double maxMultiplier,

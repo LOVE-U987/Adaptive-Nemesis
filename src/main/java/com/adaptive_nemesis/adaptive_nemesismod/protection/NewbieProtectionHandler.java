@@ -10,10 +10,10 @@ import com.adaptive_nemesis.adaptive_nemesismod.player.PlayerStrengthEvaluator;
 
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.player.Player;
-import net.neoforged.bus.api.SubscribeEvent;
-import net.neoforged.neoforge.event.entity.living.LivingDeathEvent;
-import net.neoforged.neoforge.event.entity.player.PlayerEvent;
-import net.neoforged.neoforge.event.tick.PlayerTickEvent;
+import net.minecraftforge.eventbus.api.SubscribeEvent;
+import net.minecraftforge.event.entity.living.LivingDeathEvent;
+import net.minecraftforge.event.entity.player.PlayerEvent;
+import net.minecraftforge.event.TickEvent;
 
 /**
  * 新手保护处理器
@@ -62,12 +62,13 @@ public class NewbieProtectionHandler {
      * @param event 玩家Tick事件
      */
     @SubscribeEvent
-    public void onPlayerTick(PlayerTickEvent.Post event) {
-        if (event.getEntity().level().isClientSide()) {
+    public void onPlayerTick(TickEvent.PlayerTickEvent event) {
+        if (event.phase != TickEvent.Phase.END) return;
+        if (event.player.level().isClientSide()) {
             return;
         }
         
-        if (!(event.getEntity() instanceof ServerPlayer player)) {
+        if (!(event.player instanceof ServerPlayer player)) {
             return;
         }
         

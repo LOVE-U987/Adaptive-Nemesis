@@ -1,6 +1,6 @@
 package com.adaptive_nemesis.adaptive_nemesismod.kubejs;
 
-import dev.latvian.mods.kubejs.event.KubeEvent;
+import dev.latvian.mods.kubejs.event.EventJS;
 
 import java.util.UUID;
 
@@ -17,7 +17,7 @@ import java.util.UUID;
  * @author Adaptive Nemesis Team
  * @version 1.0.0
  */
-public class NemesisMemoryUpdateEventJS implements KubeEvent {
+public class NemesisMemoryUpdateEventJS extends EventJS {
 
     /**
      * 玩家UUID

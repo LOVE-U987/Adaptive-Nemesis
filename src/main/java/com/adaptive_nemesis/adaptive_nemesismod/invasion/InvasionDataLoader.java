@@ -1,5 +1,7 @@
 package com.adaptive_nemesis.adaptive_nemesismod.invasion;
 
+import net.minecraftforge.registries.ForgeRegistries;
+
 import com.adaptive_nemesis.adaptive_nemesismod.AdaptiveNemesisMod;
 import com.adaptive_nemesis.adaptive_nemesismod.Config;
 import com.google.common.collect.ImmutableMap;
@@ -10,7 +12,6 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParseException;
 
-import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.packs.resources.ResourceManager;
 import net.minecraft.server.packs.resources.SimpleJsonResourceReloadListener;
@@ -208,7 +209,7 @@ public class InvasionDataLoader extends SimpleJsonResourceReloadListener {
                     int amplifier = effectObj.has("amplifier") ? effectObj.get("amplifier").getAsInt() : 0;
                     MobEffectInstance effect = InvasionRewardData.parseEffect(effectId, duration, amplifier);
                     if (effect != null) {
-                        rewards.addEffect(effect.getEffect().value(), effect.getDuration(), effect.getAmplifier());
+                        rewards.addEffect(effect.getEffect(), effect.getDuration(), effect.getAmplifier());
                     }
                 }
             }
@@ -264,10 +265,10 @@ public class InvasionDataLoader extends SimpleJsonResourceReloadListener {
             throw new JsonParseException("无效的 entity_type: " + json.get("entity_type").getAsString());
         }
 
-        EntityType<?> entityType = BuiltInRegistries.ENTITY_TYPE.get(entityId);
+        EntityType<?> entityType = ForgeRegistries.ENTITY_TYPES.getValue(entityId);
         if (entityType == null || entityType == EntityType.PIG) {
             // 未注册的实体类型默认返回 PIG，需要额外判断
-            if (!BuiltInRegistries.ENTITY_TYPE.containsKey(entityId)) {
+            if (!ForgeRegistries.ENTITY_TYPES.containsKey(entityId)) {
                 throw new JsonParseException("未知的实体类型: " + entityId);
             }
         }

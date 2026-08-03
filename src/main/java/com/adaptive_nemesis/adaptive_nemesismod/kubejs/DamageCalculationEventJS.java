@@ -1,6 +1,6 @@
 package com.adaptive_nemesis.adaptive_nemesismod.kubejs;
 
-import dev.latvian.mods.kubejs.event.KubeEvent;
+import dev.latvian.mods.kubejs.event.EventJS;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.player.Player;
 
@@ -17,7 +17,7 @@ import net.minecraft.world.entity.player.Player;
  * @author Adaptive Nemesis Team
  * @version 1.0.0
  */
-public class DamageCalculationEventJS implements KubeEvent {
+public class DamageCalculationEventJS extends EventJS {
 
     /**
      * 攻击者
@@ -170,6 +170,22 @@ public class DamageCalculationEventJS implements KubeEvent {
     /**
      * 取消真实伤害转换
      */
+
+    /**
+     * KubeJS 脚本标准 API：event.cancel()
+     * 与 cancelEvent() 同步，并委托基类 EventJS.cancel() 产生 EventResult.interruptFalse。
+     */
+    @Override
+    public Object cancel() throws dev.latvian.mods.kubejs.event.EventExit {
+        this.cancelled = true;
+        return super.cancel();
+    }
+
+    /** 脚本友好别名 */
+    public boolean isCancelled() {
+        return cancelled;
+    }
+
     public void cancelEvent() {
         this.cancelled = true;
     }

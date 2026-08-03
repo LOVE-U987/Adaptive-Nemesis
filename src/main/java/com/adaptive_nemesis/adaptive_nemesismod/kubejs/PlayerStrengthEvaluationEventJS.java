@@ -1,6 +1,6 @@
 package com.adaptive_nemesis.adaptive_nemesismod.kubejs;
 
-import dev.latvian.mods.kubejs.event.KubeEvent;
+import dev.latvian.mods.kubejs.event.EventJS;
 import net.minecraft.server.level.ServerPlayer;
 
 /**
@@ -16,7 +16,7 @@ import net.minecraft.server.level.ServerPlayer;
  * @author Adaptive Nemesis Team
  * @version 1.0.0
  */
-public class PlayerStrengthEvaluationEventJS implements KubeEvent {
+public class PlayerStrengthEvaluationEventJS extends EventJS {
 
     /**
      * 被评估的玩家
