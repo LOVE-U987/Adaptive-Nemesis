@@ -1,0 +1,61 @@
+modLoader = "javafml"
+loaderVersion = "[2,)"
+issueTrackerURL = "https://kubejs.com/support?source=kubejs&mc=2101&loader=neoforge"
+license = "GNU LGPLv3"
+
+[[mods]]
+modId = "kubejs"
+version = "${version}"
+displayName = "KubeJS"
+authors = "latvian.dev"
+description = '''
+Customize your modpack or server with JavaScript!
+'''
+logoFile = "kubejs_logo.png"
+modUrl = "https://kubejs.com"
+displayURL = "https://kubejs.com"
+
+[[dependencies.kubejs]]
+modId = "neoforge"
+type = "required"
+versionRange = "${neoforgeVersions}"
+ordering = "AFTER"
+side = "BOTH"
+
+[[dependencies.kubejs]]
+modId = "rhino"
+type = "required"
+versionRange = "[${rhinoVersion},)"
+ordering = "AFTER"
+side = "BOTH"
+
+[[dependencies.kubejs]]
+modId = "jei"
+type = "optional"
+versionRange = "[${jeiVersion},)"
+ordering = "AFTER"
+side = "CLIENT"
+
+[[dependencies.kubejs]]
+modId = "roughlyenoughitems"
+type = "optional"
+versionRange = "[${reiVersion},)"
+ordering = "AFTER"
+side = "CLIENT"
+
+[[dependencies.kubejs]]
+modId = "emi"
+type = "optional"
+versionRange = "[${emiVersion},)"
+ordering = "AFTER"
+side = "CLIENT"
+
+[[dependencies.kubejs]]
+modId = "betteradvancedtooltips"
+type = "optional"
+versionRange = "[${batVersion},)"
+ordering = "BEFORE"
+side = "CLIENT"
+
+[[mixins]]
+config = "kubejs.mixins.json"

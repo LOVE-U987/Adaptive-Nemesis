@@ -38,10 +38,10 @@ import net.minecraft.world.item.Items;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.levelgen.Heightmap;
 import net.minecraft.world.phys.Vec3;
-import net.minecraftforge.eventbus.api.SubscribeEvent;
-import net.minecraftforge.common.MinecraftForge;
-import net.minecraftforge.event.entity.living.LivingDeathEvent;
-import net.minecraftforge.event.TickEvent;
+import net.neoforged.bus.api.SubscribeEvent;
+import net.neoforged.neoforge.common.NeoForge;
+import net.neoforged.neoforge.event.entity.living.LivingDeathEvent;
+import net.neoforged.neoforge.event.tick.ServerTickEvent;
 
 import java.util.*;
 
@@ -100,7 +100,7 @@ public class InvasionSystem {
 
     public InvasionSystem() {
         INSTANCE = this;
-        MinecraftForge.EVENT_BUS.register(this);
+        NeoForge.EVENT_BUS.register(this);
     }
 
     // ======================== Tick处理 ========================
@@ -110,8 +110,7 @@ public class InvasionSystem {
      * 每tick处理所有活动的入侵事件
      */
     @SubscribeEvent
-    public void onServerTick(TickEvent.ServerTickEvent event) {
-        if (event.phase != TickEvent.Phase.END) return;
+    public void onServerTick(ServerTickEvent.Post event) {
         if (!Config.INVASION.ENABLE_INVASION.get()) {
             return;
         }
@@ -465,7 +464,8 @@ public class InvasionSystem {
      * @param serverLevel 服务端世界
      */
     private void applyEquipmentLootTable(Mob mob, ResourceLocation lootTableId, ServerLevel serverLevel) {
-        LootTable lootTable = serverLevel.getServer().getLootData().getLootTable(lootTableId);
+        ResourceKey<LootTable> lootKey = ResourceKey.create(Registries.LOOT_TABLE, lootTableId);
+        LootTable lootTable = serverLevel.getServer().reloadableRegistries().getLootTable(lootKey);
         if (lootTable == LootTable.EMPTY) {
             if (Config.ENABLE_DEBUG_LOG.get()) {
                 AdaptiveNemesisMod.LOGGER.warn("[入侵] 找不到装备战利品表: {}", lootTableId);
@@ -518,8 +518,19 @@ public class InvasionSystem {
      * @param mob 目标怪物
      */
     private void applyFrostWalkerBoots(Mob mob) {
+        if (!(mob.level() instanceof ServerLevel serverLevel)) {
+            return;
+        }
+        Registry<net.minecraft.world.item.enchantment.Enchantment> enchantmentRegistry =
+            serverLevel.registryAccess().registryOrThrow(Registries.ENCHANTMENT);
+        Holder.Reference<net.minecraft.world.item.enchantment.Enchantment> holder =
+            enchantmentRegistry.getHolder(ResourceKey.create(Registries.ENCHANTMENT,
+                ResourceLocation.fromNamespaceAndPath("minecraft", "frost_walker"))).orElse(null);
+        if (holder == null) {
+            return;
+        }
         ItemStack boots = new ItemStack(Items.IRON_BOOTS);
-        boots.enchant(Enchantments.FROST_WALKER, 1);
+        boots.enchant(holder, 1);
         mob.setItemSlot(EquipmentSlot.FEET, boots);
         mob.setDropChance(EquipmentSlot.FEET, 0.0f);
     }
@@ -1135,7 +1146,8 @@ public class InvasionSystem {
 
         // 发放战利品表
         for (ResourceLocation lootTableId : rewards.getLootTables()) {
-            LootTable lootTable = level.getServer().getLootData().getLootTable(lootTableId);
+            ResourceKey<LootTable> lootKey = ResourceKey.create(Registries.LOOT_TABLE, lootTableId);
+            LootTable lootTable = level.getServer().reloadableRegistries().getLootTable(lootKey);
             if (lootTable == LootTable.EMPTY) {
                 AdaptiveNemesisMod.LOGGER.warn("入侵奖励战利品表不存在: {}", lootTableId);
                 continue;

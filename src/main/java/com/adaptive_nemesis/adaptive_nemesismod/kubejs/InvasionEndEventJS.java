@@ -2,7 +2,7 @@ package com.adaptive_nemesis.adaptive_nemesismod.kubejs;
 
 import com.adaptive_nemesis.adaptive_nemesismod.invasion.InvasionRewardData;
 import com.adaptive_nemesis.adaptive_nemesismod.invasion.InvasionSystem;
-import dev.latvian.mods.kubejs.event.EventJS;
+import dev.latvian.mods.kubejs.event.KubeEvent;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.effect.MobEffect;
@@ -21,7 +21,7 @@ import net.minecraft.world.item.ItemStack;
  * @author Adaptive Nemesis Team
  * @version 1.0.0
  */
-public class InvasionEndEventJS extends EventJS {
+public class InvasionEndEventJS implements KubeEvent {
 
     /**
      * 触发入侵的玩家

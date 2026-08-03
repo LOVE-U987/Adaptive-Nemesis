@@ -1,6 +1,6 @@
 package com.adaptive_nemesis.adaptive_nemesismod.config;
 
-import net.minecraftforge.common.ForgeConfigSpec;
+import net.neoforged.neoforge.common.ModConfigSpec;
 
 /**
  * 新手保护机制配置
@@ -10,34 +10,34 @@ public class NewbieProtectionConfig {
     /**
     * 是否启用新手保护
     */
-    public final ForgeConfigSpec.BooleanValue ENABLE_NEWBIE_PROTECTION;
+    public final ModConfigSpec.BooleanValue ENABLE_NEWBIE_PROTECTION;
 
     /**
     * 新手保护强度阈值
     */
-    public final ForgeConfigSpec.DoubleValue NEWBIE_STRENGTH_THRESHOLD;
+    public final ModConfigSpec.DoubleValue NEWBIE_STRENGTH_THRESHOLD;
 
     /**
     * 新手保护默认持续时间（分钟）
     */
-    public final ForgeConfigSpec.IntValue NEWBIE_PROTECTION_DURATION;
+    public final ModConfigSpec.IntValue NEWBIE_PROTECTION_DURATION;
 
     /**
     * 新手保护时怪物属性减免比例
     */
-    public final ForgeConfigSpec.DoubleValue NEWBIE_PROTECTION_REDUCTION;
+    public final ModConfigSpec.DoubleValue NEWBIE_PROTECTION_REDUCTION;
 
     /**
     * 首次死亡增加的保护时间（分钟）
     */
-    public final ForgeConfigSpec.IntValue DEATH_PROTECTION_BONUS;
+    public final ModConfigSpec.IntValue DEATH_PROTECTION_BONUS;
 
     /**
     * 连续死亡次数触发强制保护的阈值
     */
-    public final ForgeConfigSpec.IntValue DEATH_STREAK_THRESHOLD;
+    public final ModConfigSpec.IntValue DEATH_STREAK_THRESHOLD;
 
-    public NewbieProtectionConfig(ForgeConfigSpec.Builder builder) {
+    public NewbieProtectionConfig(ModConfigSpec.Builder builder) {
         builder.push("newbieProtection");
         ENABLE_NEWBIE_PROTECTION = builder.comment("是否启用新手保护机制").comment("Enable newbie protection mechanism").define("enableNewbieProtection", true);
         NEWBIE_STRENGTH_THRESHOLD = builder.comment("触发新手保护的玩家综合强度阈值").defineInRange("newbieStrengthThreshold", 50.0, 0.0, 1000.0);

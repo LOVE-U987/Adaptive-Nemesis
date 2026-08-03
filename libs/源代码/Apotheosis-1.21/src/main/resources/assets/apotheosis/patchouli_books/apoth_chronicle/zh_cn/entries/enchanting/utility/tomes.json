@@ -1,0 +1,42 @@
+{
+    "name": "宝典",
+    "icon": "apothic_enchanting:other_tome",
+    "category": "apotheosis:enchanting/utility",
+	"flag": "apotheosis:enchanting",
+	"sortnum": 3,
+    "pages": [
+        {
+            "type": "patchouli:text",
+            "text": "宝典是书的一种特殊类型。$(p)宝典可以像书一样被附魔，但只能接受特定的魔咒。$(p)例外的是$(l:apotheosis:enchanting/utility/scrapping)拆解宝典$()，它有另外的用途。"
+        },
+		{
+            "type": "patchouli:crafting",
+			"recipe": "apothic_enchanting:other_tome",
+			"text": "一旦你附魔一本宝典，它就会变成一本附魔书。"
+		},
+		{
+            "type": "patchouli:crafting",
+			"recipe": "apothic_enchanting:helmet_tome",
+			"recipe2": "apothic_enchanting:chestplate_tome",
+			"text": ""
+		},
+		{
+            "type": "patchouli:crafting",
+			"recipe": "apothic_enchanting:leggings_tome",
+			"recipe2": "apothic_enchanting:boots_tome",
+			"text": ""
+		},
+		{
+            "type": "patchouli:crafting",
+			"recipe": "apothic_enchanting:weapon_tome",
+			"recipe2": "apothic_enchanting:pickaxe_tome",
+			"text": ""
+		},
+		{
+            "type": "patchouli:crafting",
+			"recipe": "apothic_enchanting:fishing_tome",
+			"recipe2": "apothic_enchanting:bow_tome",
+			"text": ""
+		}
+	]
+}

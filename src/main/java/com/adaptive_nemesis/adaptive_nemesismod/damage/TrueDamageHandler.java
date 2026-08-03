@@ -11,8 +11,8 @@ import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.player.Player;
-import net.minecraftforge.eventbus.api.SubscribeEvent;
-import net.minecraftforge.event.entity.living.LivingHurtEvent;
+import net.neoforged.bus.api.SubscribeEvent;
+import net.neoforged.neoforge.event.entity.living.LivingIncomingDamageEvent;
 
 /**
  * 真实伤害转化处理器
@@ -57,7 +57,7 @@ public class TrueDamageHandler {
      * @param event 实体受到伤害事件
      */
     @SubscribeEvent
-    public void onLivingIncomingDamage(LivingHurtEvent event) {
+    public void onLivingIncomingDamage(LivingIncomingDamageEvent event) {
         // 检查是否启用真实伤害
         if (!Config.ENABLE_TRUE_DAMAGE.get()) {
             return;

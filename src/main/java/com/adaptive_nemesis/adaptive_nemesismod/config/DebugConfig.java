@@ -1,6 +1,6 @@
 package com.adaptive_nemesis.adaptive_nemesismod.config;
 
-import net.minecraftforge.common.ForgeConfigSpec;
+import net.neoforged.neoforge.common.ModConfigSpec;
 
 /**
  * 调试配置
@@ -10,29 +10,29 @@ public class DebugConfig {
     /**
      * 是否启用调试日志
      */
-    public final ForgeConfigSpec.BooleanValue ENABLE_DEBUG_LOG;
+    public final ModConfigSpec.BooleanValue ENABLE_DEBUG_LOG;
 
     /**
      * 是否启用详细调试模式（输出更多信息）
      */
-    public final ForgeConfigSpec.BooleanValue ENABLE_VERBOSE_DEBUG;
+    public final ModConfigSpec.BooleanValue ENABLE_VERBOSE_DEBUG;
 
     /**
      * 是否将调试日志输出到文件
      */
-    public final ForgeConfigSpec.BooleanValue DEBUG_LOG_TO_FILE;
+    public final ModConfigSpec.BooleanValue DEBUG_LOG_TO_FILE;
 
     /**
      * 调试日志文件路径
      */
-    public final ForgeConfigSpec.ConfigValue<String> DEBUG_LOG_FILE_PATH;
+    public final ModConfigSpec.ConfigValue<String> DEBUG_LOG_FILE_PATH;
 
     /**
      * 日志输出级别 (OFF, ERROR, WARN, INFO, DEBUG)
      */
-    public final ForgeConfigSpec.ConfigValue<String> LOG_OUTPUT_LEVEL;
+    public final ModConfigSpec.ConfigValue<String> LOG_OUTPUT_LEVEL;
 
-    public DebugConfig(ForgeConfigSpec.Builder builder) {
+    public DebugConfig(ModConfigSpec.Builder builder) {
         builder.push("debug");
         ENABLE_DEBUG_LOG = builder
             .comment("是否启用调试日志输出")

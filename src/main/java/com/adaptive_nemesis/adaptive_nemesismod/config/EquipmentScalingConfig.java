@@ -1,6 +1,6 @@
 package com.adaptive_nemesis.adaptive_nemesismod.config;
 
-import net.minecraftforge.common.ForgeConfigSpec;
+import net.neoforged.neoforge.common.ModConfigSpec;
 
 /**
  * 装备生成缩放配置
@@ -10,29 +10,29 @@ public class EquipmentScalingConfig {
     /**
     * 装备生成基础概率
     */
-    public final ForgeConfigSpec.DoubleValue EQUIPMENT_BASE_CHANCE;
+    public final ModConfigSpec.DoubleValue EQUIPMENT_BASE_CHANCE;
 
     /**
     * 每单位难度装备生成概率增量
     */
-    public final ForgeConfigSpec.DoubleValue EQUIPMENT_CHANCE_PER_DIFFICULTY;
+    public final ModConfigSpec.DoubleValue EQUIPMENT_CHANCE_PER_DIFFICULTY;
 
     /**
     * 装备品质跳级概率
     */
-    public final ForgeConfigSpec.DoubleValue EQUIPMENT_TIER_UPGRADE_CHANCE;
+    public final ModConfigSpec.DoubleValue EQUIPMENT_TIER_UPGRADE_CHANCE;
 
     /**
     * 模组装备替换概率
     */
-    public final ForgeConfigSpec.DoubleValue EQUIPMENT_MOD_COMPAT_CHANCE;
+    public final ModConfigSpec.DoubleValue EQUIPMENT_MOD_COMPAT_CHANCE;
 
     /**
     * 禁用装备掉落
     */
-    public final ForgeConfigSpec.BooleanValue DISABLE_EQUIPMENT_DROP;
+    public final ModConfigSpec.BooleanValue DISABLE_EQUIPMENT_DROP;
 
-    public EquipmentScalingConfig(ForgeConfigSpec.Builder builder) {
+    public EquipmentScalingConfig(ModConfigSpec.Builder builder) {
         builder.push("equipmentScaling");
         EQUIPMENT_BASE_CHANCE = builder.comment("装备生成基础概率 (0.15 = 15%) - 怪物空手时自动生成装备的基础概率").comment("Equipment base spawn chance (0.15 = 15%)").defineInRange("equipmentBaseChance", 0.15, 0.0, 1.0);
         EQUIPMENT_CHANCE_PER_DIFFICULTY = builder.comment("每单位难度倍率增加的装备生成概率 (0.10 = 每1倍率+10%)").comment("Equipment chance increase per difficulty multiplier (0.10 = +10% per unit)").defineInRange("equipmentChancePerDifficulty", 0.10, 0.0, 1.0);

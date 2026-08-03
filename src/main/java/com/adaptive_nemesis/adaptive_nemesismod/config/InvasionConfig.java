@@ -1,6 +1,6 @@
 package com.adaptive_nemesis.adaptive_nemesismod.config;
 
-import net.minecraftforge.common.ForgeConfigSpec;
+import net.neoforged.neoforge.common.ModConfigSpec;
 
 /**
  * 入侵事件配置类
@@ -15,114 +15,114 @@ public class InvasionConfig {
     /**
      * 是否启用入侵事件系统
      */
-    public final ForgeConfigSpec.BooleanValue ENABLE_INVASION;
+    public final ModConfigSpec.BooleanValue ENABLE_INVASION;
 
     /**
      * 入侵事件自然触发概率（每分钟）
      */
-    public final ForgeConfigSpec.DoubleValue INVASION_TRIGGER_CHANCE;
+    public final ModConfigSpec.DoubleValue INVASION_TRIGGER_CHANCE;
 
     /**
      * 基础波次数量（受难度加成，上限6波）
      */
-    public final ForgeConfigSpec.IntValue BASE_WAVE_COUNT;
+    public final ModConfigSpec.IntValue BASE_WAVE_COUNT;
 
     /**
      * 每波最大敌人数量
      */
-    public final ForgeConfigSpec.IntValue MAX_ENEMIES_PER_WAVE;
+    public final ModConfigSpec.IntValue MAX_ENEMIES_PER_WAVE;
 
     /**
      * 敌人在玩家周围的生成距离（方块）
      */
-    public final ForgeConfigSpec.IntValue SPAWN_DISTANCE;
+    public final ModConfigSpec.IntValue SPAWN_DISTANCE;
 
     /**
      * 是否允许在水面生成敌人时穿戴冰霜行者
      */
-    public final ForgeConfigSpec.BooleanValue ENABLE_FROST_WALKER_ON_WATER;
+    public final ModConfigSpec.BooleanValue ENABLE_FROST_WALKER_ON_WATER;
 
     /**
      * 是否让入侵敌人自带发光buff
      */
-    public final ForgeConfigSpec.BooleanValue ENABLE_GLOWING_EFFECT;
+    public final ModConfigSpec.BooleanValue ENABLE_GLOWING_EFFECT;
 
     /**
      * 击败入侵后降低的难度值
      */
-    public final ForgeConfigSpec.DoubleValue DIFFICULTY_DECREASE_ON_VICTORY;
+    public final ModConfigSpec.DoubleValue DIFFICULTY_DECREASE_ON_VICTORY;
 
     /**
      * 击败入侵后战利品稀有物品概率提升量
      */
-    public final ForgeConfigSpec.DoubleValue LOOT_RARITY_BONUS;
+    public final ModConfigSpec.DoubleValue LOOT_RARITY_BONUS;
 
     /**
      * 战利品稀有物品概率提升持续时间（分钟）
      */
-    public final ForgeConfigSpec.IntValue LOOT_RARITY_BONUS_DURATION;
+    public final ModConfigSpec.IntValue LOOT_RARITY_BONUS_DURATION;
 
     /**
      * 是否启用自定义入侵难度
      */
-    public final ForgeConfigSpec.BooleanValue ENABLE_CUSTOM_DIFFICULTY;
+    public final ModConfigSpec.BooleanValue ENABLE_CUSTOM_DIFFICULTY;
 
     /**
      * 自定义入侵难度倍率
      */
-    public final ForgeConfigSpec.DoubleValue CUSTOM_DIFFICULTY_MULTIPLIER;
+    public final ModConfigSpec.DoubleValue CUSTOM_DIFFICULTY_MULTIPLIER;
 
     /**
      * 入侵事件难度加成上限（波次）
      */
-    public final ForgeConfigSpec.IntValue MAX_WAVE_COUNT;
+    public final ModConfigSpec.IntValue MAX_WAVE_COUNT;
 
     /**
      * 入侵事件间隔时间（分钟）- 两次入侵之间的最小间隔
      */
-    public final ForgeConfigSpec.IntValue INVASION_COOLDOWN_MINUTES;
+    public final ModConfigSpec.IntValue INVASION_COOLDOWN_MINUTES;
 
     /**
      * 是否在入侵开始时通知玩家
      */
-    public final ForgeConfigSpec.BooleanValue ENABLE_PLAYER_NOTIFICATION;
+    public final ModConfigSpec.BooleanValue ENABLE_PLAYER_NOTIFICATION;
 
     /**
      * 是否在入侵期间显示波次进度
      */
-    public final ForgeConfigSpec.BooleanValue SHOW_WAVE_PROGRESS;
+    public final ModConfigSpec.BooleanValue SHOW_WAVE_PROGRESS;
 
     /**
      * 是否允许入侵敌人携带战利品
      */
-    public final ForgeConfigSpec.BooleanValue ENABLE_INVASION_LOOT;
+    public final ModConfigSpec.BooleanValue ENABLE_INVASION_LOOT;
 
     /**
      * 入侵敌人基础掉落物数量
      */
-    public final ForgeConfigSpec.IntValue BASE_LOOT_COUNT;
+    public final ModConfigSpec.IntValue BASE_LOOT_COUNT;
 
     /**
      * 是否启用KubeJS支持
      */
-    public final ForgeConfigSpec.BooleanValue ENABLE_KUBEJS_SUPPORT;
+    public final ModConfigSpec.BooleanValue ENABLE_KUBEJS_SUPPORT;
 
     /**
      * 是否启用数据包自定义入侵事件
      */
-    public final ForgeConfigSpec.BooleanValue ENABLE_DATA_PACK_SUPPORT;
+    public final ModConfigSpec.BooleanValue ENABLE_DATA_PACK_SUPPORT;
 
     /**
      * 服务器启动后延迟多久开始可能触发入侵（分钟）
      */
-    public final ForgeConfigSpec.IntValue INITIAL_COOLDOWN_MINUTES;
+    public final ModConfigSpec.IntValue INITIAL_COOLDOWN_MINUTES;
 
     /**
      * 入侵开始前的警告时间（秒）
      */
-    public final ForgeConfigSpec.IntValue WARNING_SECONDS_BEFORE_INVASION;
+    public final ModConfigSpec.IntValue WARNING_SECONDS_BEFORE_INVASION;
 
-    public InvasionConfig(ForgeConfigSpec.Builder builder) {
+    public InvasionConfig(ModConfigSpec.Builder builder) {
         builder.push("invasion");
         
         ENABLE_INVASION = builder.comment("是否启用入侵事件系统")

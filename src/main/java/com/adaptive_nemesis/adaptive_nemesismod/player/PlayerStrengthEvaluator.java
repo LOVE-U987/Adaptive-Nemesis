@@ -13,9 +13,9 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
-import net.minecraftforge.eventbus.api.SubscribeEvent;
-import net.minecraftforge.event.entity.player.PlayerEvent;
-import net.minecraftforge.event.TickEvent;
+import net.neoforged.bus.api.SubscribeEvent;
+import net.neoforged.neoforge.event.entity.player.PlayerEvent;
+import net.neoforged.neoforge.event.tick.PlayerTickEvent;
 
 /**
  * 玩家强度评估系统
@@ -78,9 +78,8 @@ public class PlayerStrengthEvaluator {
      * @param event 玩家Tick事件
      */
     @SubscribeEvent
-    public void onPlayerTick(TickEvent.PlayerTickEvent event) {
-        if (event.phase != TickEvent.Phase.END) return;
-        Player player = event.player;
+    public void onPlayerTick(PlayerTickEvent.Post event) {
+        Player player = event.getEntity();
         
         // 只在服务端执行
         if (player.level().isClientSide() || !(player instanceof ServerPlayer serverPlayer)) {
@@ -226,21 +225,21 @@ public class PlayerStrengthEvaluator {
         // 护甲四件
         for (ItemStack stack : player.getInventory().armor) {
             if (!stack.isEmpty() && stack.isEnchanted()) {
-                totalEnchantments += net.minecraft.world.item.enchantment.EnchantmentHelper.getEnchantments(stack).size();
+                totalEnchantments += stack.getEnchantments().size();
             }
         }
 
         // 副手物品
         for (ItemStack stack : player.getInventory().offhand) {
             if (!stack.isEmpty() && stack.isEnchanted()) {
-                totalEnchantments += net.minecraft.world.item.enchantment.EnchantmentHelper.getEnchantments(stack).size();
+                totalEnchantments += stack.getEnchantments().size();
             }
         }
 
         // 主手武器
         ItemStack mainHand = player.getMainHandItem();
         if (!mainHand.isEmpty() && mainHand.isEnchanted()) {
-            totalEnchantments += net.minecraft.world.item.enchantment.EnchantmentHelper.getEnchantments(mainHand).size();
+            totalEnchantments += mainHand.getEnchantments().size();
         }
 
         return totalEnchantments * 2.0;

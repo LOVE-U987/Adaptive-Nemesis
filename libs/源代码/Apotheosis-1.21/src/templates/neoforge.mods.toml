@@ -1,0 +1,79 @@
+modLoader="javafml"
+
+loaderVersion="[2,)"
+
+license="${license}"
+
+[[mods]] #mandatory
+
+modId="${modid}"
+
+version="${version}"
+
+displayName="${modName}"
+
+authors="${author}"
+
+description='''${desc}'''
+
+logoFile="${logo}"
+
+displayURL="${homepage}"
+
+${mixinConfig}
+
+[[dependencies.${modid}]]
+    modId="minecraft"
+    type="required"
+    versionRange="[${mcVersion},)"
+    ordering="NONE"
+    side="BOTH"
+
+[[dependencies.${modid}]]
+    modId="neoforge"
+    type="required"
+    versionRange="[${forgeVersion},)"
+    ordering="NONE"
+    side="BOTH"
+
+[[dependencies.${modid}]]
+    modId="placebo"
+    type="required"
+    versionRange="[${placeboVersion},)"
+    ordering="AFTER"
+    side="BOTH"
+
+[[dependencies.${modid}]]
+    modId="apothic_attributes"
+    type="required"
+    versionRange="[${apothicAttributesVersion},)"
+    ordering="AFTER"
+    side="BOTH"
+
+[[dependencies.${modid}]]
+    modId="apothic_spawners"
+    type="required"
+    versionRange="[${apothicSpawnersVersion},)"
+    ordering="AFTER"
+    side="BOTH"
+
+[[dependencies.${modid}]]
+    modId="apothic_enchanting"
+    type="required"
+    versionRange="[${apothicEnchantingVersion},)"
+    ordering="AFTER"
+    side="BOTH"
+
+[[dependencies.${modid}]]
+    modId="curios"
+    type="optional"
+    versionRange="[${curiosVersion},)"
+    ordering="AFTER"
+    side="BOTH"
+
+[[dependencies.${modid}]]
+    modId="gateways"
+    type="optional"
+    versionRange="[${gatewaysVersion},)"
+    ordering="AFTER"
+    side="BOTH"

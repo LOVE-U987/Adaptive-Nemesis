@@ -1,0 +1,53 @@
+{
+	"reforge": {
+		"subtitle": "apotheosis.subtitle.reforge",
+		"sounds": ["apotheosis:reforge"]
+	},
+    "malice": {
+        "subtitle": "apotheosis.subtitle.malice",
+        "sounds": ["apotheosis:malice"]
+    },
+    "music_disc_flash": {
+        "subtitle": "subtitle.apotheosis.music_disc.flash",
+        "sounds": [
+            {
+                "name": "apotheosis:music/flash",
+                "stream": true
+            }
+        ]
+    },
+    "music_disc_glimmer": {
+        "subtitle": "subtitle.apotheosis.music_disc.glimmer",
+        "sounds": [
+            {
+                "name": "apotheosis:music/glimmer",
+                "stream": true
+            }
+        ]
+    },
+    "music_disc_shimmer": {
+        "subtitle": "subtitle.apotheosis.music_disc.shimmer",
+        "sounds": [
+            {
+                "name": "apotheosis:music/shimmer",
+                "stream": true
+            }
+        ]
+    },
+    "invader_uncommon": {
+        "subtitle": "apotheosis.subtitle.invader_uncommon",
+        "sounds": ["apotheosis:invader_uncommon"]
+    },
+    "invader_rare": {
+        "subtitle": "apotheosis.subtitle.invader_rare",
+        "sounds": ["apotheosis:invader_rare"]
+    },
+    "invader_epic": {
+        "subtitle": "apotheosis.subtitle.invader_epic",
+        "sounds": ["apotheosis:invader_epic"]
+    },
+    "invader_mythic": {
+        "subtitle": "apotheosis.subtitle.invader_mythic",
+        "sounds": ["apotheosis:invader_mythic"]
+    }
+}

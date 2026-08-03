@@ -1,6 +1,6 @@
 package com.adaptive_nemesis.adaptive_nemesismod.kubejs;
 
-import dev.latvian.mods.kubejs.event.EventJS;
+import dev.latvian.mods.kubejs.event.KubeEvent;
 import net.minecraft.world.entity.Mob;
 
 /**
@@ -16,7 +16,7 @@ import net.minecraft.world.entity.Mob;
  * @author Adaptive Nemesis Team
  * @version 1.0.0
  */
-public class EntityScaleEventJS extends EventJS {
+public class EntityScaleEventJS implements KubeEvent {
 
     /**
      * 被强化的实体
@@ -110,22 +110,6 @@ public class EntityScaleEventJS extends EventJS {
     /**
      * 取消强化
      */
-
-    /**
-     * KubeJS 脚本标准 API：event.cancel()
-     * 与 cancelEvent() 同步，并委托基类 EventJS.cancel() 产生 EventResult.interruptFalse。
-     */
-    @Override
-    public Object cancel() throws dev.latvian.mods.kubejs.event.EventExit {
-        this.cancelled = true;
-        return super.cancel();
-    }
-
-    /** 脚本友好别名 */
-    public boolean isCancelled() {
-        return cancelled;
-    }
-
     public void cancelEvent() {
         this.cancelled = true;
     }

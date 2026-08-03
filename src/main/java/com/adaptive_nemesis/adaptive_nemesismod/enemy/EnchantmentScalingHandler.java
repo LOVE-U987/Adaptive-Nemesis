@@ -14,30 +14,29 @@ import com.adaptive_nemesis.adaptive_nemesismod.enemy.EntityFilterHelper;
 import com.adaptive_nemesis.adaptive_nemesismod.player.PlayerStrengthData;
 import com.adaptive_nemesis.adaptive_nemesismod.player.PlayerStrengthEvaluator;
 
+import net.minecraft.core.Holder;
+import net.minecraft.core.Registry;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.core.registries.Registries;
+import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.tags.ItemTags;
+import net.minecraft.tags.TagKey;
+import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.Mob;
-import net.minecraft.world.entity.ai.attributes.AttributeModifier;
 import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.monster.Enemy;
-import net.minecraft.world.item.ArmorItem;
-import net.minecraft.world.item.AxeItem;
-import net.minecraft.world.item.BowItem;
-import net.minecraft.world.item.CrossbowItem;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
-import net.minecraft.world.item.ShieldItem;
-import net.minecraft.world.item.SwordItem;
 import net.minecraft.world.item.enchantment.Enchantment;
-import net.minecraft.world.item.enchantment.EnchantmentHelper;
 import net.minecraft.world.item.enchantment.Enchantments;
-import net.minecraftforge.eventbus.api.SubscribeEvent;
-import net.minecraftforge.event.entity.living.MobSpawnEvent;
-import net.minecraftforge.registries.ForgeRegistries;
+import net.neoforged.bus.api.SubscribeEvent;
+import net.neoforged.neoforge.event.entity.living.FinalizeSpawnEvent;
 
 /**
  * 难度影响怪物装备/附魔系统
@@ -67,7 +66,7 @@ public class EnchantmentScalingHandler {
     private List<Item> modMainHandWeaponsCache;
     private List<Item> modShieldsCache;
     private List<Item> modOffHandWeaponsCache;
-    private List<Enchantment> modEnchantmentCache;
+    private List<Holder.Reference<Enchantment>> modEnchantmentCache;
     private boolean cachesBuilt = false;
 
     private Item[][] getArmorByTier() {
@@ -107,6 +106,9 @@ public class EnchantmentScalingHandler {
             return;
         }
 
+        Registry<Item> itemRegistry = level.registryAccess().registryOrThrow(Registries.ITEM);
+        Registry<Enchantment> enchantmentRegistry = level.registryAccess().registryOrThrow(Registries.ENCHANTMENT);
+
         modEquipmentCache = new EnumMap<>(EquipmentSlot.class);
         modEquipmentCache.put(EquipmentSlot.HEAD, new ArrayList<>());
         modEquipmentCache.put(EquipmentSlot.CHEST, new ArrayList<>());
@@ -117,35 +119,35 @@ public class EnchantmentScalingHandler {
         modShieldsCache = new ArrayList<>();
         modOffHandWeaponsCache = new ArrayList<>();
 
-        for (Item item : ForgeRegistries.ITEMS) {
+        TagKey<Item> shieldTag = TagKey.create(Registries.ITEM, ResourceLocation.withDefaultNamespace("shields"));
+
+        for (Item item : itemRegistry) {
             if (isVanillaItem(item) || !isValidEquipmentItem(item)) {
                 continue;
             }
 
-            // 1.20.1: classify via item classes (HEAD_ARMOR tags are 1.21+)
-            if (item instanceof ArmorItem armor) {
-                switch (armor.getType()) {
-                    case HELMET -> modEquipmentCache.get(EquipmentSlot.HEAD).add(item);
-                    case CHESTPLATE -> modEquipmentCache.get(EquipmentSlot.CHEST).add(item);
-                    case LEGGINGS -> modEquipmentCache.get(EquipmentSlot.LEGS).add(item);
-                    case BOOTS -> modEquipmentCache.get(EquipmentSlot.FEET).add(item);
-                    default -> {}
-                }
-            }
-            if (item instanceof SwordItem || item instanceof AxeItem) {
+            Holder<Item> holder = item.builtInRegistryHolder();
+            if (holder.is(ItemTags.HEAD_ARMOR)) modEquipmentCache.get(EquipmentSlot.HEAD).add(item);
+            if (holder.is(ItemTags.CHEST_ARMOR)) modEquipmentCache.get(EquipmentSlot.CHEST).add(item);
+            if (holder.is(ItemTags.LEG_ARMOR)) modEquipmentCache.get(EquipmentSlot.LEGS).add(item);
+            if (holder.is(ItemTags.FOOT_ARMOR)) modEquipmentCache.get(EquipmentSlot.FEET).add(item);
+            if (holder.is(ItemTags.SWORDS) || holder.is(ItemTags.AXES)) {
                 modMainHandWeaponsCache.add(item);
                 modOffHandWeaponsCache.add(item);
             }
-            if (item instanceof ShieldItem || item == Items.SHIELD) {
+            if (holder.is(shieldTag)) {
                 modShieldsCache.add(item);
             }
         }
 
         modEnchantmentCache = new ArrayList<>();
-        for (Enchantment enchant : ForgeRegistries.ENCHANTMENTS) {
-            if (enchant == null) continue;
-            if (isDangerousEnchantment(enchant)) continue;
-            modEnchantmentCache.add(enchant);
+        for (Enchantment enchant : enchantmentRegistry) {
+            ResourceKey<Enchantment> key = enchantmentRegistry.getResourceKey(enchant).orElse(null);
+            if (key == null) continue;
+            Holder.Reference<Enchantment> enchantHolder = enchantmentRegistry.getHolder(key).orElse(null);
+            if (enchantHolder == null) continue;
+            if (isDangerousEnchantment(enchantHolder)) continue;
+            modEnchantmentCache.add(enchantHolder);
         }
 
         cachesBuilt = true;
@@ -161,30 +163,22 @@ public class EnchantmentScalingHandler {
             );
         }
     }
-
-    private static Enchantment[] WEAPON_ENCHANTMENTS_CACHE;
-    private static Enchantment[] WEAPON_ENCHANTMENTS() {
-        if (WEAPON_ENCHANTMENTS_CACHE == null) {
-            WEAPON_ENCHANTMENTS_CACHE = new Enchantment[] {
+    @SuppressWarnings("unchecked")
+    private static final ResourceKey<Enchantment>[] WEAPON_ENCHANTMENTS = new ResourceKey[] {
         Enchantments.SHARPNESS,
         Enchantments.SMITE,
         Enchantments.BANE_OF_ARTHROPODS,
         Enchantments.FIRE_ASPECT,
         Enchantments.KNOCKBACK,
-        Enchantments.MOB_LOOTING,
+        Enchantments.LOOTING,
         Enchantments.SWEEPING_EDGE,
         Enchantments.UNBREAKING,
-        Enchantments.BLOCK_EFFICIENCY
-            };
-        }
-        return WEAPON_ENCHANTMENTS_CACHE;
-    }
+        Enchantments.EFFICIENCY
+    };
 
-    private static Enchantment[] ARMOR_ENCHANTMENTS_CACHE;
-    private static Enchantment[] ARMOR_ENCHANTMENTS() {
-        if (ARMOR_ENCHANTMENTS_CACHE == null) {
-            ARMOR_ENCHANTMENTS_CACHE = new Enchantment[] {
-        Enchantments.ALL_DAMAGE_PROTECTION,
+    @SuppressWarnings("unchecked")
+    private static final ResourceKey<Enchantment>[] ARMOR_ENCHANTMENTS = new ResourceKey[] {
+        Enchantments.PROTECTION,
         Enchantments.FIRE_PROTECTION,
         Enchantments.BLAST_PROTECTION,
         Enchantments.PROJECTILE_PROTECTION,
@@ -192,26 +186,18 @@ public class EnchantmentScalingHandler {
         Enchantments.UNBREAKING,
         Enchantments.RESPIRATION,
         Enchantments.AQUA_AFFINITY,
-        Enchantments.FALL_PROTECTION,
+        Enchantments.FEATHER_FALLING,
         Enchantments.DEPTH_STRIDER
-            };
-        }
-        return ARMOR_ENCHANTMENTS_CACHE;
-    }
+    };
 
-    private static Enchantment[] BOW_ENCHANTMENTS_CACHE;
-    private static Enchantment[] BOW_ENCHANTMENTS() {
-        if (BOW_ENCHANTMENTS_CACHE == null) {
-            BOW_ENCHANTMENTS_CACHE = new Enchantment[] {
-        Enchantments.POWER_ARROWS,
-        Enchantments.PUNCH_ARROWS,
-        Enchantments.FLAMING_ARROWS,
-        Enchantments.INFINITY_ARROWS,
+    @SuppressWarnings("unchecked")
+    private static final ResourceKey<Enchantment>[] BOW_ENCHANTMENTS = new ResourceKey[] {
+        Enchantments.POWER,
+        Enchantments.PUNCH,
+        Enchantments.FLAME,
+        Enchantments.INFINITY,
         Enchantments.UNBREAKING
-            };
-        }
-        return BOW_ENCHANTMENTS_CACHE;
-    }
+    };
 
     /**
      * 生成时无法被攻击的怪物NBT标签黑名单
@@ -235,7 +221,7 @@ public class EnchantmentScalingHandler {
      * 怪物生成事件 - 应用装备/附魔强化
      */
     @SubscribeEvent
-    public void onFinalizeSpawn(MobSpawnEvent.FinalizeSpawn event) {
+    public void onFinalizeSpawn(FinalizeSpawnEvent event) {
         if (!Config.ENABLE_ENCHANTMENT_SCALING.get()) {
             return;
         }
@@ -274,7 +260,7 @@ public class EnchantmentScalingHandler {
 
     /**
      * 获取当前难度倍率
-     * ⚠️ 注意：此方法在 MobSpawnEvent.FinalizeSpawn 中调用，那时实体所在区块可能尚未完全生成。
+     * ⚠️ 注意：此方法在 FinalizeSpawnEvent 中调用，那时实体所在区块可能尚未完全生成。
      * 使用 getEntitiesOfClass + AABB 会触发范围内其他区块的加载，与正在进行的世界生成形成死锁。
      * 改用玩家列表迭代 + 距离检查，不会触发新的区块加载。
      */
@@ -337,7 +323,7 @@ public class EnchantmentScalingHandler {
 
         // 遍历所有装备槽
         for (EquipmentSlot slot : EquipmentSlot.values()) {
-            boolean isArmor = slot.getType() == EquipmentSlot.Type.ARMOR;
+            boolean isArmor = slot.getType() == EquipmentSlot.Type.HUMANOID_ARMOR;
             boolean isHand = slot == EquipmentSlot.MAINHAND || slot == EquipmentSlot.OFFHAND;
             if (!isArmor && !isHand) {
                 continue;
@@ -556,7 +542,7 @@ public class EnchantmentScalingHandler {
                 } else if (Config.ENABLE_DEBUG_LOG.get()) {
                     AdaptiveNemesisMod.LOGGER.debug(
                         "⛔ 过滤超模武器: {} (伤害={}, 上限={})",
-                        ForgeRegistries.ITEMS.getKey(item),
+                        BuiltInRegistries.ITEM.getKey(item),
                         String.format("%.1f", weaponDamage),
                         String.format("%.1f", damageCap)
                     );
@@ -585,7 +571,7 @@ public class EnchantmentScalingHandler {
      * @return 如果是原版物品返回true
      */
     private boolean isVanillaItem(Item item) {
-        ResourceLocation id = ForgeRegistries.ITEMS.getKey(item);
+        ResourceLocation id = BuiltInRegistries.ITEM.getKey(item);
         return id != null && id.getNamespace().equals("minecraft");
     }
 
@@ -613,24 +599,31 @@ public class EnchantmentScalingHandler {
      * @param serverLevel 服务端世界
      */
     private void applyCoreEnchantments(ItemStack stack, EquipmentSlot slot, int maxLevel, ServerLevel serverLevel) {
-        Enchantment[] possibleEnchantments = getEnchantmentsForSlot(slot);
+        Registry<Enchantment> enchantmentRegistry = serverLevel.registryAccess()
+            .registryOrThrow(Registries.ENCHANTMENT);
+
+        ResourceKey<Enchantment>[] possibleEnchantments = getEnchantmentsForSlot(slot);
         int enchantCount = calculateCoreEnchantmentCount(maxLevel);
 
         for (int i = 0; i < enchantCount; i++) {
-            Enchantment enchant = possibleEnchantments[random.nextInt(possibleEnchantments.length)];
-            if (enchant == null) continue;
-            if (isDangerousEnchantment(enchant)) continue;
+            ResourceKey<Enchantment> enchantKey = possibleEnchantments[random.nextInt(possibleEnchantments.length)];
+            Holder.Reference<Enchantment> enchantHolder = enchantmentRegistry.getHolder(enchantKey).orElse(null);
+            if (enchantHolder == null) continue;
 
+            // 跳过危险附魔（如伤害免疫等游戏破坏性效果）
+            if (isDangerousEnchantment(enchantHolder)) continue;
+
+            // 随机附魔等级（1到maxLevel之间）
             int level = random.nextInt(maxLevel) + 1;
+
             try {
-                if (enchant.canEnchant(stack)) {
-                    stack.enchant(enchant, Math.min(level, enchant.getMaxLevel()));
-                }
+                stack.enchant(enchantHolder, level);
             } catch (Exception e) {
+                // 附魔冲突或不兼容时静默跳过
                 if (Config.ENABLE_DEBUG_LOG.get()) {
                     AdaptiveNemesisMod.LOGGER.debug(
                         "⛔ 核心附魔应用失败: {} (level={}), 原因: {}",
-                        ForgeRegistries.ENCHANTMENTS.getKey(enchant), level, e.getMessage()
+                        enchantHolder.key().location(), level, e.getMessage()
                     );
                 }
             }
@@ -660,7 +653,7 @@ public class EnchantmentScalingHandler {
     private void applyModCompatibleEnchantments(ItemStack stack, ServerLevel serverLevel, int maxLevel) {
         buildCaches(serverLevel);
 
-        List<Enchantment> candidates = collectCompatibleEnchantments(stack);
+        List<Holder.Reference<Enchantment>> candidates = collectCompatibleEnchantments(stack);
         if (candidates.isEmpty()) {
             return;
         }
@@ -669,15 +662,15 @@ public class EnchantmentScalingHandler {
         int extraCount = Math.min(1 + random.nextInt(2), candidates.size());
         for (int i = 0; i < extraCount; i++) {
             int index = random.nextInt(candidates.size());
-            Enchantment holder = candidates.remove(index);
+            Holder.Reference<Enchantment> holder = candidates.remove(index);
             int level = 1 + random.nextInt(Math.max(1, maxLevel / 2));
             try {
-                stack.enchant(holder, Math.min(level, holder.getMaxLevel()));
+                stack.enchant(holder, level);
             } catch (Exception e) {
                 if (Config.ENABLE_DEBUG_LOG.get()) {
                     AdaptiveNemesisMod.LOGGER.debug(
                         "⛔ 模组附魔应用失败: {} (level={}), 原因: {}",
-                        ForgeRegistries.ENCHANTMENTS.getKey(holder), level, e.getMessage()
+                        holder.key().location(), level, e.getMessage()
                     );
                 }
             }
@@ -690,21 +683,29 @@ public class EnchantmentScalingHandler {
      * @param stack 装备物品
      * @return 可用附魔候选列表
      */
-    private List<Enchantment> collectCompatibleEnchantments(ItemStack stack) {
-        Set<Enchantment> existingEnchants = new HashSet<>(EnchantmentHelper.getEnchantments(stack).keySet());
+    private List<Holder.Reference<Enchantment>> collectCompatibleEnchantments(ItemStack stack) {
+        // 收集已有附魔用于冲突检查
+        Set<Enchantment> existingEnchants = new HashSet<>();
+        for (Holder<Enchantment> holder : stack.getEnchantments().keySet()) {
+            if (holder.isBound()) {
+                existingEnchants.add(holder.value());
+            }
+        }
 
-        List<Enchantment> candidates = new ArrayList<>();
-        for (Enchantment enchant : modEnchantmentCache) {
+        List<Holder.Reference<Enchantment>> candidates = new ArrayList<>();
+        for (Holder.Reference<Enchantment> holder : modEnchantmentCache) {
             try {
+                Enchantment enchant = holder.value();
                 if (!enchant.canEnchant(stack) || existingEnchants.contains(enchant)) {
                     continue;
                 }
-                candidates.add(enchant);
+                candidates.add(holder);
             } catch (Exception e) {
+                // 跳过有问题的附魔
                 if (Config.ENABLE_DEBUG_LOG.get()) {
                     AdaptiveNemesisMod.LOGGER.debug(
                         "⛔ 模组附魔候选检查失败: {}, 原因: {}",
-                        ForgeRegistries.ENCHANTMENTS.getKey(enchant), e.getMessage()
+                        holder.key().location(), e.getMessage()
                     );
                 }
             }
@@ -715,11 +716,12 @@ public class EnchantmentScalingHandler {
     /**
      * 获取指定装备槽位对应的附魔列表
      */
-    private Enchantment[] getEnchantmentsForSlot(EquipmentSlot slot) {
+    @SuppressWarnings("unchecked")
+    private ResourceKey<Enchantment>[] getEnchantmentsForSlot(EquipmentSlot slot) {
         return switch (slot) {
-            case MAINHAND, OFFHAND -> WEAPON_ENCHANTMENTS();
-            case HEAD, CHEST, LEGS, FEET -> ARMOR_ENCHANTMENTS();
-            default -> new Enchantment[0];
+            case MAINHAND, OFFHAND -> WEAPON_ENCHANTMENTS;
+            case HEAD, CHEST, LEGS, FEET -> ARMOR_ENCHANTMENTS;
+            default -> new ResourceKey[0];
         };
     }
 
@@ -727,7 +729,7 @@ public class EnchantmentScalingHandler {
      * 获取怪物类型（用于日志输出）
      */
     private String getMobType(Mob mob) {
-        ResourceLocation id = ForgeRegistries.ENTITY_TYPES.getKey(mob.getType());
+        ResourceLocation id = EntityType.getKey(mob.getType());
         return id != null ? id.toString() : "unknown";
     }
 
@@ -745,7 +747,7 @@ public class EnchantmentScalingHandler {
      * @return 如果为人形生物返回 true
      */
     private boolean isHumanoidMob(Mob mob) {
-        ResourceLocation entityId = ForgeRegistries.ENTITY_TYPES.getKey(mob.getType());
+        ResourceLocation entityId = EntityType.getKey(mob.getType());
         if (entityId == null) return false;
         String id = entityId.toString();
 
@@ -809,11 +811,11 @@ public class EnchantmentScalingHandler {
      * @param holder 附魔持有者引用
      * @return 如果是危险附魔返回true，应跳过
      */
-    private boolean isDangerousEnchantment(Enchantment enchant) {
-        if (enchant == null) return false;
+    private boolean isDangerousEnchantment(Holder.Reference<Enchantment> holder) {
+        if (!holder.isBound()) return false;
 
-        ResourceLocation enchantId = ForgeRegistries.ENCHANTMENTS.getKey(enchant);
-        if (enchantId == null) return false;
+        // 通过注册名检测（最可靠，不受语言影响）
+        ResourceLocation enchantId = holder.key().location();
         String path = enchantId.getPath().toLowerCase();
 
         if (isDangerousEnchantmentKey(path)) {
@@ -826,13 +828,21 @@ public class EnchantmentScalingHandler {
             return true;
         }
 
-        // Description-key fallback
+        // 检查附魔描述（兜底方案）
         try {
-            String descKey = enchant.getDescriptionId().toLowerCase();
+            String descKey = holder.value().description().getString().toLowerCase();
             if (isDangerousEnchantmentKey(descKey)) {
+                if (Config.ENABLE_DEBUG_LOG.get()) {
+                    AdaptiveNemesisMod.LOGGER.warn(
+                        "⚠️ 通过描述跳过危险附魔: {} (desc={})",
+                        enchantId, descKey
+                    );
+                }
                 return true;
             }
-        } catch (Exception ignored) {}
+        } catch (Exception e) {
+            // 忽略异常，安全优先
+        }
 
         return false;
     }
@@ -858,7 +868,7 @@ public class EnchantmentScalingHandler {
         }
 
         // 跳过屏障、结构空位等调试物品
-        ResourceLocation id = ForgeRegistries.ITEMS.getKey(item);
+        ResourceLocation id = BuiltInRegistries.ITEM.getKey(item);
         if (id != null) {
             String path = id.getPath().toLowerCase();
             if (path.contains("barrier") || path.contains("structure_void")
@@ -924,16 +934,14 @@ public class EnchantmentScalingHandler {
      * @return 武器总伤害（含基础空手伤害1.0）
      */
     private double getWeaponDamage(ItemStack stack) {
-        var modifiers = stack.getAttributeModifiers(EquipmentSlot.MAINHAND).get(Attributes.ATTACK_DAMAGE);
-        double total = 1.0; // bare-hand base
-        if (modifiers != null) {
-            for (AttributeModifier mod : modifiers) {
-                if (mod.getOperation() == AttributeModifier.Operation.ADDITION) {
-                    total += mod.getAmount();
-                }
+        var attrModifiers = stack.getAttributeModifiers();
+        for (var entry : attrModifiers.modifiers()) {
+            if (entry.attribute().is(Attributes.ATTACK_DAMAGE)) {
+                // 1.0 是玩家空手基础伤害，加上武器修饰器得到总伤害
+                return 1.0 + entry.modifier().amount();
             }
         }
-        return total;
+        return 1.0; // 无伤害修饰器，等于空手伤害
     }
 
     /**

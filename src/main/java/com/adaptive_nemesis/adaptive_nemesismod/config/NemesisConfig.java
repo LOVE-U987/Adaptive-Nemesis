@@ -1,6 +1,6 @@
 package com.adaptive_nemesis.adaptive_nemesismod.config;
 
-import net.minecraftforge.common.ForgeConfigSpec;
+import net.neoforged.neoforge.common.ModConfigSpec;
 
 /**
  * 宿敌系统配置类
@@ -15,71 +15,71 @@ public class NemesisConfig {
     /**
      * 是否启用宿敌日常生成系统
      */
-    public final ForgeConfigSpec.BooleanValue ENABLE_NEMESIS_SPAWN;
+    public final ModConfigSpec.BooleanValue ENABLE_NEMESIS_SPAWN;
 
     /**
      * 宿敌生成概率（0.01 = 1%）
      * 在普通敌人自然生成时有此概率被转化为宿敌
      */
-    public final ForgeConfigSpec.DoubleValue NEMESIS_SPAWN_CHANCE;
+    public final ModConfigSpec.DoubleValue NEMESIS_SPAWN_CHANCE;
 
     /**
      * 宿敌最小强化倍率
      */
-    public final ForgeConfigSpec.DoubleValue NEMESIS_MIN_MULTIPLIER;
+    public final ModConfigSpec.DoubleValue NEMESIS_MIN_MULTIPLIER;
 
     /**
      * 宿敌最大强化倍率
      */
-    public final ForgeConfigSpec.DoubleValue NEMESIS_MAX_MULTIPLIER;
+    public final ModConfigSpec.DoubleValue NEMESIS_MAX_MULTIPLIER;
 
     /**
      * 宿敌基础强化倍率（在此基础上受全局难度影响）
      */
-    public final ForgeConfigSpec.DoubleValue NEMESIS_BASE_MULTIPLIER;
+    public final ModConfigSpec.DoubleValue NEMESIS_BASE_MULTIPLIER;
 
     /**
      * 近战克星称号前缀列表（逗号分隔）
      */
-    public final ForgeConfigSpec.ConfigValue<String> MELEE_NEMESIS_PREFIXES;
+    public final ModConfigSpec.ConfigValue<String> MELEE_NEMESIS_PREFIXES;
 
     /**
      * 远程克星称号前缀列表（逗号分隔）
      */
-    public final ForgeConfigSpec.ConfigValue<String> RANGED_NEMESIS_PREFIXES;
+    public final ModConfigSpec.ConfigValue<String> RANGED_NEMESIS_PREFIXES;
 
     /**
      * 魔法克星称号前缀列表（逗号分隔）
      */
-    public final ForgeConfigSpec.ConfigValue<String> MAGIC_NEMESIS_PREFIXES;
+    public final ModConfigSpec.ConfigValue<String> MAGIC_NEMESIS_PREFIXES;
 
     /**
      * 通用称号后缀列表（逗号分隔）
      */
-    public final ForgeConfigSpec.ConfigValue<String> NEMESIS_SUFFIXES;
+    public final ModConfigSpec.ConfigValue<String> NEMESIS_SUFFIXES;
 
     /**
      * 是否显示宿敌名称（自定义名称）
      */
-    public final ForgeConfigSpec.BooleanValue SHOW_NEMESIS_NAME;
+    public final ModConfigSpec.BooleanValue SHOW_NEMESIS_NAME;
 
     /**
      * 是否让宿敌名称始终可见（不只是看时显示）
      */
-    public final ForgeConfigSpec.BooleanValue NEMESIS_NAME_ALWAYS_VISIBLE;
+    public final ModConfigSpec.BooleanValue NEMESIS_NAME_ALWAYS_VISIBLE;
 
     /**
      * 宿敌名称颜色（十六进制，如 FF0000 = 红色）
      */
-    public final ForgeConfigSpec.ConfigValue<String> NEMESIS_NAME_COLOR;
+    public final ModConfigSpec.ConfigValue<String> NEMESIS_NAME_COLOR;
 
     /**
      * 宿敌转化是否要求目标具有攻击力属性
      * 开启后，缺少 generic.attack_damage 的生物不会被转化为宿敌
      */
-    public final ForgeConfigSpec.BooleanValue NEMESIS_REQUIRE_ATTACK_DAMAGE;
+    public final ModConfigSpec.BooleanValue NEMESIS_REQUIRE_ATTACK_DAMAGE;
 
-    public NemesisConfig(ForgeConfigSpec.Builder builder) {
+    public NemesisConfig(ModConfigSpec.Builder builder) {
         builder.push("nemesis");
         
         ENABLE_NEMESIS_SPAWN = builder.comment("是否启用宿敌日常生成系统")

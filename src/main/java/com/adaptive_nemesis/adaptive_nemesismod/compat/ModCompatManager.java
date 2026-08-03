@@ -4,7 +4,7 @@ import com.adaptive_nemesis.adaptive_nemesismod.AdaptiveNemesisMod;
 import com.adaptive_nemesis.adaptive_nemesismod.Config;
 
 import net.minecraft.server.level.ServerPlayer;
-import net.minecraftforge.fml.ModList;
+import net.neoforged.fml.ModList;
 
 /**
  * 模组兼容管理器
@@ -216,23 +216,4 @@ public class ModCompatManager {
     public static ApotheosisCompat getApotheosisCompat() {
         return apotheosisCompat;
     }
-
-    /**
-     * 安全地对怪物应用铁魔法加成（compat 未初始化时 no-op）
-     */
-    public static void applyIronsSpellsMobBuffs(net.minecraft.world.entity.Mob mob, double multiplier) {
-        if (isIronsSpellsLoaded() && ironsSpellsCompat != null) {
-            ironsSpellsCompat.applyMobBuffs(mob, multiplier);
-        }
-    }
-
-    /**
-     * 安全地对怪物应用史诗战斗加成（compat 未初始化时 no-op）
-     */
-    public static void applyEpicFightMobBuffs(net.minecraft.world.entity.Mob mob, double multiplier) {
-        if (isEpicFightLoaded() && epicFightCompat != null) {
-            epicFightCompat.applyMobBuffs(mob, multiplier);
-        }
-    }
-
 }

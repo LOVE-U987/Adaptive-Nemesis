@@ -1,7 +1,7 @@
 package com.adaptive_nemesis.adaptive_nemesismod.kubejs;
 
 import com.adaptive_nemesis.adaptive_nemesismod.invasion.InvasionSystem;
-import dev.latvian.mods.kubejs.event.EventJS;
+import dev.latvian.mods.kubejs.event.KubeEvent;
 import net.minecraft.server.level.ServerPlayer;
 
 /**
@@ -17,7 +17,7 @@ import net.minecraft.server.level.ServerPlayer;
  * @author Adaptive Nemesis Team
  * @version 1.0.0
  */
-public class InvasionStartEventJS extends EventJS {
+public class InvasionStartEventJS implements KubeEvent {
 
     /**
      * 触发入侵的玩家
@@ -126,22 +126,6 @@ public class InvasionStartEventJS extends EventJS {
     /**
      * 取消入侵事件
      */
-
-    /**
-     * KubeJS 脚本标准 API：event.cancel()
-     * 与 cancelEvent() 同步，并委托基类 EventJS.cancel() 产生 EventResult.interruptFalse。
-     */
-    @Override
-    public Object cancel() throws dev.latvian.mods.kubejs.event.EventExit {
-        this.cancelled = true;
-        return super.cancel();
-    }
-
-    /** 脚本友好别名 */
-    public boolean isCancelled() {
-        return cancelled;
-    }
-
     public void cancelEvent() {
         this.cancelled = true;
     }

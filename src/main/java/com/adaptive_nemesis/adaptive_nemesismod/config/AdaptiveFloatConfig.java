@@ -1,6 +1,6 @@
 package com.adaptive_nemesis.adaptive_nemesismod.config;
 
-import net.minecraftforge.common.ForgeConfigSpec;
+import net.neoforged.neoforge.common.ModConfigSpec;
 
 /**
  * 智能浮动系统配置
@@ -10,61 +10,61 @@ public class AdaptiveFloatConfig {
     /**
     * 浮动范围最小值
     */
-    public final ForgeConfigSpec.DoubleValue FLOAT_MIN;
+    public final ModConfigSpec.DoubleValue FLOAT_MIN;
 
     /**
     * 浮动范围最大值
     */
-    public final ForgeConfigSpec.DoubleValue FLOAT_MAX;
+    public final ModConfigSpec.DoubleValue FLOAT_MAX;
 
     /**
     * 连续击杀时浮动倍数增加量
     */
-    public final ForgeConfigSpec.DoubleValue KILL_STREAK_MULTIPLIER_INCREASE;
+    public final ModConfigSpec.DoubleValue KILL_STREAK_MULTIPLIER_INCREASE;
 
     /**
     * 频繁死亡时浮动倍数减少量
     */
-    public final ForgeConfigSpec.DoubleValue DEATH_STREAK_MULTIPLIER_DECREASE;
+    public final ModConfigSpec.DoubleValue DEATH_STREAK_MULTIPLIER_DECREASE;
 
     /**
     * 长时间未战斗后重置浮动倍数的时间（分钟）
     */
-    public final ForgeConfigSpec.IntValue FLOAT_RESET_TIME_MINUTES;
+    public final ModConfigSpec.IntValue FLOAT_RESET_TIME_MINUTES;
 
     /**
     * 空闲衰减速率 - 每分钟自动降低的倍率（0.02 = 每分钟降低2%）
     * 当玩家长时间未战斗时，难度会自动缓慢下降
     */
-    public final ForgeConfigSpec.DoubleValue IDLE_DECAY_RATE;
+    public final ModConfigSpec.DoubleValue IDLE_DECAY_RATE;
 
     /**
     * 战斗效率阈值 - 低于此值时触发难度下调（0.3 = 30%命中率）
     * 用于检测玩家战斗效率低下的情况
     */
-    public final ForgeConfigSpec.DoubleValue COMBAT_EFFICIENCY_THRESHOLD;
+    public final ModConfigSpec.DoubleValue COMBAT_EFFICIENCY_THRESHOLD;
 
     /**
     * 基于效率的难度下调量 - 战斗效率低下时每次下调的倍率
     */
-    public final ForgeConfigSpec.DoubleValue EFFICIENCY_BASED_DECREASE;
+    public final ModConfigSpec.DoubleValue EFFICIENCY_BASED_DECREASE;
 
     /**
     * 空闲衰减检查间隔（秒）- 每多少秒检查一次空闲衰减
     */
-    public final ForgeConfigSpec.IntValue IDLE_DECAY_CHECK_INTERVAL;
+    public final ModConfigSpec.IntValue IDLE_DECAY_CHECK_INTERVAL;
 
     /**
     * 是否启用基于时间的空闲衰减（推荐启用）
     */
-    public final ForgeConfigSpec.BooleanValue ENABLE_IDLE_DECAY;
+    public final ModConfigSpec.BooleanValue ENABLE_IDLE_DECAY;
 
     /**
     * 是否启用基于战斗效率的难度调整
     */
-    public final ForgeConfigSpec.BooleanValue ENABLE_EFFICIENCY_ADJUSTMENT;
+    public final ModConfigSpec.BooleanValue ENABLE_EFFICIENCY_ADJUSTMENT;
 
-    public AdaptiveFloatConfig(ForgeConfigSpec.Builder builder) {
+    public AdaptiveFloatConfig(ModConfigSpec.Builder builder) {
         builder.push("adaptiveFloat");
         FLOAT_MIN = builder.comment("浮动范围最小值 (0.8 = 80%)").defineInRange("floatMin", 0.8, 0.1, 1.0);
         FLOAT_MAX = builder.comment("浮动范围最大值 (1.2 = 120%)").defineInRange("floatMax", 1.2, 1.0, 5.0);

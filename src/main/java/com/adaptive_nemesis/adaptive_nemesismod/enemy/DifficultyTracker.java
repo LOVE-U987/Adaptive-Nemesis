@@ -9,8 +9,8 @@ import com.adaptive_nemesis.adaptive_nemesismod.Config;
 
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.util.Mth;
-import net.minecraftforge.eventbus.api.SubscribeEvent;
-import net.minecraftforge.event.TickEvent;
+import net.neoforged.bus.api.SubscribeEvent;
+import net.neoforged.neoforge.event.tick.ServerTickEvent;
 
 /**
  * 难度缓动追踪器
@@ -116,8 +116,7 @@ public class DifficultyTracker {
      * 服务器Tick事件 - 更新缓动
      */
     @SubscribeEvent
-    public void onServerTick(TickEvent.ServerTickEvent event) {
-        if (event.phase != TickEvent.Phase.END) return;
+    public void onServerTick(ServerTickEvent.Post event) {
         if (!Config.ENABLE_DIFFICULTY_SMOOTHING.get()) {
             return;
         }
