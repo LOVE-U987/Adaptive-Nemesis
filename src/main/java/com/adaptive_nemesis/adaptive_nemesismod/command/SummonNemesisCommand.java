@@ -246,10 +246,9 @@ public class SummonNemesisCommand {
             }
         }
 
-        // 设置自定义名称
-        nemesis.setCustomName(Component.literal(
-            Component.translatable("adaptive_nemesis.command.summon.name_prefix").getString() + nemesis.getName().getString()
-        ));
+        // 设置自定义名称（使用 Component 拼接，保留客户端本地化）
+        nemesis.setCustomName(Component.translatable("adaptive_nemesis.command.summon.name_prefix")
+            .append(nemesis.getName().copy()));
         nemesis.setCustomNameVisible(true);
     }
 
@@ -306,9 +305,8 @@ public class SummonNemesisCommand {
             knockbackAttr.setBaseValue(0.8);
         }
 
-        nemesis.setCustomName(Component.literal(
-            Component.translatable("adaptive_nemesis.command.summon.name_prefix").getString() + nemesis.getName().getString()
-        ));
+        nemesis.setCustomName(Component.translatable("adaptive_nemesis.command.summon.name_prefix")
+            .append(nemesis.getName().copy()));
         nemesis.setCustomNameVisible(true);
     }
 

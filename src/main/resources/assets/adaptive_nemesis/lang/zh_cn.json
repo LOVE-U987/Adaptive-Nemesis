@@ -592,5 +592,14 @@
   "adaptive_nemesis.nemesis.name.suffix.epic.1": "—亡灵君主",
   "adaptive_nemesis.nemesis.name.suffix.epic.2": "—死亡主宰",
   "adaptive_nemesis.nemesis.name.suffix.epic.3": "—毁灭领主",
-  "adaptive_nemesis.nemesis.name.suffix.epic.4": "—毁灭化身"
+  "adaptive_nemesis.nemesis.name.suffix.epic.4": "—毁灭化身",
+  "adaptive_nemesis.command.memory.none": "无",
+  "adaptive_nemesis.profile.bonus.melee_resist": "近战抗性+%s%%",
+  "adaptive_nemesis.profile.bonus.ranged_resist": "远程抗性+%s%%",
+  "adaptive_nemesis.profile.bonus.magic_resist": "魔法抗性+%s%%",
+  "adaptive_nemesis.profile.bonus.attack": "攻击+%s%%",
+  "adaptive_nemesis.profile.bonus.speed": "速度+%s%%",
+  "adaptive_nemesis.profile.bonus.health": "生命+%s%%",
+  "adaptive_nemesis.command.test.unit_chunks": "%s 区块",
+  "adaptive_nemesis.command.test.unit_minutes": "%s 分钟"
 }

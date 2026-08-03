@@ -4,6 +4,7 @@ import java.util.HashMap;
 import java.util.Map;
 
 import com.adaptive_nemesis.adaptive_nemesismod.memory.NemesisMemorySystem.CombatStyle;
+import net.minecraft.network.chat.Component;
 
 /**
  * 宿敌档案类
@@ -324,31 +325,35 @@ public class NemesisProfile {
     /**
      * 获取宿敌总加成描述
      *
-     * @return 加成描述字符串
+     * @return 加成描述组件（使用语言文件翻译键，支持多语言）
      */
-    public String getBonusDescription() {
-        StringBuilder sb = new StringBuilder();
-        sb.append("近战抗性+").append(String.format("%.0f%%", getMeleeResistanceBonus() * 100));
-        sb.append(", 远程抗性+").append(String.format("%.0f%%", getRangedResistanceBonus() * 100));
-        sb.append(", 魔法抗性+").append(String.format("%.0f%%", getMagicResistanceBonus() * 100));
-        sb.append(", 攻击+").append(String.format("%.0f%%", getAttackBonus() * 100));
-        sb.append(", 速度+").append(String.format("%.0f%%", getSpeedBonus() * 100));
-        sb.append(", 生命+").append(String.format("%.0f%%", getHealthBonus() * 100));
-        return sb.toString();
+    public Component getBonusDescription() {
+        return Component.empty()
+            .append(Component.translatable("adaptive_nemesis.profile.bonus.melee_resist", String.format("%.0f%%", getMeleeResistanceBonus() * 100)))
+            .append(", ")
+            .append(Component.translatable("adaptive_nemesis.profile.bonus.ranged_resist", String.format("%.0f%%", getRangedResistanceBonus() * 100)))
+            .append(", ")
+            .append(Component.translatable("adaptive_nemesis.profile.bonus.magic_resist", String.format("%.0f%%", getMagicResistanceBonus() * 100)))
+            .append(", ")
+            .append(Component.translatable("adaptive_nemesis.profile.bonus.attack", String.format("%.0f%%", getAttackBonus() * 100)))
+            .append(", ")
+            .append(Component.translatable("adaptive_nemesis.profile.bonus.speed", String.format("%.0f%%", getSpeedBonus() * 100)))
+            .append(", ")
+            .append(Component.translatable("adaptive_nemesis.profile.bonus.health", String.format("%.0f%%", getHealthBonus() * 100)));
     }
 
     /**
      * 获取Map中值最大的键
      *
      * @param map 目标Map
-     * @return 值最大的键，如果Map为空返回"无"
+     * @return 值最大的键，如果Map为空返回null（由调用方决定如何显示"无"）
      */
     private String getMaxEntry(Map<String, Integer> map) {
         if (map.isEmpty()) {
-            return "无";
+            return null;
         }
 
-        String maxKey = "无";
+        String maxKey = null;
         int maxValue = 0;
 
         for (Map.Entry<String, Integer> entry : map.entrySet()) {

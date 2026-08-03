@@ -119,22 +119,22 @@ public class MemoryCommand {
 
         source.sendSuccess(() -> Component.translatable(
             "adaptive_nemesis.command.memory.most_used_weapon",
-            profile.getMostUsedWeapon()
+            orNone(profile.getMostUsedWeapon())
         ), false);
 
         source.sendSuccess(() -> Component.translatable(
             "adaptive_nemesis.command.memory.most_killed",
-            profile.getMostKilledEntity()
+            orNone(profile.getMostKilledEntity())
         ), false);
 
         source.sendSuccess(() -> Component.translatable(
             "adaptive_nemesis.command.memory.common_death",
-            profile.getMostCommonDeathSource()
+            orNone(profile.getMostCommonDeathSource())
         ), false);
 
         source.sendSuccess(() -> Component.translatable(
             "adaptive_nemesis.command.memory.common_killer",
-            profile.getMostCommonKiller()
+            orNone(profile.getMostCommonKiller())
         ), false);
 
         source.sendSuccess(() -> Component.translatable(
@@ -142,5 +142,16 @@ public class MemoryCommand {
         ), false);
 
         return 1;
+    }
+
+    /**
+     * 将可能的null值转换为本地化的"无"显示组件
+     *
+     * @param value 原始值，可能为null
+     * @return 非null时原样返回，null时返回本地化的"无"组件
+     */
+    private static Component orNone(String value) {
+        return value != null ? Component.literal(value)
+            : Component.translatable("adaptive_nemesis.command.memory.none");
     }
 }

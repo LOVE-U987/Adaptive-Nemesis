@@ -97,17 +97,20 @@ public class NemesisConfig {
         NEMESIS_BASE_MULTIPLIER = builder.comment("宿敌基础强化倍率（在此基础上受全局难度影响）")
             .defineInRange("nemesisBaseMultiplier", 2.0, 1.0, 10.0);
         
-        MELEE_NEMESIS_PREFIXES = builder.comment("近战克星称号前缀列表（逗号分隔）")
-            .define("meleeNemesisPrefixes", "近战克星,战神,屠夫,狂战士,嗜血者");
+        // 名称池默认留空，由 NemesisNameGenerator 回退到语言文件翻译键
+        // （adaptive_nemesis.nemesis.name.prefix.* / suffix.*），实现多语言支持。
+        // 玩家可在配置中自定义覆盖（支持逗号分隔的任意文本）。
+        MELEE_NEMESIS_PREFIXES = builder.comment("近战克星称号前缀列表（逗号分隔），留空则使用语言文件翻译键")
+            .define("meleeNemesisPrefixes", "");
         
-        RANGED_NEMESIS_PREFIXES = builder.comment("远程克星称号前缀列表（逗号分隔）")
-            .define("rangedNemesisPrefixes", "弓术克星,狙击者,鹰眼,暗影猎手,迅捷杀手");
+        RANGED_NEMESIS_PREFIXES = builder.comment("远程克星称号前缀列表（逗号分隔），留空则使用语言文件翻译键")
+            .define("rangedNemesisPrefixes", "");
         
-        MAGIC_NEMESIS_PREFIXES = builder.comment("魔法克星称号前缀列表（逗号分隔）")
-            .define("magicNemesisPrefixes", "魔法克星,弑神者,咒术师,虚空行者,奥术大师");
+        MAGIC_NEMESIS_PREFIXES = builder.comment("魔法克星称号前缀列表（逗号分隔），留空则使用语言文件翻译键")
+            .define("magicNemesisPrefixes", "");
         
-        NEMESIS_SUFFIXES = builder.comment("通用称号后缀列表（逗号分隔）")
-            .define("nemesisSuffixes", "—末日使者,—暗影领主,—死亡骑士,—深渊行者,—地狱使者,—黑暗先知,—亡灵统帅,—恐惧化身");
+        NEMESIS_SUFFIXES = builder.comment("通用称号后缀列表（逗号分隔），留空则使用语言文件翻译键")
+            .define("nemesisSuffixes", "");
         
         SHOW_NEMESIS_NAME = builder.comment("是否显示宿敌名称（自定义名称）")
             .define("showNemesisName", true);

@@ -293,7 +293,8 @@ public class TestCommand {
             printTestLog(source, Component.translatable("adaptive_nemesis.command.test.label_max_hp_cap"), String.format("%.2f", Config.MAX_HEALTH_MULTIPLIER.get()));
             printTestLog(source, Component.translatable("adaptive_nemesis.command.test.label_max_damage_cap"), String.format("%.2f", Config.MAX_DAMAGE_MULTIPLIER.get()));
             printTestLog(source, Component.translatable("adaptive_nemesis.command.test.label_max_armor_cap"), String.format("%.2f", Config.MAX_ARMOR_MULTIPLIER.get()));
-            printTestLog(source, Component.translatable("adaptive_nemesis.command.test.label_sync_range"), Config.AREA_SYNC_RANGE.get() + " 区块");
+            printTestLog(source, Component.translatable("adaptive_nemesis.command.test.label_sync_range"),
+                Component.translatable("adaptive_nemesis.command.test.unit_chunks", Config.AREA_SYNC_RANGE.get()));
 
             // 如果执行者是玩家，显示针对该玩家的敌人加成
             if (source.getEntity() instanceof ServerPlayer player) {
@@ -451,7 +452,8 @@ public class TestCommand {
             printTestLog(source, Component.translatable("adaptive_nemesis.command.test.label_float_max"), String.valueOf(Config.FLOAT_MAX.get()));
             printTestLog(source, Component.translatable("adaptive_nemesis.command.test.label_kill_bonus"), String.format("+%.0f%%", Config.KILL_STREAK_MULTIPLIER_INCREASE.get() * 100));
             printTestLog(source, Component.translatable("adaptive_nemesis.command.test.label_death_reduction"), String.format("-%.0f%%", Config.DEATH_STREAK_MULTIPLIER_DECREASE.get() * 100));
-            printTestLog(source, Component.translatable("adaptive_nemesis.command.test.label_reset_time"), Config.FLOAT_RESET_TIME_MINUTES.get() + " 分钟");
+            printTestLog(source, Component.translatable("adaptive_nemesis.command.test.label_reset_time"),
+                Component.translatable("adaptive_nemesis.command.test.unit_minutes", Config.FLOAT_RESET_TIME_MINUTES.get()));
 
             // 如果执行者是玩家，显示该玩家的浮动数据
             if (source.getEntity() instanceof ServerPlayer player) {
