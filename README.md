@@ -3,7 +3,6 @@
 <h1>
   ⚔️
   <span style="color: #ff4444; text-shadow: 0 0 20px #ff0000;">Adaptive Nemesis</span>
-  <span style="color: #888888;">v1.0.12</span>
   ⚔️
 </h1>
 
