@@ -205,6 +205,9 @@ Sometimes the world doesn't wait for you to find trouble.
 
 > Custom invasions via datapack: `data/<namespace>/invasions/<name>.json`
 
+> 💡 Trigger a specific invasion with `/an invasion trigger <namespace>:<name> [waves] [difficulty]` (e.g. `/an invasion trigger archived:undead_invasion 1 1`).
+> You can also use the short name without a namespace (e.g. `undead_invasion`) — it will resolve to the mod's own `adaptive_nemesis:undead_invasion`.
+
 ---
 
 ## 🔗 Mod Compatibility

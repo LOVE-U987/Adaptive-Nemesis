@@ -7,13 +7,13 @@ import com.adaptive_nemesis.adaptive_nemesismod.invasion.InvasionSystem;
 import com.adaptive_nemesis.adaptive_nemesismod.invasion.InvasionSystem.InvasionType;
 import com.mojang.brigadier.arguments.DoubleArgumentType;
 import com.mojang.brigadier.arguments.IntegerArgumentType;
-import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.context.CommandContext;
 import com.mojang.brigadier.suggestion.SuggestionProvider;
 
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
+import net.minecraft.commands.arguments.ResourceLocationArgument;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
@@ -66,7 +66,7 @@ public class InvasionCommand {
         return Commands.literal("invasion")
             .then(Commands.literal("trigger")
                 .executes(InvasionCommand::executeTriggerDefault)
-                .then(Commands.argument("type", StringArgumentType.string())
+                .then(Commands.argument("type", ResourceLocationArgument.id())
                     .suggests(INVASION_TYPE_SUGGESTIONS)
                     .executes(InvasionCommand::executeTriggerWithType)
                     .then(Commands.argument("waves", IntegerArgumentType.integer(1, 20))
@@ -188,23 +188,39 @@ public class InvasionCommand {
     /**
      * 从命令参数解析入侵类型标识符
      *
+     * 支持两种写法：
+     * 1. 完整资源位置：{@code <namespace>:<path>}（如 {@code archived:undead_invasion}）
+     * 2. 省略命名空间：{@code <path>}（如 {@code undead_invasion}），
+     *    此时会先按原版规则解析为 {@code minecraft:<path>}，若未加载则回退为模组命名空间
+     *    {@code adaptive_nemesis:<path>}，从而可直接触发内置亡灵入侵
+     *
      * @param context 命令上下文
      * @return 入侵类型资源位置，解析失败或不存在时返回 null 并已发送错误消息
      */
     private static ResourceLocation parseInvasionId(CommandContext<CommandSourceStack> context) {
         CommandSourceStack source = context.getSource();
-        String typeString = StringArgumentType.getString(context, "type");
-        ResourceLocation id = ResourceLocation.tryParse(typeString);
-        if (id == null) {
-            source.sendFailure(Component.translatable(
-                "adaptive_nemesis.command.invasion.unknown_type", typeString
-            ));
-            return null;
+        ResourceLocation id = ResourceLocationArgument.getId(context, "type");
+
+        // 内置亡灵入侵（adaptive_nemesis:undead_invasion）无需数据包也可触发
+        if (InvasionType.UNDEAD.getId().equals(id)) {
+            return id;
         }
 
+        // 省略命名空间时会被解析为 minecraft:<path>；若该 ID 未加载，回退尝试模组命名空间
+        if ("minecraft".equals(id.getNamespace())
+            && !InvasionDataLoader.getInstance().getAllInvasions().containsKey(id)) {
+            ResourceLocation modId =
+                ResourceLocation.fromNamespaceAndPath(AdaptiveNemesisMod.MODID, id.getPath());
+            if (InvasionDataLoader.getInstance().getAllInvasions().containsKey(modId)
+                || InvasionType.UNDEAD.getId().equals(modId)) {
+                id = modId;
+            }
+        }
+
+        // 校验：仅允许数据包已加载的入侵类型
         if (!InvasionDataLoader.getInstance().getAllInvasions().containsKey(id)) {
             source.sendFailure(Component.translatable(
-                "adaptive_nemesis.command.invasion.unknown_type", typeString
+                "adaptive_nemesis.command.invasion.unknown_type", id
             ));
             return null;
         }
