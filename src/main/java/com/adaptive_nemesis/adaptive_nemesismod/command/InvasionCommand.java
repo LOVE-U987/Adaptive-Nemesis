@@ -166,13 +166,14 @@ public class InvasionCommand {
         }
 
         if (success) {
+            String typeId = type.getId().toString();
             if (customWaves != null && customDifficulty != null) {
                 source.sendSuccess(() -> Component.translatable(
-                    "adaptive_nemesis.command.invasion.trigger_success_detailed", type, customWaves, customDifficulty
+                    "adaptive_nemesis.command.invasion.trigger_success_detailed", typeId, customWaves, customDifficulty
                 ), true);
             } else {
                 source.sendSuccess(() -> Component.translatable(
-                    "adaptive_nemesis.command.invasion.trigger_success_type", type
+                    "adaptive_nemesis.command.invasion.trigger_success_type", typeId
                 ), true);
             }
             AdaptiveNemesisMod.LOGGER.debug(
