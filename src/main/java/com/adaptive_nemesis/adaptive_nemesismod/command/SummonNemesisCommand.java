@@ -4,6 +4,7 @@ import com.adaptive_nemesis.adaptive_nemesismod.AdaptiveNemesisMod;
 import com.adaptive_nemesis.adaptive_nemesismod.Config;
 import com.adaptive_nemesis.adaptive_nemesismod.memory.NemesisMemorySystem;
 import com.adaptive_nemesis.adaptive_nemesismod.memory.NemesisProfile;
+import com.adaptive_nemesis.adaptive_nemesismod.nemesis.NemesisSystem;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.context.CommandContext;
@@ -250,6 +251,9 @@ public class SummonNemesisCommand {
         nemesis.setCustomName(Component.translatable("adaptive_nemesis.command.summon.name_prefix")
             .append(nemesis.getName().copy()));
         nemesis.setCustomNameVisible(true);
+
+        // 打上宿敌标记，供铁魔法等兼容层识别（仅宿敌应用法术抗性/强度加成）
+        nemesis.getPersistentData().putBoolean(NemesisSystem.NEMESIS_TAG, true);
     }
 
     /**
@@ -308,6 +312,9 @@ public class SummonNemesisCommand {
         nemesis.setCustomName(Component.translatable("adaptive_nemesis.command.summon.name_prefix")
             .append(nemesis.getName().copy()));
         nemesis.setCustomNameVisible(true);
+
+        // 打上宿敌标记，供铁魔法等兼容层识别（仅宿敌应用法术抗性/强度加成）
+        nemesis.getPersistentData().putBoolean(NemesisSystem.NEMESIS_TAG, true);
     }
 
     /**

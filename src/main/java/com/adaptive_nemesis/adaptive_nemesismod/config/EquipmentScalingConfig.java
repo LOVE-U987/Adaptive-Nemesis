@@ -32,6 +32,16 @@ public class EquipmentScalingConfig {
     */
     public final ModConfigSpec.BooleanValue DISABLE_EQUIPMENT_DROP;
 
+    /**
+    * 禁用的装备部位（逗号分隔）
+    */
+    public final ModConfigSpec.ConfigValue<String> DISABLED_EQUIPMENT_SLOTS;
+
+    /**
+    * 武器/装备黑名单（逗号分隔）
+    */
+    public final ModConfigSpec.ConfigValue<String> EQUIPMENT_BLACKLIST;
+
     public EquipmentScalingConfig(ModConfigSpec.Builder builder) {
         builder.push("equipmentScaling");
         EQUIPMENT_BASE_CHANCE = builder.comment("装备生成基础概率 (0.15 = 15%) - 怪物空手时自动生成装备的基础概率").comment("Equipment base spawn chance (0.15 = 15%)").defineInRange("equipmentBaseChance", 0.15, 0.0, 1.0);
@@ -39,6 +49,8 @@ public class EquipmentScalingConfig {
         EQUIPMENT_TIER_UPGRADE_CHANCE = builder.comment("装备品质跳级概率 (0.15 = 15%) - 概率获得高一档品质的装备").comment("Tier upgrade chance (0.15 = 15%) - chance to get one tier higher equipment").defineInRange("equipmentTierUpgradeChance", 0.15, 0.0, 1.0);
         EQUIPMENT_MOD_COMPAT_CHANCE = builder.comment("模组装备替换概率 (0.30 = 30%) - 用其他模组的装备替换原版装备的概率").comment("Mod equipment replacement chance (0.30 = 30%) - chance to replace vanilla gear with modded gear").defineInRange("equipmentModCompatChance", 0.30, 0.0, 1.0);
         DISABLE_EQUIPMENT_DROP = builder.comment("禁用装备掉落 (false = 启用掉落) - 设置为true时，怪物会正常穿戴装备，但死亡时不会掉落装备").comment("Disable equipment drop (false = enable drop) - When true, mobs wear equipment normally but won't drop them on death").define("disableEquipmentDrop", false);
+        DISABLED_EQUIPMENT_SLOTS = builder.comment("禁用的装备部位（逗号分隔） - 支持 mainhand, offhand, head, chest, legs, feet；别名 hand=双手, armor=全部护甲").comment("Disabled equipment slots (comma-separated). Supports mainhand, offhand, head, chest, legs, feet; aliases: hand=both hands, armor=all armor slots").define("disabledEquipmentSlots", "");
+        EQUIPMENT_BLACKLIST = builder.comment("武器/装备黑名单（逗号分隔） - 在黑名单中的物品不会被怪物生成，支持 * 通配符，例如：minecraft:diamond_sword,modid:weapon_*").comment("Equipment/weapon blacklist (comma-separated). Items here will never be equipped by mobs. Supports * wildcard, e.g.: minecraft:diamond_sword,modid:weapon_*").define("equipmentBlacklist", "");
         builder.pop();
     }
 }

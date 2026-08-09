@@ -30,6 +30,13 @@ import java.util.Random;
 public class NemesisSystem {
 
     /**
+     * 宿敌NBT标记键
+     * 标记被宿敌系统转化的生物，供铁魔法等兼容层判断是否应用法术类加成。
+     * 普通怪物（非宿敌）不再获得法术抗性/法术强度加成，避免法师打群怪被过度限制。
+     */
+    public static final String NEMESIS_TAG = "adaptive_nemesis_nemesis";
+
+    /**
      * Boss类型实体列表（不会被转化为宿敌）
      */
     private static final EntityType<?>[] BOSS_TYPES = {
@@ -163,6 +170,9 @@ public class NemesisSystem {
         monster.setCustomName(nemesisName);
         monster.setCustomNameVisible(Config.NEMESIS_NAME_ALWAYS_VISIBLE.get());
 
+        // 打上宿敌标记，供铁魔法等兼容层识别（仅宿敌应用法术抗性/强度加成）
+        monster.getPersistentData().putBoolean(NEMESIS_TAG, true);
+
         monster.addEffect(new MobEffectInstance(MobEffects.GLOWING, Integer.MAX_VALUE));
 
         if (monster.level().getNearestPlayer(monster, 32.0) != null) {
@@ -266,6 +276,9 @@ public class NemesisSystem {
         Component nemesisName = nameGenerator.generateNemesisName(monster, multiplier);
         monster.setCustomName(nemesisName);
         monster.setCustomNameVisible(Config.NEMESIS_NAME_ALWAYS_VISIBLE.get());
+
+        // 打上宿敌标记，供铁魔法等兼容层识别（仅宿敌应用法术抗性/强度加成）
+        monster.getPersistentData().putBoolean(NEMESIS_TAG, true);
 
         monster.addEffect(new MobEffectInstance(MobEffects.GLOWING, Integer.MAX_VALUE));
 

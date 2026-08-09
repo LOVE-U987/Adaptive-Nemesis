@@ -7,6 +7,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Random;
 import java.util.Set;
+import java.util.regex.Pattern;
+import java.util.regex.PatternSyntaxException;
 
 import com.adaptive_nemesis.adaptive_nemesismod.AdaptiveNemesisMod;
 import com.adaptive_nemesis.adaptive_nemesismod.Config;
@@ -69,6 +71,18 @@ public class EnchantmentScalingHandler {
     private List<Holder.Reference<Enchantment>> modEnchantmentCache;
     private boolean cachesBuilt = false;
 
+    /**
+     * 禁用部位缓存 - 每次配置变更时刷新
+     */
+    private final Set<EquipmentSlot> disabledSlots = new HashSet<>();
+    private String lastDisabledSlotsHash = "";
+
+    /**
+     * 装备黑名单正则缓存 - 每次配置变更时刷新
+     */
+    private final List<Pattern> equipmentBlacklistPatterns = new ArrayList<>();
+    private String lastEquipmentBlacklistHash = "";
+
     private Item[][] getArmorByTier() {
         if (armorByTier == null) {
             armorByTier = new Item[][] {
@@ -122,7 +136,7 @@ public class EnchantmentScalingHandler {
         TagKey<Item> shieldTag = TagKey.create(Registries.ITEM, ResourceLocation.withDefaultNamespace("shields"));
 
         for (Item item : itemRegistry) {
-            if (isVanillaItem(item) || !isValidEquipmentItem(item)) {
+            if (isVanillaItem(item) || !isValidEquipmentItem(item) || isEquipmentBlacklisted(item)) {
                 continue;
             }
 
@@ -329,6 +343,11 @@ public class EnchantmentScalingHandler {
                 continue;
             }
 
+            // 配置禁用的部位直接跳过
+            if (isSlotDisabled(slot)) {
+                continue;
+            }
+
             // 非人形生物不生成任何装备（武器、盾牌、盔甲全跳过）
             if (!canEquipGear) {
                 continue;
@@ -488,11 +507,11 @@ public class EnchantmentScalingHandler {
 
         ItemStack vanillaStack = switch (slot) {
             case MAINHAND -> createSafeWeapon(tier, damageCap);
-            case OFFHAND -> random.nextBoolean() ? new ItemStack(Items.SHIELD) : ItemStack.EMPTY;
-            case HEAD -> new ItemStack(getArmorByTier()[tier][0]);
-            case CHEST -> new ItemStack(getArmorByTier()[tier][1]);
-            case LEGS -> new ItemStack(getArmorByTier()[tier][2]);
-            case FEET -> new ItemStack(getArmorByTier()[tier][3]);
+            case OFFHAND -> random.nextBoolean() && !isEquipmentBlacklisted(Items.SHIELD) ? new ItemStack(Items.SHIELD) : ItemStack.EMPTY;
+            case HEAD -> createVanillaArmor(tier, 0);
+            case CHEST -> createVanillaArmor(tier, 1);
+            case LEGS -> createVanillaArmor(tier, 2);
+            case FEET -> createVanillaArmor(tier, 3);
             default -> ItemStack.EMPTY;
         };
 
@@ -531,17 +550,21 @@ public class EnchantmentScalingHandler {
         if (slot == EquipmentSlot.HEAD || slot == EquipmentSlot.CHEST
             || slot == EquipmentSlot.LEGS || slot == EquipmentSlot.FEET) {
             // 护甲：直接使用预缓存的候选列表
-            modItems.addAll(modEquipmentCache.getOrDefault(slot, List.of()));
+            for (Item item : modEquipmentCache.getOrDefault(slot, List.of())) {
+                if (!isEquipmentBlacklisted(item)) {
+                    modItems.add(item);
+                }
+            }
         } else if (slot == EquipmentSlot.MAINHAND) {
             // 主手：从缓存的模组武器中按动态伤害上限过滤
             for (Item item : modMainHandWeaponsCache) {
                 ItemStack testStack = new ItemStack(item);
                 double weaponDamage = getWeaponDamage(testStack);
-                if (weaponDamage <= damageCap) {
+                if (weaponDamage <= damageCap && !isEquipmentBlacklisted(item)) {
                     modItems.add(item);
                 } else if (Config.ENABLE_DEBUG_LOG.get()) {
                     AdaptiveNemesisMod.LOGGER.debug(
-                        "⛔ 过滤超模武器: {} (伤害={}, 上限={})",
+                        "⛔ 过滤超模/黑名单武器: {} (伤害={}, 上限={})",
                         BuiltInRegistries.ITEM.getKey(item),
                         String.format("%.1f", weaponDamage),
                         String.format("%.1f", damageCap)
@@ -550,9 +573,17 @@ public class EnchantmentScalingHandler {
             }
         } else if (slot == EquipmentSlot.OFFHAND) {
             // 副手：优先使用缓存的模组盾牌，没有则退而求其次使用单手武器
-            modItems.addAll(modShieldsCache);
+            for (Item item : modShieldsCache) {
+                if (!isEquipmentBlacklisted(item)) {
+                    modItems.add(item);
+                }
+            }
             if (modItems.isEmpty()) {
-                modItems.addAll(modOffHandWeaponsCache);
+                for (Item item : modOffHandWeaponsCache) {
+                    if (!isEquipmentBlacklisted(item)) {
+                        modItems.add(item);
+                    }
+                }
             }
         }
 
@@ -573,6 +604,164 @@ public class EnchantmentScalingHandler {
     private boolean isVanillaItem(Item item) {
         ResourceLocation id = BuiltInRegistries.ITEM.getKey(item);
         return id != null && id.getNamespace().equals("minecraft");
+    }
+
+    /**
+     * 判断指定装备部位是否被配置禁用
+     *
+     * 支持别名：
+     * - hand = mainhand + offhand
+     * - armor = head + chest + legs + feet
+     *
+     * @param slot 装备部位
+     * @return 如果该部位被禁用返回 true
+     */
+    private boolean isSlotDisabled(EquipmentSlot slot) {
+        String raw = Config.DISABLED_EQUIPMENT_SLOTS.get();
+        if (raw == null) {
+            raw = "";
+        }
+        raw = raw.trim();
+
+        // 配置未变化时使用缓存
+        if (!lastDisabledSlotsHash.equals(raw)) {
+            lastDisabledSlotsHash = raw;
+            disabledSlots.clear();
+
+            if (!raw.isEmpty()) {
+                String[] parts = raw.split(",");
+                for (String part : parts) {
+                    String token = part.trim().toLowerCase();
+                    if (token.isEmpty()) {
+                        continue;
+                    }
+                    switch (token) {
+                        case "hand" -> {
+                            disabledSlots.add(EquipmentSlot.MAINHAND);
+                            disabledSlots.add(EquipmentSlot.OFFHAND);
+                        }
+                        case "armor" -> {
+                            disabledSlots.add(EquipmentSlot.HEAD);
+                            disabledSlots.add(EquipmentSlot.CHEST);
+                            disabledSlots.add(EquipmentSlot.LEGS);
+                            disabledSlots.add(EquipmentSlot.FEET);
+                        }
+                        default -> {
+                            EquipmentSlot parsed = parseSlot(token);
+                            if (parsed != null) {
+                                disabledSlots.add(parsed);
+                            } else if (Config.ENABLE_DEBUG_LOG.get()) {
+                                AdaptiveNemesisMod.LOGGER.warn(
+                                    "⚠️ 未知的禁用装备部位: '{}'，有效值: mainhand, offhand, head, chest, legs, feet, hand, armor",
+                                    part.trim()
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (Config.ENABLE_DEBUG_LOG.get() && !disabledSlots.isEmpty()) {
+                AdaptiveNemesisMod.LOGGER.debug(
+                    "🛡️ 禁用的装备部位已加载: {} (原始配置='{}')",
+                    disabledSlots, raw
+                );
+            }
+        }
+
+        return disabledSlots.contains(slot);
+    }
+
+    /**
+     * 解析装备部位名称
+     *
+     * @param token 部位名称（小写）
+     * @return 对应的 EquipmentSlot，无法识别时返回 null
+     */
+    private EquipmentSlot parseSlot(String token) {
+        return switch (token) {
+            case "mainhand" -> EquipmentSlot.MAINHAND;
+            case "offhand" -> EquipmentSlot.OFFHAND;
+            case "head" -> EquipmentSlot.HEAD;
+            case "chest" -> EquipmentSlot.CHEST;
+            case "legs" -> EquipmentSlot.LEGS;
+            case "feet" -> EquipmentSlot.FEET;
+            default -> null;
+        };
+    }
+
+    /**
+     * 判断物品是否在装备黑名单中
+     *
+     * 支持 * 通配符匹配（如 minecraft:diamond_sword, modid:weapon_*）。
+     * 使用正则编译缓存，配置变化时自动重新解析。
+     *
+     * @param item 待检查的物品
+     * @return 如果物品在黑名单中返回 true
+     */
+    private boolean isEquipmentBlacklisted(Item item) {
+        String raw = Config.EQUIPMENT_BLACKLIST.get();
+        if (raw == null) {
+            raw = "";
+        }
+        raw = raw.trim();
+
+        // 配置未变化时使用缓存
+        if (!lastEquipmentBlacklistHash.equals(raw)) {
+            lastEquipmentBlacklistHash = raw;
+            equipmentBlacklistPatterns.clear();
+
+            if (!raw.isEmpty()) {
+                String[] parts = raw.split(",");
+                for (String part : parts) {
+                    String trimmed = part.trim();
+                    if (trimmed.isEmpty()) {
+                        continue;
+                    }
+                    try {
+                        // 将通配符 * 转换为正则 .*
+                        String regex = "\\Q" + trimmed.replace("*", "\\E.*\\Q") + "\\E";
+                        equipmentBlacklistPatterns.add(Pattern.compile(regex));
+                    } catch (PatternSyntaxException e) {
+                        AdaptiveNemesisMod.LOGGER.warn(
+                            "装备黑名单条目解析失败: '{}', 原因: {}",
+                            trimmed, e.getMessage()
+                        );
+                    }
+                }
+            }
+
+            if (Config.ENABLE_DEBUG_LOG.get() && !equipmentBlacklistPatterns.isEmpty()) {
+                AdaptiveNemesisMod.LOGGER.debug(
+                    "装备黑名单已加载: {} 条规则, 原始配置='{}'",
+                    equipmentBlacklistPatterns.size(), raw
+                );
+            }
+        }
+
+        if (equipmentBlacklistPatterns.isEmpty()) {
+            return false;
+        }
+
+        ResourceLocation id = BuiltInRegistries.ITEM.getKey(item);
+        if (id == null) {
+            return false;
+        }
+        String itemId = id.toString();
+
+        for (Pattern pattern : equipmentBlacklistPatterns) {
+            if (pattern.matcher(itemId).matches()) {
+                if (Config.ENABLE_DEBUG_LOG.get()) {
+                    AdaptiveNemesisMod.LOGGER.debug(
+                        "⛔ 黑名单过滤装备: {}",
+                        itemId
+                    );
+                }
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -977,19 +1166,40 @@ public class EnchantmentScalingHandler {
             List<Item> shuffled = new ArrayList<>(java.util.Arrays.asList(weapons));
             java.util.Collections.shuffle(shuffled, random);
             for (Item weapon : shuffled) {
+                if (isEquipmentBlacklisted(weapon)) {
+                    continue;
+                }
                 ItemStack stack = new ItemStack(weapon);
                 if (getWeaponDamage(stack) <= damageCap) {
                     return stack;
                 }
             }
         }
-        // 保底：木剑（1+4=5点伤害，不会超过任何合理上限）
+        // 保底：木剑（1+4=5点伤害，不会超过任何合理上限），除非木剑也被拉黑
         if (Config.ENABLE_DEBUG_LOG.get()) {
             AdaptiveNemesisMod.LOGGER.warn(
                 "⚠️ 所有品质等级的武器均超过伤害上限，使用木剑保底 (cap={})",
                 String.format("%.1f", damageCap)
             );
         }
-        return new ItemStack(Items.WOODEN_SWORD);
+        return isEquipmentBlacklisted(Items.WOODEN_SWORD) ? ItemStack.EMPTY : new ItemStack(Items.WOODEN_SWORD);
+    }
+
+    /**
+     * 创建原版护甲
+     * 如果指定品质的护甲在黑名单中，则向下寻找更低品质的护甲
+     *
+     * @param tier 期望的品质等级
+     * @param index 护甲类型索引 (0=头盔, 1=胸甲, 2=护腿, 3=靴子)
+     * @return 可用的护甲，全部在黑名单时返回空
+     */
+    private ItemStack createVanillaArmor(int tier, int index) {
+        for (int t = tier; t >= 0; t--) {
+            Item armor = getArmorByTier()[t][index];
+            if (!isEquipmentBlacklisted(armor)) {
+                return new ItemStack(armor);
+            }
+        }
+        return ItemStack.EMPTY;
     }
 }

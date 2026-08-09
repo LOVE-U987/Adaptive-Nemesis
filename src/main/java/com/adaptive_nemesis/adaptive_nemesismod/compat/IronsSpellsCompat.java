@@ -2,6 +2,7 @@ package com.adaptive_nemesis.adaptive_nemesismod.compat;
 
 import com.adaptive_nemesis.adaptive_nemesismod.Config;
 import com.adaptive_nemesis.adaptive_nemesismod.AdaptiveNemesisMod;
+import com.adaptive_nemesis.adaptive_nemesismod.nemesis.NemesisSystem;
 
 import io.redspace.ironsspellbooks.api.magic.MagicData;
 import io.redspace.ironsspellbooks.api.registry.AttributeRegistry;
@@ -74,8 +75,9 @@ public class IronsSpellsCompat {
             MagicData magicData = MagicData.getPlayerMagicData(player);
 
             if (magicData != null) {
-                // 法力值贡献 - 使用getMana()作为近似值
-                double maxMana = magicData.getMana(); // 当前法力值作为参考
+                // 法力值贡献 - 使用最大法力值作为参考（当前法力值会随施法波动，
+                // 导致玩家强度评估不稳定，施法耗蓝后怪物缩放反而下降）
+                float maxMana = (float) player.getAttributeValue(AttributeRegistry.MAX_MANA);
                 strength += maxMana * 0.05;
 
                 // 尝试获取法术强度（通过其他方式）
@@ -139,20 +141,36 @@ public class IronsSpellsCompat {
     /**
      * 为怪物应用铁魔法属性加成
      *
+     * 仅对宿敌（打有 NEMESIS_TAG 标记）生效：
+     * 普通怪物不再获得法术抗性/法术强度/法力等法术类加成，
+     * 避免法师玩家的多段、召唤类法术在打群怪时被逐只减免。
+     * 同时法术强度与法术抗性的加成倍率分别受
+     * maxSpellPowerMultiplier / maxSpellResistMultiplier 配置上限约束。
+     *
      * @param mob 目标怪物
      * @param multiplier 强化倍率
      */
     public void applyMobBuffs(Mob mob, double multiplier) {
         try {
+            // 非宿敌怪不应用铁魔法法术类加成
+            if (!mob.getPersistentData().getBoolean(NemesisSystem.NEMESIS_TAG)) {
+                return;
+            }
+
             // 确保倍率不低于 1.0，防止随机因子导致属性降低
             double effectiveMultiplier = safeDouble(Math.max(1.0, multiplier));
+
+            // 法术强度/施法资源加成倍率受 maxSpellPowerMultiplier 上限约束
+            double powerCapped = Math.min(effectiveMultiplier, Config.MAX_SPELL_POWER_MULTIPLIER.get());
+            // 法术抗性加成倍率受 maxSpellResistMultiplier 上限约束
+            double resistCapped = Math.min(effectiveMultiplier, Config.MAX_SPELL_RESIST_MULTIPLIER.get());
 
             // 1. 增加法术强度 (Spell Power) - 如果有法术攻击
             // NeoForge 1.21.1: DeferredHolder可以直接作为Holder<Attribute>传入
             AttributeInstance spellPowerAttr = mob.getAttribute(AttributeRegistry.SPELL_POWER);
             if (spellPowerAttr != null) {
                 double originalPower = spellPowerAttr.getBaseValue();
-                double newPower = Math.max(originalPower, originalPower * effectiveMultiplier);
+                double newPower = Math.max(originalPower, originalPower * powerCapped);
                 safeSetAttribute(spellPowerAttr, newPower, originalPower);
 
                 if (Config.ENABLE_DEBUG_LOG.get()) {
@@ -169,7 +187,7 @@ public class IronsSpellsCompat {
             AttributeInstance maxManaAttr = mob.getAttribute(AttributeRegistry.MAX_MANA);
             if (maxManaAttr != null) {
                 double originalMana = maxManaAttr.getBaseValue();
-                double newMana = Math.max(originalMana, originalMana * effectiveMultiplier);
+                double newMana = Math.max(originalMana, originalMana * powerCapped);
                 safeSetAttribute(maxManaAttr, newMana, originalMana);
 
                 if (Config.ENABLE_DEBUG_LOG.get()) {
@@ -206,11 +224,11 @@ public class IronsSpellsCompat {
                 safeSetAttribute(castTimeAttr, newCastTime, originalCastTime);
             }
 
-            // 6. 增加各系魔法抗性
-            applyMagicResistance(mob, effectiveMultiplier);
+            // 6. 增加各系魔法抗性（倍率受 maxSpellResistMultiplier 上限约束）
+            applyMagicResistance(mob, resistCapped);
 
-            // 7. 增加各系法术强度
-            applySpellPower(mob, effectiveMultiplier);
+            // 7. 增加各系法术强度（倍率受 maxSpellPowerMultiplier 上限约束）
+            applySpellPower(mob, powerCapped);
 
         } catch (Exception e) {
             AdaptiveNemesisMod.LOGGER.error("应用铁魔法属性加成失败: {}", e.getMessage());
@@ -220,8 +238,11 @@ public class IronsSpellsCompat {
     /**
      * 应用魔法抗性加成
      *
+     * 注意：调用方（applyMobBuffs）传入的 multiplier 已受
+     * maxSpellResistMultiplier 配置封顶，此处直接使用即可。
+     *
      * @param mob 目标怪物
-     * @param multiplier 强化倍率
+     * @param multiplier 已封顶的强化倍率
      */
     private void applyMagicResistance(Mob mob, double multiplier) {
         try {
@@ -298,8 +319,11 @@ public class IronsSpellsCompat {
     /**
      * 应用各系法术强度加成
      *
+     * 注意：调用方（applyMobBuffs）传入的 multiplier 已受
+     * maxSpellPowerMultiplier 配置封顶，此处直接使用即可。
+     *
      * @param mob 目标怪物
-     * @param multiplier 强化倍率
+     * @param multiplier 已封顶的强化倍率
      */
     private void applySpellPower(Mob mob, double multiplier) {
         try {

@@ -133,8 +133,6 @@ public class AdaptiveNemesisMod {
                 WatchdogService.getInstance().start();
             }
 
-            // 初始化宿敌日常生成系统
-            new NemesisSystem();
             LOGGER.info("👹 宿敌日常生成系统已初始化");
 
             // 初始化入侵事件系统
@@ -204,7 +202,14 @@ public class AdaptiveNemesisMod {
      */
     private void registerEventHandlers() {
         IEventBus eventBus = NeoForge.EVENT_BUS;
-        
+
+        // 注册宿敌日常生成系统
+        // ⚠️ 必须先于敌人强化处理器注册：
+        // 同一个 EntityJoinLevelEvent 中，宿敌转化（打宿敌标记）需先于自适应缩放执行，
+        // 铁魔法兼容层才能识别宿敌并应用法术抗性/强度加成；
+        // 若顺序颠倒，宿敌会被当作普通怪处理而拿不到法术类加成。
+        new NemesisSystem();
+
         // 注册玩家强度评估器
         eventBus.register(PlayerStrengthEvaluator.getInstance());
         
