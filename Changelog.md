@@ -2,7 +2,18 @@
 
 ---
 
-## v1.0.16 (2026-08-29)
+## v1.0.16 (2026-08-30)
+
+### 功能：宿敌自动消失
+
+- `NemesisConfig.java`: 新增 `ENABLE_NEMESIS_AUTO_DISAPPEAR`（是否启用）、`NEMESIS_AUTO_DISAPPEAR_SECONDS`（存在时间，默认 300 秒/5 分钟）、`NEMESIS_DISAPPEAR_MESSAGE`（消失时发送提示）三个配置项
+- `NemesisSystem.java`: 添加 `nemesisSpawnTimes` Map 追踪每个宿敌的生成时间戳，新增 `onEntityTick()` 定期轮询检查，存活时间超过配置值后自动调用 `discard()` 移除实体
+- `NemesisSystem.java`: 在 `convertToNemesis()` 和 `convertToNemesisManual()` 中记录宿敌生成时间，确保命令召唤的宿敌同样受自动消失功能控制
+- `zh_cn.json` / `en_us.json`: 新增 `adaptive_nemesis.nemesis.disappear` 翻译键（中文："%s 已经消失了..."，英文："%s has disappeared..."）
+- **效果**：宿敌在自然生成或被命令召唤后，经过指定时间自动从世界中消失，避免长期留存造成性能负担或游戏体验失衡
+
+---
+
 
 ### 修复：配置类型改为 SERVER，解决联机时服务端配置不生效
 

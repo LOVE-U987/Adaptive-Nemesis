@@ -15,7 +15,10 @@ import net.minecraft.world.entity.player.Player;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.event.entity.EntityJoinLevelEvent;
+import net.neoforged.neoforge.event.tick.EntityTickEvent;
 
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Random;
 
 /**
@@ -47,6 +50,13 @@ public class NemesisSystem {
 
     private final NemesisNameGenerator nameGenerator;
     private final Random random;
+    
+    /**
+     * 宿敌生成时间追踪
+     * 记录每个宿敌的生成时间戳（用于自动消失功能）
+     * Key: 实体 UUID (字符串形式), Value: 生成时间戳 (毫秒)
+     */
+    private final Map<String, Long> nemesisSpawnTimes;
 
     /**
      * 构造函数
@@ -55,6 +65,7 @@ public class NemesisSystem {
     public NemesisSystem() {
         this.nameGenerator = new NemesisNameGenerator();
         this.random = new Random();
+        this.nemesisSpawnTimes = new HashMap<>();
         NeoForge.EVENT_BUS.register(this);
     }
 
@@ -172,6 +183,10 @@ public class NemesisSystem {
 
         // 打上宿敌标记，供铁魔法等兼容层识别（仅宿敌应用法术抗性/强度加成）
         monster.getPersistentData().putBoolean(NEMESIS_TAG, true);
+        
+        // 记录生成时间（用于自动消失功能）
+        String entityUuid = monster.getUUID().toString();
+        nemesisSpawnTimes.put(entityUuid, System.currentTimeMillis());
 
         monster.addEffect(new MobEffectInstance(MobEffects.GLOWING, Integer.MAX_VALUE));
 
@@ -279,9 +294,77 @@ public class NemesisSystem {
 
         // 打上宿敌标记，供铁魔法等兼容层识别（仅宿敌应用法术抗性/强度加成）
         monster.getPersistentData().putBoolean(NEMESIS_TAG, true);
+        
+        // 记录生成时间（用于自动消失功能）
+        String entityUuid = monster.getUUID().toString();
+        nemesisSpawnTimes.put(entityUuid, System.currentTimeMillis());
 
         monster.addEffect(new MobEffectInstance(MobEffects.GLOWING, Integer.MAX_VALUE));
 
         return true;
+    }
+    
+    /**
+     * 实体tick事件处理
+     * 定期检查宿敌是否存在时间过长，如果是则将其从世界中移除
+     * 
+     * @param event 实体 tick 事件
+     */
+    @SubscribeEvent
+    public void onEntityTick(EntityTickEvent.Post event) {
+        if (!Config.NEMESIS.ENABLE_NEMESIS_AUTO_DISAPPEAR.get() || event.getEntity().level().isClientSide()) {
+            return;
+        }
+        
+        if (!(event.getEntity() instanceof Monster monster)) {
+            return;
+        }
+        
+        // 检查是否为宿敌
+        if (!monster.getPersistentData().getBoolean(NEMESIS_TAG)) {
+            return;
+        }
+        
+        String entityUuid = event.getEntity().getUUID().toString();
+        
+        // 如果未记录生成时间，则记录当前时间
+        if (!nemesisSpawnTimes.containsKey(entityUuid)) {
+            nemesisSpawnTimes.put(entityUuid, System.currentTimeMillis());
+            return;
+        }
+        
+        long spawnTime = nemesisSpawnTimes.get(entityUuid);
+        long currentTime = System.currentTimeMillis();
+        long elapsedSeconds = (currentTime - spawnTime) / 1000;
+        
+        int disappearSeconds = Config.NEMESIS.NEMESIS_AUTO_DISAPPEAR_SECONDS.get();
+        
+        // 如果存活时间超过配置值，移除宿敌
+        if (elapsedSeconds >= disappearSeconds) {
+            if (Config.NEMESIS.NEMESIS_DISAPPEAR_MESSAGE.get()) {
+                Player nearestPlayer = event.getEntity().level().getNearestPlayer(event.getEntity(), 32.0);
+                if (nearestPlayer != null) {
+                    Component disappearMessage = Component.translatable("adaptive_nemesis.nemesis.disappear")
+                        .append(" ")
+                        .append(monster.getDisplayName())
+                        .withStyle(ChatFormatting.GRAY);
+                    nearestPlayer.sendSystemMessage(disappearMessage);
+                }
+            }
+            
+            // 从追踪 map 中移除
+            nemesisSpawnTimes.remove(entityUuid);
+            
+            // 移除实体
+            event.getEntity().discard();
+            
+            if (Config.ENABLE_DEBUG_LOG.get()) {
+                AdaptiveNemesisMod.LOGGER.debug(
+                    "宿敌自动消失：{} 存活时间：{} 秒",
+                    monster.getType().getDescriptionId(),
+                    elapsedSeconds
+                );
+            }
+        }
     }
 }

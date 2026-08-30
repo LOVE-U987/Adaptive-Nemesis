@@ -622,6 +622,7 @@
   "adaptive_nemesis.invasion.nether.name": "下界军团",
   "adaptive_nemesis.invasion.boss_name": "巨人 (BOSS)",
   "adaptive_nemesis.nemesis.appearance_warning": "⚠ 宿敌出现！",
+  "adaptive_nemesis.nemesis.disappear": "%s 已经消失了...",
   "adaptive_nemesis.nemesis.name.format": "%s%s",
   "adaptive_nemesis.nemesis.name.prefix.melee.0": "近战克星",
   "adaptive_nemesis.nemesis.name.prefix.melee.1": "战神",

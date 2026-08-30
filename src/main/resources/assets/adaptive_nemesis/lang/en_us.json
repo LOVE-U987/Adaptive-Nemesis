@@ -622,6 +622,7 @@
   "adaptive_nemesis.invasion.nether.name": "Nether Legion",
   "adaptive_nemesis.invasion.boss_name": "Giant (BOSS)",
   "adaptive_nemesis.nemesis.appearance_warning": "⚠ Nemesis appeared!",
+  "adaptive_nemesis.nemesis.disappear": "%s has disappeared...",
   "adaptive_nemesis.nemesis.name.format": "%s%s",
   "adaptive_nemesis.nemesis.name.prefix.melee.0": "Melee Bane",
   "adaptive_nemesis.nemesis.name.prefix.melee.1": "War God",

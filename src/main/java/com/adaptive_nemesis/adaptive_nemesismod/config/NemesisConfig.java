@@ -79,6 +79,23 @@ public class NemesisConfig {
      */
     public final ModConfigSpec.BooleanValue NEMESIS_REQUIRE_ATTACK_DAMAGE;
 
+    /**
+     * 是否启用宿敌自动消失功能
+     * 开启后，宿敌在存在指定时间后自动从世界中消失
+     */
+    public final ModConfigSpec.BooleanValue ENABLE_NEMESIS_AUTO_DISAPPEAR;
+
+    /**
+     * 宿敌存在时间（秒）
+     * 宿敌生成后经过此时间会自动消失，仅当 ENABLE_NEMESIS_AUTO_DISAPPEAR 为 true 时生效
+     */
+    public final ModConfigSpec.IntValue NEMESIS_AUTO_DISAPPEAR_SECONDS;
+
+    /**
+     * 宿敌消失时是否向附近玩家发送提示消息
+     */
+    public final ModConfigSpec.BooleanValue NEMESIS_DISAPPEAR_MESSAGE;
+
     public NemesisConfig(ModConfigSpec.Builder builder) {
         builder.push("nemesis");
         
@@ -123,6 +140,15 @@ public class NemesisConfig {
 
         NEMESIS_REQUIRE_ATTACK_DAMAGE = builder.comment("宿敌转化是否要求目标具有攻击力属性，缺失时跳过转化")
             .define("nemesisRequireAttackDamage", true);
+        
+        ENABLE_NEMESIS_AUTO_DISAPPEAR = builder.comment("是否启用宿敌自动消失功能，开启后宿敌会在存在指定时间后自动消失")
+            .define("enableNemesisAutoDisappear", true);
+        
+        NEMESIS_AUTO_DISAPPEAR_SECONDS = builder.comment("宿敌存在时间 (秒),仅当 enableNemesisAutoDisappear 为 true 时生效")
+            .defineInRange("nemesisAutoDisappearSeconds", 300, 60, 3600);
+        
+        NEMESIS_DISAPPEAR_MESSAGE = builder.comment("宿敌消失时是否向附近玩家发送提示消息")
+            .define("nemesisDisappearMessage", true);
         
         builder.pop();
     }
