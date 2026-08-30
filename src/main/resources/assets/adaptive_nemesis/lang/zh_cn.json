@@ -9,6 +9,7 @@
   "adaptive_nemesis.config.subtitle": "自适应难度平衡系统",
   "adaptive_nemesis.config.saved": "配置已修改，将自动保存",
   "adaptive_nemesis.config.scroll_hint": "使用鼠标滚轮滚动查看更多选项",
+  "adaptive_nemesis.config.readonly_hint": "服务器配置为只读，请在服务端修改并重载",
   "adaptive_nemesis.config.edit.char_count": "个字符",
   "adaptive_nemesis.config.click_to_edit": "[点击编辑]",
   "adaptive_nemesis.config.value.on": "开启",
@@ -695,5 +696,11 @@
   "adaptive_nemesis.profile.bonus.speed": "速度+%s%%",
   "adaptive_nemesis.profile.bonus.health": "生命+%s%%",
   "adaptive_nemesis.command.test.unit_chunks": "%s 区块",
-  "adaptive_nemesis.command.test.unit_minutes": "%s 分钟"
+  "adaptive_nemesis.command.test.unit_minutes": "%s 分钟",
+  "adaptive_nemesis.invasion.cooldown_warning": "冷却中！还有 {} 分钟 {} 秒后可再次触发入侵",
+  "adaptive_nemesis.invasion.cooldown_warning_minutes": "冷却中！还有 {} 分钟后可再次触发入侵",
+  "adaptive_nemesis.invasion.cooldown_warning_seconds": "冷却中！还有 {} 秒后可再次触发入侵",
+  "adaptive_nemesis.config.error.no_player.title": "无法打开配置",
+  "adaptive_nemesis.config.error.no_player.message": "需要在游戏内才能修改配置",
+  "adaptive_nemesis.config.error.no_player.close": "关闭"
 }

@@ -108,6 +108,11 @@ public class BossDamageCapHandler {
      */
     @SubscribeEvent
     public void onLivingIncomingDamage(LivingIncomingDamageEvent event) {
+        // 检查 Boss 识别服务是否已初始化 (配置可能还未加载完成)
+        if (!BossIdentificationService.isInitialized()) {
+            return;
+        }
+
         // 检查是否启用Boss伤害上限
         if (!Config.ENABLE_BOSS_DAMAGE_CAP.get()) {
             return;

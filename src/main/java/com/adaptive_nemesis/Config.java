@@ -184,8 +184,12 @@ public class Config {
     /**
      * 保存配置到文件
      * 在配置界面修改后调用，确保修改持久化
+     * 联机客户端加载的是只读的 SERVER 配置，不允许写文件，直接返回
      */
     public static void saveToFile() {
+        if (!isServerSide()) {
+            return;
+        }
         try {
             if (MOD_CONFIG != null) {
                 MOD_CONFIG.getLoadedConfig().save();
@@ -197,6 +201,26 @@ public class Config {
             }
         } catch (Exception e) {
             LOGGER.error("保存配置文件失败", e);
+        }
+    }
+
+    /**
+     * 当前是否为服务端侧
+     * dedicated server 直接视为服务端；客户端中单机集成服务器（isSingleplayer==true）共享同一进程配置、可写，
+     * 联机(false)加载的是只读的 SERVER 配置。
+     *
+     * @return true 表示可读写服务端配置，false 表示只读的联机客户端
+     */
+    public static boolean isServerSide() {
+        // dedicated server 直接视为服务端
+        if (net.neoforged.fml.loading.FMLLoader.getDist().isDedicatedServer()) {
+            return true;
+        }
+        // 客户端：单机集成服务器（isSingleplayer()==true）可写；联机(false)只读
+        try {
+            return net.minecraft.client.Minecraft.getInstance().isSingleplayer();
+        } catch (Throwable ignored) {
+            return true; // 无法访问 Minecraft 时按服务端处理
         }
     }
 

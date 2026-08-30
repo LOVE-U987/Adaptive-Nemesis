@@ -122,6 +122,40 @@ public class AdaptiveNemesisConfigScreen extends Screen {
 
     @Override
     protected void init() {
+        // 检查玩家是否在游戏内
+        if (this.minecraft.player == null || this.minecraft.level == null) {
+            // 玩家未进入游戏，显示提示并关闭界面
+            net.minecraft.client.gui.screens.Screen screen = new net.minecraft.client.gui.screens.Screen(Component.translatable("adaptive_nemesis.config.error.no_player.title")) {
+                @Override
+                protected void init() {
+                    super.init();
+                    
+                    // 添加关闭按钮
+                    this.addRenderableWidget(new Button.Builder(
+                        Component.translatable("adaptive_nemesis.config.error.no_player.close"),
+                        button -> {
+                            AdaptiveNemesisConfigScreen.this.minecraft.setScreen(AdaptiveNemesisConfigScreen.this.parent);
+                        }
+                    ).bounds(width / 2 - 100, height / 2 + 40, 200, 20).build());
+                    
+                    // 显示提示信息（使用简单文本渲染）
+                }
+                
+                @Override
+                public void render(net.minecraft.client.gui.GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTicks) {
+                    super.render(guiGraphics, mouseX, mouseY, partialTicks);
+                    
+                    // 居中显示提示信息
+                    String message = Component.translatable("adaptive_nemesis.config.error.no_player.message").getString();
+                    int messageWidth = this.font.width(message);
+                    guiGraphics.drawString(this.font, message, this.width / 2 - messageWidth / 2, this.height / 2 - 20, 
+                        0xFFFFFF, true);
+                }
+            };
+            this.minecraft.setScreen(screen);
+            return;
+        }
+        
         this.configWidgets.clear();
         this.configEntries.clear();
         this.scrollOffset = 0;

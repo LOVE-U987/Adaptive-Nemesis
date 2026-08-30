@@ -5,6 +5,7 @@ import java.util.EnumMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Random;
 import java.util.Set;
 import java.util.regex.Pattern;
@@ -116,9 +117,16 @@ public class EnchantmentScalingHandler {
      * @param level 服务端世界，用于获取注册表访问器
      */
     private synchronized void buildCaches(ServerLevel level) {
-        if (cachesBuilt) {
-            return;
-        }
+        // 强制重置所有缓存，防止服务器重启时使用失效的 Holder 引用
+        cachesBuilt = false;
+        modEquipmentCache = null;
+        modMainHandWeaponsCache = null;
+        modShieldsCache = null;
+        modOffHandWeaponsCache = null;
+        modEnchantmentCache = null;
+        
+        // 不再需要检查，因为我们总是强制重建
+        // if (cachesBuilt) { return; }
 
         Registry<Item> itemRegistry = level.registryAccess().registryOrThrow(Registries.ITEM);
         Registry<Enchantment> enchantmentRegistry = level.registryAccess().registryOrThrow(Registries.ENCHANTMENT);
@@ -229,6 +237,22 @@ public class EnchantmentScalingHandler {
             INSTANCE = new EnchantmentScalingHandler();
         }
         return INSTANCE;
+    }
+
+    /**
+     * 重置所有缓存，用于服务器重启时清除可能失效的 Holder 引用
+     * 这是修复"小退后第二次进存档连接中断"的关键方法
+     */
+    public static synchronized void resetCaches() {
+        if (INSTANCE != null) {
+            INSTANCE.cachesBuilt = false;
+            INSTANCE.modEquipmentCache = null;
+            INSTANCE.modMainHandWeaponsCache = null;
+            INSTANCE.modShieldsCache = null;
+            INSTANCE.modOffHandWeaponsCache = null;
+            INSTANCE.modEnchantmentCache = null;
+            AdaptiveNemesisMod.LOGGER.debug("🗑️ EnchantmentScalingHandler 缓存已重置");
+        }
     }
 
     /**
@@ -806,13 +830,31 @@ public class EnchantmentScalingHandler {
             int level = random.nextInt(maxLevel) + 1;
 
             try {
-                stack.enchant(enchantHolder, level);
+                // 验证 holder 是否有效且与服务器注册表匹配
+                if (!enchantHolder.isBound()) {
+                    if (Config.ENABLE_DEBUG_LOG.get()) {
+                        AdaptiveNemesisMod.LOGGER.debug("⛐ 核心附魔 holder 未关联, 跳过：{}", enchantKey.location());
+                    }
+                    continue;
+                }
+                
+                // 双重检查：验证 ResourceKey 是否在服务器注册表中存在
+                // 这是为了防止网络编码时客户端找不到附魔 ID
+                Holder.Reference<Enchantment> verifiedHolder = enchantmentRegistry.getHolder(enchantKey).orElse(null);
+                if (verifiedHolder == null) {
+                    if (Config.ENABLE_DEBUG_LOG.get()) {
+                        AdaptiveNemesisMod.LOGGER.debug("⛐ 核心附魔 ResourceKey 在服务器注册表中不存在, 跳过：{}", enchantKey.location());
+                    }
+                    continue;
+                }
+                
+                stack.enchant(verifiedHolder, level);
             } catch (Exception e) {
                 // 附魔冲突或不兼容时静默跳过
                 if (Config.ENABLE_DEBUG_LOG.get()) {
                     AdaptiveNemesisMod.LOGGER.debug(
-                        "⛔ 核心附魔应用失败: {} (level={}), 原因: {}",
-                        enchantHolder.key().location(), level, e.getMessage()
+                        "⛐ 核心附魔应用失败：{} (level={}), 原因：{}",
+                        enchantKey.location(), level, e.getMessage()
                     );
                 }
             }
@@ -842,7 +884,7 @@ public class EnchantmentScalingHandler {
     private void applyModCompatibleEnchantments(ItemStack stack, ServerLevel serverLevel, int maxLevel) {
         buildCaches(serverLevel);
 
-        List<Holder.Reference<Enchantment>> candidates = collectCompatibleEnchantments(stack);
+        List<Holder.Reference<Enchantment>> candidates = collectCompatibleEnchantments(stack, serverLevel);
         if (candidates.isEmpty()) {
             return;
         }
@@ -854,6 +896,14 @@ public class EnchantmentScalingHandler {
             Holder.Reference<Enchantment> holder = candidates.remove(index);
             int level = 1 + random.nextInt(Math.max(1, maxLevel / 2));
             try {
+                // 验证 holder 是否有效
+                if (!holder.isBound()) {
+                    if (Config.ENABLE_DEBUG_LOG.get()) {
+                        AdaptiveNemesisMod.LOGGER.debug("⛔ 模组附魔 holder 未关联，跳过：{}", holder.key().location());
+                    }
+                    continue;
+                }
+                
                 stack.enchant(holder, level);
             } catch (Exception e) {
                 if (Config.ENABLE_DEBUG_LOG.get()) {
@@ -872,20 +922,39 @@ public class EnchantmentScalingHandler {
      * @param stack 装备物品
      * @return 可用附魔候选列表
      */
-    private List<Holder.Reference<Enchantment>> collectCompatibleEnchantments(ItemStack stack) {
+    private List<Holder.Reference<Enchantment>> collectCompatibleEnchantments(ItemStack stack, ServerLevel serverLevel) {
+        Registry<Enchantment> enchantmentRegistry = serverLevel.registryAccess()
+            .registryOrThrow(Registries.ENCHANTMENT);
+        
         // 收集已有附魔用于冲突检查
-        Set<Enchantment> existingEnchants = new HashSet<>();
+        // ⚠️ 使用 ResourceLocation 而不是 Enchantment 对象作为 key
+        // 因为 Enchantment 没有正确重写 hashCode/equals，且 Holder 可能在网络传输中失去绑定
+        Set<ResourceLocation> existingEnchants = new HashSet<>();
         for (Holder<Enchantment> holder : stack.getEnchantments().keySet()) {
             if (holder.isBound()) {
-                existingEnchants.add(holder.value());
+                // 直接从 holder 获取 ResourceKey
+                Optional<ResourceKey<Enchantment>> keyOpt = holder.unwrapKey();
+                if (keyOpt.isPresent()) {
+                    ResourceLocation id = keyOpt.get().location();
+                    existingEnchants.add(id);
+                }
             }
         }
 
         List<Holder.Reference<Enchantment>> candidates = new ArrayList<>();
         for (Holder.Reference<Enchantment> holder : modEnchantmentCache) {
+            // ⚠️ 检查 holder 是否保持绑定，防止序列化解绑后导致网络编码失败
+            if (!holder.isBound()) {
+                if (Config.ENABLE_DEBUG_LOG.get()) {
+                    AdaptiveNemesisMod.LOGGER.debug("⚠️ 跳过失去绑定的附魔 Holder");
+                }
+                continue;
+            }
+            
             try {
                 Enchantment enchant = holder.value();
-                if (!enchant.canEnchant(stack) || existingEnchants.contains(enchant)) {
+                ResourceLocation enchantId = holder.key().location();
+                if (!enchant.canEnchant(stack) || existingEnchants.contains(enchantId)) {
                     continue;
                 }
                 candidates.add(holder);
@@ -893,7 +962,7 @@ public class EnchantmentScalingHandler {
                 // 跳过有问题的附魔
                 if (Config.ENABLE_DEBUG_LOG.get()) {
                     AdaptiveNemesisMod.LOGGER.debug(
-                        "⛔ 模组附魔候选检查失败: {}, 原因: {}",
+                        "⛔ 模组附魔候选检查失败：{}, 原因：{}",
                         holder.key().location(), e.getMessage()
                     );
                 }

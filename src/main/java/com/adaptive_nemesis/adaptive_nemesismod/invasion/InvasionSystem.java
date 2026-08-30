@@ -84,6 +84,9 @@ public class InvasionSystem {
     /** 是否已完成首次入侵 */
     private final Map<UUID, Boolean> hasCompletedFirstInvasion = new HashMap<>();
 
+
+    /** 玩家入侵冷却时间记录（UUID -> 冷却结束时间戳） */
+    private final Map<UUID, Long> playerInvasionCooldowns = new HashMap<>();
     /** 随机数生成器 */
     private final Random random = new Random();
 
@@ -526,7 +529,9 @@ public class InvasionSystem {
         Holder.Reference<net.minecraft.world.item.enchantment.Enchantment> holder =
             enchantmentRegistry.getHolder(ResourceKey.create(Registries.ENCHANTMENT,
                 ResourceLocation.fromNamespaceAndPath("minecraft", "frost_walker"))).orElse(null);
-        if (holder == null) {
+        if (holder == null || !holder.isBound()) {
+            AdaptiveNemesisMod.LOGGER.warn("⛔ Frost Walker Holder 无效，无法为 {} 装备冰霜行者", 
+                EntityType.getKey(mob.getType()));
             return;
         }
         ItemStack boots = new ItemStack(Items.IRON_BOOTS);
@@ -859,6 +864,19 @@ public class InvasionSystem {
             return false;
         }
 
+        // 检查玩家入侵冷却时间
+        if (player instanceof ServerPlayer serverPlayer) {
+            Long cooldownEndTime = playerInvasionCooldowns.get(serverPlayer.getUUID());
+            if (cooldownEndTime != null && System.currentTimeMillis() < cooldownEndTime) {
+                long remainingSeconds = (cooldownEndTime - System.currentTimeMillis()) / 1000;
+                if (Config.ENABLE_DEBUG_LOG.get()) {
+                    AdaptiveNemesisMod.LOGGER.debug("[入侵] 玩家 {} 入侵冷却中，剩余{}秒", 
+                        serverPlayer.getName().getString(), remainingSeconds);
+                }
+                return false;
+            }
+        }
+
         if (activeInvasions.containsKey(player.getUUID())) {
             return false;
         }
@@ -896,6 +914,16 @@ public class InvasionSystem {
         notifyAllPlayersInArea(invasion, Component.translatable(
             "adaptive_nemesis.invasion.triggered"
         ).withStyle(ChatFormatting.DARK_RED));
+
+        // 设置玩家入侵冷却时间
+        if (player instanceof ServerPlayer serverPlayer) {
+            long cooldownMinutes = Config.INVASION.INVASION_COOLDOWN_MINUTES.get();
+            long cooldownEndTime = System.currentTimeMillis() + (cooldownMinutes * 60 * 1000);
+            playerInvasionCooldowns.put(serverPlayer.getUUID(), cooldownEndTime);
+            if (Config.ENABLE_DEBUG_LOG.get()) {
+                AdaptiveNemesisMod.LOGGER.debug("[入侵] 玩家 {} 入侵冷却时间已设置：{}分钟", serverPlayer.getName().getString(), cooldownMinutes);
+            }
+        }
 
         if (Config.ENABLE_DEBUG_LOG.get()) {
             AdaptiveNemesisMod.LOGGER.debug("[入侵] 玩家 {} 触发了入侵事件，共{}波", player.getName().getString(), waveCount);
@@ -1085,8 +1113,11 @@ public class InvasionSystem {
             "adaptive_nemesis.invasion.defeated"
         ).withStyle(ChatFormatting.GREEN));
 
+        // 清除玩家入侵冷却时间，允许再次触发
+        UUID playerId = invasion.getPlayerUUID();
+        playerInvasionCooldowns.remove(playerId);
         if (Config.ENABLE_DEBUG_LOG.get()) {
-            AdaptiveNemesisMod.LOGGER.debug("[入侵] 胜利: 玩家={}", invasion.getPlayerName());
+            AdaptiveNemesisMod.LOGGER.debug("[入侵] 胜利：玩家={}, 冷却时间已清除", invasion.getPlayerName());
         }
     }
 

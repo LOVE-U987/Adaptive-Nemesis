@@ -130,6 +130,11 @@ public class ModEventHandler {
 
         // 清理缓存数据
         PlayerStrengthEvaluator.getInstance().clearAllCache();
+        
+        // ⚠️ 关键修复：重置 EnchantmentScalingHandler 的缓存状态
+        // 防止服务器重启时使用失效的 Holder.Reference<Enchantment> 引用
+        // 这会导致第二次进存档时网络编码失败
+        com.adaptive_nemesis.adaptive_nemesismod.enemy.EnchantmentScalingHandler.resetCaches();
 
         // 停止看门狗服务
         WatchdogService.getInstance().stop();

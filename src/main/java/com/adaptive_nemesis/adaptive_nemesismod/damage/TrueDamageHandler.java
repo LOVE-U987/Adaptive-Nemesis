@@ -33,6 +33,27 @@ public class TrueDamageHandler {
      * 单例实例
      */
     private static TrueDamageHandler INSTANCE;
+    
+    /**
+     * 初始化状态标记
+     */
+    private static boolean initialized = false;
+    
+    /**
+     * 标记为已初始化（在配置加载后调用）
+     */
+    public static void markInitialized() {
+        initialized = true;
+    }
+    
+    /**
+     * 检查是否已初始化
+     * 
+     * @return 如果已初始化返回 true，否则返回 false
+     */
+    public static boolean isInitialized() {
+        return initialized;
+    }
 
     /**
      * 私有构造函数 - 单例模式
@@ -58,6 +79,11 @@ public class TrueDamageHandler {
      */
     @SubscribeEvent
     public void onLivingIncomingDamage(LivingIncomingDamageEvent event) {
+        // 检查是否已初始化 (配置可能还未加载完成)
+        if (!isInitialized()) {
+            return;
+        }
+        
         // 检查是否启用真实伤害
         if (!Config.ENABLE_TRUE_DAMAGE.get()) {
             return;
