@@ -153,6 +153,8 @@ public class Config {
     public static final ModConfigSpec.BooleanValue ENABLE_NEMESIS_AUTO_DISAPPEAR = NEMESIS.ENABLE_NEMESIS_AUTO_DISAPPEAR;
     public static final ModConfigSpec.IntValue NEMESIS_AUTO_DISAPPEAR_SECONDS = NEMESIS.NEMESIS_AUTO_DISAPPEAR_SECONDS;
     public static final ModConfigSpec.BooleanValue NEMESIS_DISAPPEAR_MESSAGE = NEMESIS.NEMESIS_DISAPPEAR_MESSAGE;
+    public static final ModConfigSpec.BooleanValue NEMESIS_LOOT_ENABLED = NEMESIS.NEMESIS_LOOT_ENABLED;
+    public static final ModConfigSpec.ConfigValue<String> NEMESIS_LOOT_TABLES = NEMESIS.NEMESIS_LOOT_TABLES;
 
     public static final ModConfigSpec.BooleanValue ENABLE_INVASION = INVASION.ENABLE_INVASION;
     public static final ModConfigSpec.DoubleValue INVASION_TRIGGER_CHANCE = INVASION.INVASION_TRIGGER_CHANCE;

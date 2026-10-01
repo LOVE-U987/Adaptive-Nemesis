@@ -82,8 +82,19 @@ public class EnemyScalingHandler {
      * 存储缩放前的原始值，确保每次缩放都从原始值开始
      */
     private static final String ORIGINAL_PREFIX = "an_original_";
-    private static final String ORIGINAL_HEALTH_TAG = ORIGINAL_PREFIX + "health";
-    private static final String ORIGINAL_DAMAGE_TAG = ORIGINAL_PREFIX + "damage";
+
+    /**
+     * 原始血量NBT标签键 - 存储缩放前的原始基础血量
+     * public 以便 {@link com.adaptive_nemesis.adaptive_nemesismod.boss.BossDamageCapHandler}
+     * 等其他处理器读取，确保 Boss 血量计算基于同一原始值，避免倍率双重叠加
+     */
+    public static final String ORIGINAL_HEALTH_TAG = ORIGINAL_PREFIX + "health";
+
+    /**
+     * 原始伤害NBT标签键 - 存储缩放前的原始基础伤害
+     * public 以便其他处理器读取，语义同 {@link #ORIGINAL_HEALTH_TAG}
+     */
+    public static final String ORIGINAL_DAMAGE_TAG = ORIGINAL_PREFIX + "damage";
     private static final String ORIGINAL_ARMOR_TAG = ORIGINAL_PREFIX + "armor";
     private static final String ORIGINAL_TOUGHNESS_TAG = ORIGINAL_PREFIX + "toughness";
     private static final String ORIGINAL_SPEED_TAG = ORIGINAL_PREFIX + "speed";
@@ -922,7 +933,7 @@ public class EnemyScalingHandler {
      * @param fallbackValue 查询失败时的回退值
      * @return 实体类型的默认属性值
      */
-    private double getDefaultAttributeBase(Mob mob, Holder<Attribute> attribute, double fallbackValue) {
+    public static double getDefaultAttributeBase(LivingEntity mob, Holder<Attribute> attribute, double fallbackValue) {
         String attributeKey = attribute.getRegisteredName();
         String mobTypeDesc = mob.getType().getDescriptionId();
 

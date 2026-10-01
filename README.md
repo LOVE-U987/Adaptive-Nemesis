@@ -278,6 +278,9 @@ No code required. Just JSON and spite.
 - `data/<namespace>/world_stages/<name>.json` — Stage rules, caps, invasion params
 - `data/<namespace>/invasions/<name>.json` — Custom invasions: waves, enemies, effects, rewards
 - `data/<namespace>/nemesis/<name>.json` — Nemesis profiles and behaviors
+- `data/<namespace>/nemesis_loot/<name>.json` — Extra loot tables dropped by every nemesis on death
+
+> 🎁 **Nemesis bonus loot**: set `nemesisLootEnabled = true` in the config to make each nemesis roll the configured loot tables and drop the results where it dies. Tables come from `nemesisLootTables` (comma-separated IDs) plus any `nemesis_loot` datapack JSONs — both merged together. A ready-made example table ships with the mod (`adaptive_nemesis:nemesis_example_loot`).
 
 Hot-reloaded with F3+T.
 

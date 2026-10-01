@@ -2,6 +2,36 @@
 
 ---
 
+## v1.0.17 (2026-10-02)
+
+### 修复：末影龙带冠军词条（Champions 2.10.1.2）生成时血量异常（血条不足 10%）
+
+**问题现象**：MC 1.20.1 + Adaptive Nemesis 最新 + Champions 2.10.1.2 环境下，末影龙在拥有冠军词条生成时血量异常，只有最大生命值 10% 不到。
+
+**根因分析**（Champions 2.10.1.2 源码级确认）：
+- Champions 监听 `EntityJoinLevelEvent`（`EventPriority.HIGHEST`，先于 AN 的 NORMAL 优先级执行），通过数据包 `modifier_setting`（默认 `minecraft:max_health`：value=0.35、MULTIPLY_TOTAL，随等级 growthFactor 放大）给实体最大生命值挂 permanent attribute modifier
+- AN 的 `BossDamageCapHandler.applyBossBuffs` 设置 Boss 当前血量时使用 `setHealth((float) newMaxHealth)`——该值仅为基础值，不含第三方模组 modifier，导致血量/最大生命值比例 = 1/(1+0.35×等级)，词条等级越高血条越低
+- 兜底的"延迟填血"逻辑只存在于 `EnemyScalingHandler.applyHealthBonus`，当自适应缩放被跳过（附近无玩家/实体黑名单/缩放超时）时无任何兜底，血量比例失衡固化到存档
+
+**修复方案**：
+- `BossDamageCapHandler.java`: Boss 血量设置改为 `setHealth((float) healthAttr.getValue())`——含第三方模组永久 modifier 的实际最大生命值，血条比例恢复 100% – 新增独立的延迟填血兜底（下一 tick 将血量同步到实际最大值）
+- `EnemyScalingHandler.java`: `ORIGINAL_HEALTH_TAG` / `ORIGINAL_DAMAGE_TAG` 改为 public，`getDefaultAttributeBase` 改为 public static 并接受 LivingEntity（1.21.1 为 `Holder<Attribute>`），供 Boss 侧复用统一"真·原始值"判定口径
+
+### 修复：Boss 血量/伤害倍率双重叠加（影响所有 Boss）
+
+- `BossDamageCapHandler.java`: 原始值判定优先级调整为 `BOSS_ORIGINAL_HEALTH_TAG`（旧存档兼容）→ `EnemyScalingHandler.ORIGINAL_HEALTH_TAG`（缩放前记录的真原始值）→ `DefaultAttributes` 查询实体类型默认值 → 当前基础值兜底（伤害同理）
+- 此前直接读取当前 `baseValue` 作为原始值——而 EnemyScalingHandler 可能已先执行并把基础值改为缩放后的值，公式 `newMaxHealth = originalHealth × existingScaleMultiplier × bossMultiplier` 中 AN 倍率被应用两次，导致末影龙/凋灵等 Boss 血量数值双重放大
+
+### 功能：宿敌额外自定义掉落战利品表
+
+- `NemesisSystem.java`: 新增 `isNemesis()` 静态识别方法（基于已有 `NEMESIS_TAG` 标记）+ `LivingDeathEvent` 处理——宿敌死亡时 roll 全部配置的战利品表并将产物掉落在死亡位置（原版掉落基础上额外掉落），单表异常不影响其他表
+- `NemesisLootDataLoader.java`（新增）: 数据包加载器，从 `data/<namespace>/nemesis_loot/<name>.json` 读取 `loot_tables` 数组，多文件自动合并去重，支持 F3+T 热重载
+- `NemesisConfig.java`: 新增 `nemesisLootEnabled`（是否启用，默认 false）与 `nemesisLootTables`（逗号分隔战利品表 ID，默认空）两个配置项，toml 配置与数据包配置合并生效
+- 内置示例：`data/adaptive_nemesis/loot_tables/nemesis_example_loot.json`（示例掉落表：钻石/绿宝石/金苹果/附魔金苹果）+ `data/adaptive_nemesis/nemesis_loot/example.json`（引用示例表）；用户数据包参考示例见 `examples/datapack/data/adaptive_nemesis/nemesis_loot/example.json`
+- **使用方式**：配置中开启 `nemesisLootEnabled = true` 即可体验内置示例掉落；进阶用户可配置 `nemesisLootTables` 或编写 `nemesis_loot` 数据包定义自己的掉落表
+
+---
+
 ## v1.0.16 (2026-08-30)
 
 ### 功能：宿敌自动消失

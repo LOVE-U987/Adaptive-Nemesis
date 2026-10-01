@@ -96,6 +96,19 @@ public class NemesisConfig {
      */
     public final ModConfigSpec.BooleanValue NEMESIS_DISAPPEAR_MESSAGE;
 
+    /**
+     * 是否启用宿敌额外自定义掉落
+     * 关闭时宿敌死亡只掉落原版掉落物
+     */
+    public final ModConfigSpec.BooleanValue NEMESIS_LOOT_ENABLED;
+
+    /**
+     * 宿敌额外掉落战利品表 ID 列表（逗号分隔）
+     * 宿敌死亡时 roll 所有配置的战利品表并将产物掉落在死亡位置
+     * 也可通过数据包 data/<namespace>/nemesis_loot/<name>.json 扩展，两者合并生效
+     */
+    public final ModConfigSpec.ConfigValue<String> NEMESIS_LOOT_TABLES;
+
     public NemesisConfig(ModConfigSpec.Builder builder) {
         builder.push("nemesis");
         
@@ -149,7 +162,13 @@ public class NemesisConfig {
         
         NEMESIS_DISAPPEAR_MESSAGE = builder.comment("宿敌消失时是否向附近玩家发送提示消息")
             .define("nemesisDisappearMessage", true);
-        
+
+        NEMESIS_LOOT_ENABLED = builder.comment("是否启用宿敌额外自定义掉落")
+            .define("nemesisLootEnabled", false);
+
+        NEMESIS_LOOT_TABLES = builder.comment("宿敌额外掉落战利品表 ID 列表（逗号分隔），数据包 nemesis_loot 配置会与其合并生效")
+            .define("nemesisLootTables", "");
+
         builder.pop();
     }
 }
