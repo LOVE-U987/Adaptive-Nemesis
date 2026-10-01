@@ -14,6 +14,7 @@ import com.adaptive_nemesis.adaptive_nemesismod.enemy.EnemyScalingHandler;
 import com.adaptive_nemesis.adaptive_nemesismod.enemy.WorldStageManager;
 import com.adaptive_nemesis.adaptive_nemesismod.invasion.InvasionDataLoader;
 import com.adaptive_nemesis.adaptive_nemesismod.memory.NemesisMemorySystem;
+import com.adaptive_nemesis.adaptive_nemesismod.nemesis.NemesisLootDataLoader;
 import com.adaptive_nemesis.adaptive_nemesismod.player.PlayerStrengthEvaluator;
 import com.adaptive_nemesis.adaptive_nemesismod.protection.NewbieProtectionHandler;
 import com.adaptive_nemesis.adaptive_nemesismod.watchdog.WatchdogService;
@@ -105,6 +106,7 @@ public class ModEventHandler {
         event.addListener(InvasionDataLoader.getInstance());
         event.addListener(WorldStageDataLoader.getInstance());
         event.addListener(NemesisDataLoader.getInstance());
+        event.addListener(NemesisLootDataLoader.getInstance());
         AdaptiveNemesisMod.LOGGER.debug("入侵、世界阶段与宿敌数据包加载器已注册");
     }
 

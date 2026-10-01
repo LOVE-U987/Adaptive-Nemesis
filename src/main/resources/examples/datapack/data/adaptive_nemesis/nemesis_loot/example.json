@@ -1,0 +1,6 @@
+{
+  "loot_tables": [
+    "adaptive_nemesis:nemesis_example_loot",
+    "minecraft:chests/simple_dungeon"
+  ]
+}

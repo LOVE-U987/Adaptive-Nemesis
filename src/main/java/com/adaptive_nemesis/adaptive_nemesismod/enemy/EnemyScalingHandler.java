@@ -82,8 +82,19 @@ public class EnemyScalingHandler {
      * 存储缩放前的原始值，确保每次缩放都从原始值开始
      */
     private static final String ORIGINAL_PREFIX = "an_original_";
-    private static final String ORIGINAL_HEALTH_TAG = ORIGINAL_PREFIX + "health";
-    private static final String ORIGINAL_DAMAGE_TAG = ORIGINAL_PREFIX + "damage";
+
+    /**
+     * 原始血量NBT标签键 - 存储缩放前的原始基础血量
+     * public 以便 {@link com.adaptive_nemesis.adaptive_nemesismod.boss.BossDamageCapHandler}
+     * 等其他处理器读取，确保 Boss 血量计算基于同一原始值，避免倍率双重叠加
+     */
+    public static final String ORIGINAL_HEALTH_TAG = ORIGINAL_PREFIX + "health";
+
+    /**
+     * 原始伤害NBT标签键 - 存储缩放前的原始基础伤害
+     * public 以便其他处理器读取，语义同 {@link #ORIGINAL_HEALTH_TAG}
+     */
+    public static final String ORIGINAL_DAMAGE_TAG = ORIGINAL_PREFIX + "damage";
     private static final String ORIGINAL_ARMOR_TAG = ORIGINAL_PREFIX + "armor";
     private static final String ORIGINAL_TOUGHNESS_TAG = ORIGINAL_PREFIX + "toughness";
     private static final String ORIGINAL_SPEED_TAG = ORIGINAL_PREFIX + "speed";
@@ -913,17 +924,19 @@ public class EnemyScalingHandler {
 
     /**
      * 获取实体类型的默认属性基础值
-     * 
+     *
      * 通过 DefaultAttributes 查询该实体类型注册时的默认属性值。
      * 用于 NBT 标记丢失时（如灵魂石抓取后重置）获取真正的原始值，
      * 防止已缩放的高血量被当作"原始值"再次缩放导致指数级爆炸。
+     * public static 以便 {@link com.adaptive_nemesis.adaptive_nemesismod.boss.BossDamageCapHandler}
+     * 等其他处理器复用，统一"真·原始值"的判定口径。
      *
-     * @param mob           目标生物
+     * @param mob           目标生物（LivingEntity，含 Boss 实体）
      * @param attribute     要查询的属性
      * @param fallbackValue 查询失败时的回退值
      * @return 实体类型的默认属性值
      */
-    private double getDefaultAttributeBase(Mob mob, Attribute attribute, double fallbackValue) {
+    public static double getDefaultAttributeBase(LivingEntity mob, Attribute attribute, double fallbackValue) {
         String attributeKey = net.minecraftforge.registries.ForgeRegistries.ATTRIBUTES.getKey(attribute) != null
             ? net.minecraftforge.registries.ForgeRegistries.ATTRIBUTES.getKey(attribute).toString()
             : attribute.toString();

@@ -147,6 +147,8 @@ public class Config {
     public static final ForgeConfigSpec.BooleanValue NEMESIS_NAME_ALWAYS_VISIBLE = NEMESIS.NEMESIS_NAME_ALWAYS_VISIBLE;
     public static final ForgeConfigSpec.ConfigValue<String> NEMESIS_NAME_COLOR = NEMESIS.NEMESIS_NAME_COLOR;
     public static final ForgeConfigSpec.BooleanValue NEMESIS_REQUIRE_ATTACK_DAMAGE = NEMESIS.NEMESIS_REQUIRE_ATTACK_DAMAGE;
+    public static final ForgeConfigSpec.BooleanValue NEMESIS_LOOT_ENABLED = NEMESIS.NEMESIS_LOOT_ENABLED;
+    public static final ForgeConfigSpec.ConfigValue<String> NEMESIS_LOOT_TABLES = NEMESIS.NEMESIS_LOOT_TABLES;
 
     public static final ForgeConfigSpec.BooleanValue ENABLE_INVASION = INVASION.ENABLE_INVASION;
     public static final ForgeConfigSpec.DoubleValue INVASION_TRIGGER_CHANCE = INVASION.INVASION_TRIGGER_CHANCE;

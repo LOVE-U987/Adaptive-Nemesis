@@ -5,6 +5,7 @@ import com.adaptive_nemesis.adaptive_nemesismod.Config;
 import com.adaptive_nemesis.adaptive_nemesismod.enemy.EnemyScalingHandler;
 
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.entity.EntityType;
@@ -350,24 +351,37 @@ public class BossDamageCapHandler {
         }
 
         // 获取或存储原始基础生命值
-        // 优先从 EnemyScalingHandler 的存储值读取（如果它已先执行）
-        // 这样无论两个Handler的执行顺序如何，都能基于同一原始值计算
+        // 🛡️ 修复倍率双重叠加：原始值判定优先级
+        // 1. BOSS_ORIGINAL_HEALTH_TAG —— 此前记录的值（兼容旧存档）
+        // 2. EnemyScalingHandler.ORIGINAL_HEALTH_TAG —— 自适应缩放记录的真原始值
+        // 3. DefaultAttributes 查询实体类型默认值（前两者都缺失时）
+        // 4. 当前基础值兜底
+        // 此前直接读取当前 baseValue，而 EnemyScalingHandler 可能已先执行并把基础值改为
+        // 缩放后的值，再乘 existingScaleMultiplier 会导致 AN 倍率被应用两次（数值爆炸）
         double originalHealth;
         if (data.contains(BOSS_ORIGINAL_HEALTH_TAG)) {
             originalHealth = data.getDouble(BOSS_ORIGINAL_HEALTH_TAG);
+        } else if (data.contains(EnemyScalingHandler.ORIGINAL_HEALTH_TAG)) {
+            originalHealth = data.getDouble(EnemyScalingHandler.ORIGINAL_HEALTH_TAG);
+            data.putDouble(BOSS_ORIGINAL_HEALTH_TAG, originalHealth);
         } else {
-            var healthAttr = boss.getAttribute(net.minecraft.world.entity.ai.attributes.Attributes.MAX_HEALTH);
-            originalHealth = (healthAttr != null) ? healthAttr.getBaseValue() : 20.0;
+            var healthAttr0 = boss.getAttribute(net.minecraft.world.entity.ai.attributes.Attributes.MAX_HEALTH);
+            double fallback = (healthAttr0 != null) ? healthAttr0.getBaseValue() : 20.0;
+            originalHealth = EnemyScalingHandler.getDefaultAttributeBase(boss,
+                net.minecraft.world.entity.ai.attributes.Attributes.MAX_HEALTH, fallback);
             data.putDouble(BOSS_ORIGINAL_HEALTH_TAG, originalHealth);
         }
 
-        // 获取或存储原始基础伤害值
+        // 获取或存储原始基础伤害值（判定优先级同上，修复伤害倍率双重叠加）
         double originalDamage;
         if (data.contains(BOSS_ORIGINAL_DAMAGE_TAG)) {
             originalDamage = data.getDouble(BOSS_ORIGINAL_DAMAGE_TAG);
+        } else if (data.contains(EnemyScalingHandler.ORIGINAL_DAMAGE_TAG)) {
+            originalDamage = data.getDouble(EnemyScalingHandler.ORIGINAL_DAMAGE_TAG);
+            data.putDouble(BOSS_ORIGINAL_DAMAGE_TAG, originalDamage);
         } else {
-            var damageAttr = boss.getAttribute(net.minecraft.world.entity.ai.attributes.Attributes.ATTACK_DAMAGE);
-            originalDamage = (damageAttr != null) ? damageAttr.getBaseValue() : 1.0;
+            var damageAttr0 = boss.getAttribute(net.minecraft.world.entity.ai.attributes.Attributes.ATTACK_DAMAGE);
+            originalDamage = (damageAttr0 != null) ? damageAttr0.getBaseValue() : 1.0;
             data.putDouble(BOSS_ORIGINAL_DAMAGE_TAG, originalDamage);
         }
 
@@ -381,7 +395,13 @@ public class BossDamageCapHandler {
         var healthAttr = boss.getAttribute(net.minecraft.world.entity.ai.attributes.Attributes.MAX_HEALTH);
         if (healthAttr != null) {
             healthAttr.setBaseValue(newMaxHealth);
-            boss.setHealth((float) newMaxHealth);
+            // 🛡️ 修复血条比例失衡（Champions 等词条模组兼容）：
+            // 使用 getValue()（基础值 + 第三方模组 permanent modifier）设置当前血量。
+            // 此前 setHealth((float) newMaxHealth) 不含 modifier —— Champions 2.10.1.2
+            // 会通过 MULTIPLY_TOTAL modifier（数据包 modifier_setting，0.35×等级）放大
+            // 最大生命值，而血量只有基础值，血条比例 = 1/(1+modifier)，
+            // 末影龙等高等级词条 Boss 的血条会 <10%
+            boss.setHealth((float) healthAttr.getValue());
         }
 
         // 应用伤害倍率：原始值 * 已存在的缩放倍率 * Boss倍率
@@ -394,6 +414,22 @@ public class BossDamageCapHandler {
 
         // 标记为已应用，防止后续 EntityJoinLevelEvent 重复触发
         data.putBoolean(BOSS_BUFF_APPLIED_TAG, true);
+
+        // 🛡️ 延迟填血兜底：EntityJoinLevelEvent 在 tick 内触发时，getServer().execute()
+        // 会投递到下一 tick 执行（ReentrantBlockableEventLoop 在 tick 重入期间
+        // scheduleExecutables 恒为 true）。此前兜底逻辑只存在于
+        // EnemyScalingHandler.applyHealthBonus，当其被跳过（附近无玩家/黑名单/缩放超时）
+        // 时血量比例失衡会固化到存档，这里独立兜底，下一 tick 将血量同步到实际最大值
+        if (boss.level() instanceof ServerLevel serverLevel) {
+            serverLevel.getServer().execute(() -> {
+                if (!boss.isRemoved() && boss.isAlive()) {
+                    var attr = boss.getAttribute(net.minecraft.world.entity.ai.attributes.Attributes.MAX_HEALTH);
+                    if (attr != null) {
+                        boss.setHealth((float) attr.getValue());
+                    }
+                }
+            });
+        }
 
         if (Config.ENABLE_DEBUG_LOG.get()) {
             AdaptiveNemesisMod.LOGGER.debug(

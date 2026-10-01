@@ -4,6 +4,7 @@ import com.adaptive_nemesis.adaptive_nemesismod.AdaptiveNemesisMod;
 import com.adaptive_nemesis.adaptive_nemesismod.Config;
 import com.adaptive_nemesis.adaptive_nemesismod.memory.NemesisMemorySystem;
 import com.adaptive_nemesis.adaptive_nemesismod.memory.NemesisProfile;
+import com.adaptive_nemesis.adaptive_nemesismod.nemesis.NemesisSystem;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.context.CommandContext;
@@ -123,6 +124,9 @@ public class SummonNemesisCommand {
 
         // 应用宿敌加成
         applyNemesisBuffs(nemesis, player);
+
+        // 打上宿敌NBT标记，确保命令召唤的宿敌同样触发额外掉落等宿敌特性
+        nemesis.getPersistentData().putBoolean(NemesisSystem.NEMESIS_TAG, true);
 
         // 添加到世界
         level.addFreshEntity(nemesis);

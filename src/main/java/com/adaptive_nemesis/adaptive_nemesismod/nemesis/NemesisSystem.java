@@ -4,6 +4,9 @@ import com.adaptive_nemesis.adaptive_nemesismod.Config;
 import com.adaptive_nemesis.adaptive_nemesismod.AdaptiveNemesisMod;
 import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.Component;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.effect.MobEffectInstance;
 import net.minecraft.world.effect.MobEffects;
 import net.minecraft.world.entity.EntityType;
@@ -12,10 +15,18 @@ import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.monster.Monster;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.storage.loot.LootParams;
+import net.minecraft.world.level.storage.loot.LootTable;
+import net.minecraft.world.level.storage.loot.parameters.LootContextParamSets;
+import net.minecraft.world.level.storage.loot.parameters.LootContextParams;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.event.entity.EntityJoinLevelEvent;
+import net.minecraftforge.event.entity.living.LivingDeathEvent;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Random;
 
 /**
@@ -37,6 +48,12 @@ public class NemesisSystem {
         EntityType.ENDER_DRAGON,
         EntityType.ELDER_GUARDIAN
     };
+
+    /**
+     * 宿敌NBT标记键 - 转化成功后写入实体持久化数据
+     * 用于宿敌死亡时可靠识别（自定义名称可被改名/清除，NBT标记更稳定）
+     */
+    public static final String NEMESIS_TAG = "adaptive_nemesis_nemesis";
 
     private final NemesisNameGenerator nameGenerator;
     private final Random random;
@@ -159,6 +176,9 @@ public class NemesisSystem {
 
         applyStatsMultiplier(monster, multiplier);
 
+        // 打上宿敌NBT标记，供死亡掉落等后续逻辑可靠识别
+        markAsNemesis(monster);
+
         Component nemesisName = nameGenerator.generateNemesisName(monster, multiplier);
         monster.setCustomName(nemesisName);
         monster.setCustomNameVisible(Config.NEMESIS_NAME_ALWAYS_VISIBLE.get());
@@ -263,6 +283,9 @@ public class NemesisSystem {
         double multiplier = customMultiplier != null ? customMultiplier : calculateNemesisMultiplier();
         applyStatsMultiplier(monster, multiplier);
 
+        // 打上宿敌NBT标记，确保命令召唤的宿敌同样受额外掉落等功能控制
+        markAsNemesis(monster);
+
         Component nemesisName = nameGenerator.generateNemesisName(monster, multiplier);
         monster.setCustomName(nemesisName);
         monster.setCustomNameVisible(Config.NEMESIS_NAME_ALWAYS_VISIBLE.get());
@@ -270,5 +293,145 @@ public class NemesisSystem {
         monster.addEffect(new MobEffectInstance(MobEffects.GLOWING, Integer.MAX_VALUE));
 
         return true;
+    }
+
+    /**
+     * 对实体打上宿敌NBT标记
+     *
+     * @param monster 目标敌人
+     */
+    private void markAsNemesis(Mob monster) {
+        monster.getPersistentData().putBoolean(NEMESIS_TAG, true);
+    }
+
+    /**
+     * 检查实体是否为宿敌（带NBT标记）
+     *
+     * @param entity 待检查实体
+     * @return true表示该实体是宿敌
+     */
+    public static boolean isNemesis(LivingEntity entity) {
+        return entity.getPersistentData().getBoolean(NEMESIS_TAG);
+    }
+
+    /**
+     * 宿敌死亡事件处理 - 发放额外自定义掉落
+     *
+     * 触发条件（全部满足）：
+     * 1. 配置启用额外掉落（nemesisLootEnabled）
+     * 2. 死亡实体带宿敌NBT标记
+     * 3. 服务端环境
+     *
+     * 掉落逻辑：
+     * 1. 收集 toml 配置的战利品表与数据包 nemesis_loot 配置的战利品表（合并）
+     * 2. 逐表 roll 掉落，产物掉落在宿敌死亡位置（原版掉落基础上额外掉落）
+     *
+     * @param event 实体死亡事件
+     */
+    @SubscribeEvent
+    public void onNemesisDeath(LivingDeathEvent event) {
+        // 服务端环境
+        if (!(event.getEntity().level() instanceof ServerLevel serverLevel)) {
+            return;
+        }
+
+        // 功能开关
+        if (!Config.NEMESIS_LOOT_ENABLED.get()) {
+            return;
+        }
+
+        // 仅处理宿敌
+        LivingEntity deadEntity = event.getEntity();
+        if (!isNemesis(deadEntity)) {
+            return;
+        }
+
+        // 收集全部战利品表（toml 配置 + 数据包配置合并）
+        List<ResourceLocation> lootTables = collectLootTables();
+        if (lootTables.isEmpty()) {
+            return;
+        }
+
+        DamageSource source = event.getSource();
+        int totalItems = 0;
+
+        for (ResourceLocation tableId : lootTables) {
+            try {
+                LootTable lootTable = serverLevel.getServer().getLootData().getLootTable(tableId);
+                if (lootTable == LootTable.EMPTY) {
+                    AdaptiveNemesisMod.LOGGER.warn("[宿敌] 找不到额外掉落战利品表: {}", tableId);
+                    continue;
+                }
+
+                // 使用 ENTITY 参数集构建掉落上下文（实体掉落语义）
+                LootParams lootParams = new LootParams.Builder(serverLevel)
+                    .withParameter(LootContextParams.THIS_ENTITY, deadEntity)
+                    .withParameter(LootContextParams.ORIGIN, deadEntity.position())
+                    .withParameter(LootContextParams.DAMAGE_SOURCE, source)
+                    .withOptionalParameter(LootContextParams.KILLER_ENTITY, source.getEntity())
+                    .withLuck(0.0F)
+                    .create(LootContextParamSets.ENTITY);
+
+                List<ItemStack> items = lootTable.getRandomItems(lootParams);
+                for (ItemStack stack : items) {
+                    if (!stack.isEmpty()) {
+                        deadEntity.spawnAtLocation(stack);
+                        totalItems++;
+                    }
+                }
+            } catch (Exception e) {
+                // 单张战利品表解析/roll 失败不影响其他表
+                AdaptiveNemesisMod.LOGGER.error(
+                    "[宿敌] 处理额外掉落战利品表 {} 时发生异常: {} - {}",
+                    tableId, e.getClass().getSimpleName(), e.getMessage()
+                );
+            }
+        }
+
+        if (Config.ENABLE_DEBUG_LOG.get()) {
+            AdaptiveNemesisMod.LOGGER.debug(
+                "[宿敌] {} 死亡，额外掉落: 战利品表={} 张, 物品={} 件",
+                deadEntity.getName().getString(), lootTables.size(), totalItems
+            );
+        }
+    }
+
+    /**
+     * 收集宿敌额外掉落的全部战利品表
+     *
+     * 合并两个来源：
+     * 1. toml 配置 nemesisLootTables（逗号分隔 ID 列表）
+     * 2. 数据包 data/<namespace>/nemesis_loot/<name>.json 定义的表
+     *
+     * @return 去重后的战利品表列表（可能为空）
+     */
+    private List<ResourceLocation> collectLootTables() {
+        List<ResourceLocation> tables = new ArrayList<>();
+
+        // 来源 1: toml 配置（逗号分隔）
+        String configValue = Config.NEMESIS_LOOT_TABLES.get();
+        if (configValue != null && !configValue.isBlank()) {
+            for (String id : configValue.split(",")) {
+                String trimmed = id.trim();
+                if (trimmed.isEmpty()) {
+                    continue;
+                }
+                ResourceLocation tableId = ResourceLocation.tryParse(trimmed);
+                if (tableId != null && !tables.contains(tableId)) {
+                    tables.add(tableId);
+                } else if (tableId == null) {
+                    AdaptiveNemesisMod.LOGGER.warn("[宿敌] 配置中的战利品表 ID 无效: {}", trimmed);
+                }
+            }
+        }
+
+        // 来源 2: 数据包 nemesis_loot 配置
+        for (ResourceLocation tableId : NemesisLootDataLoader.getInstance().getLootTables()) {
+            if (!tables.contains(tableId)) {
+                tables.add(tableId);
+            }
+        }
+
+        return tables;
     }
 }

@@ -79,6 +79,19 @@ public class NemesisConfig {
      */
     public final ForgeConfigSpec.BooleanValue NEMESIS_REQUIRE_ATTACK_DAMAGE;
 
+    /**
+     * 是否启用宿敌额外自定义掉落
+     * 关闭时宿敌死亡只掉落原版掉落物
+     */
+    public final ForgeConfigSpec.BooleanValue NEMESIS_LOOT_ENABLED;
+
+    /**
+     * 宿敌额外掉落战利品表 ID 列表（逗号分隔）
+     * 宿敌死亡时 roll 所有配置的战利品表并将产物掉落在死亡位置
+     * 也可通过数据包 data/<namespace>/nemesis_loot/<name>.json 扩展，两者合并生效
+     */
+    public final ForgeConfigSpec.ConfigValue<String> NEMESIS_LOOT_TABLES;
+
     public NemesisConfig(ForgeConfigSpec.Builder builder) {
         builder.push("nemesis");
         
@@ -120,7 +133,13 @@ public class NemesisConfig {
 
         NEMESIS_REQUIRE_ATTACK_DAMAGE = builder.comment("宿敌转化是否要求目标具有攻击力属性，缺失时跳过转化")
             .define("nemesisRequireAttackDamage", true);
-        
+
+        NEMESIS_LOOT_ENABLED = builder.comment("是否启用宿敌额外自定义掉落")
+            .define("nemesisLootEnabled", false);
+
+        NEMESIS_LOOT_TABLES = builder.comment("宿敌额外掉落战利品表 ID 列表（逗号分隔），数据包 nemesis_loot 配置会与其合并生效")
+            .define("nemesisLootTables", "");
+
         builder.pop();
     }
 }
