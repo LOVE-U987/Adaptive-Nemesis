@@ -1,5 +1,14 @@
 ## v1.0.17 (2026-10-02)
 
+### 功能：宿敌发光新增配置开关（2026-10-25）
+
+**背景**：宿敌生成时的发光 buff 为硬编码，不受任何配置项控制（与入侵怪的 `enableGlowingEffect` 无关），无法关闭。
+
+**改动**：
+- `NemesisConfig.java`: 新增 `enableNemesisGlow` 配置项（默认 true，注释"是否让宿敌自带发光buff"），与 1.21.1 版保持一致
+- `Config.java`: 新增兼容代理字段 `ENABLE_NEMESIS_GLOW`
+- `NemesisSystem.java`: `convertToNemesis` 与 `convertToNemesisManual` 两处硬编码发光改为受该配置控制，关闭后宿敌生成时不再附加发光效果
+
 ### 修复：末影龙带冠军词条（Champions 2.10.1.2）生成时血量异常（血条不足 10%）
 
 **问题现象**：MC 1.20.1 + Adaptive Nemesis 最新版 + Champions 2.10.1.2 环境下，末影龙在拥有冠军词条生成时血量异常，只有最大生命值 10% 不到。

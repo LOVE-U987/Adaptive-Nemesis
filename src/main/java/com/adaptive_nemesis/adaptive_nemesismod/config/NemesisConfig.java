@@ -80,6 +80,12 @@ public class NemesisConfig {
     public final ForgeConfigSpec.BooleanValue NEMESIS_REQUIRE_ATTACK_DAMAGE;
 
     /**
+     * 是否让宿敌自带发光buff
+     * 关闭后宿敌生成时不再附加发光效果
+     */
+    public final ForgeConfigSpec.BooleanValue ENABLE_NEMESIS_GLOW;
+
+    /**
      * 是否启用宿敌额外自定义掉落
      * 关闭时宿敌死亡只掉落原版掉落物
      */
@@ -133,6 +139,9 @@ public class NemesisConfig {
 
         NEMESIS_REQUIRE_ATTACK_DAMAGE = builder.comment("宿敌转化是否要求目标具有攻击力属性，缺失时跳过转化")
             .define("nemesisRequireAttackDamage", true);
+
+        ENABLE_NEMESIS_GLOW = builder.comment("是否让宿敌自带发光buff")
+            .define("enableNemesisGlow", true);
 
         NEMESIS_LOOT_ENABLED = builder.comment("是否启用宿敌额外自定义掉落")
             .define("nemesisLootEnabled", false);
