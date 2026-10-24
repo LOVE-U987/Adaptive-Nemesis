@@ -2,6 +2,66 @@
 
 ---
 
+## v1.0.18 (2026-10-18)
+
+### 修复：KubeJS 自定义事件从未注册（联动静默失效）
+
+**问题现象**：整合包安装 KubeJS 后，脚本中监听 `adaptive_nemesis.*` 事件（`entity_scale`、`damage_calculation`、`invasion_start` 等 8 个事件）完全无效——事件组从未注册到 KubeJS，脚本加载时无报错（脚本未监听到未注册的事件组只是调用时 console 报 "Unknown event"），模组侧事件触发链静默空转。
+
+**根因分析**（KubeJS 2101.7.2 反编译确认）：
+- KubeJS 2101.x 插件发现机制是**唯一**的：逐个模组文件读取 jar 根目录的 `kubejs.plugins.txt`，加载其中列出的类并用 `KubeJSPlugin.class::isAssignableFrom` 过滤——**不使用 Java ServiceLoader**，`META-INF/services/` 注册文件无人读取
+- 本模组的 `kubejs.plugins.txt` 指向 `AdaptiveNemesisKubeJSPlugin`（纯桥接标记类，**未实现** `KubeJSPlugin` 接口）→ 被 isAssignableFrom 过滤器静默跳过，插件从未实例化
+- 真正实现了接口的 `KubeJSInitializer`（`registerEvents` 注册 `adaptive_nemesis` 事件组）注册在 `META-INF/services/dev.latvian.mods.kubejs.plugin.KubeJSPlugin` 中——该文件 KubeJS 从不读取，等于从未注册
+- 两者叠加 → 事件组注册、`init()` 日志、所有 KubeJS 联动静默失效
+
+**修复方案**：
+- `kubejs.plugins.txt`: 注册行改为指向 `KubeJSInitializer`（一行核心修复），并补充注释说明注册类必须直接实现 `KubeJSPlugin` 接口
+- 移除无效的 `META-INF/services/dev.latvian.mods.kubejs.plugin.KubeJSPlugin`（ServiceLoader 方式在 KubeJS 2101.x 中无效，留着误导后续维护）
+- `AdaptiveNemesisKubeJSPlugin.java`: 修正误导性 javadoc（原文声称"通过 ServiceLoader 机制自动发现"），如实标注其为无注册作用的遗留标记类
+- `KubeJSInitializer.java`: javadoc 更正为 kubejs.plugins.txt 注册方式
+- 新增 `examples/kubejs/server_scripts/adaptive_nemesis_events.js`：全部 8 个自定义事件的正确监听示例（绑定名 `adaptive_nemesis.*`，方法名逐一对照 EventJS 类源码核实，取消事件用 `cancelEvent()`）
+
+**防复发要点**：KubeJS 插件注册的三条铁律——① 类必须直接实现 `KubeJSPlugin`；② 注册只认 `kubejs.plugins.txt`（jar 根目录）；③ `META-INF/services` 不生效。启动日志中出现 "Found plugin source <modid>" 即注册成功。
+
+**联动验证与测试脚本**：
+- 反编译 KubeJS 2101.7.2-build.363 逐项核对 API 签名：`EventGroup.of(String)`、`EventGroup.server(String, Supplier)`、`EventGroupRegistry.register(EventGroup)`、`EventHandler.post(KubeEvent)` 与本模组调用完全一致；`ScriptType.SERVER` 实现 `ScriptTypeHolder`，无参 `post()` 链路可用；`KubeJSPlugin.init()` 与 `registerEvents(EventGroupRegistry)` 均为接口 default 方法，`@Override` 正确
+- 逐一核对 8 个 EventJS 类与示例脚本的方法调用，全部匹配；8 个事件的触发点均已接入模组核心逻辑（EnemyScalingHandler / TrueDamageHandler / PlayerStrengthEvaluator / WorldStageManager / NemesisMemorySystem / InvasionSystem）
+- 新增 `examples/kubejs/server_scripts/adaptive_nemesis_kubejs_test.js`：8 个事件的只读观察型测试脚本，统一日志前缀 `[AN-KubeJS-TEST]`，内置每个事件的触发方式与预期输出说明；可选取消注释验证"修改返回值"链路（入侵波次改写、结算经验追加）
+- 测试入口命令：`/an invasion trigger [type] [waves] [difficulty]`（覆盖入侵开始/波次/结束三个事件）、`/an test all`（模组自测）、`/an strength`（强度评估）、`/an nemesis`（召唤宿敌）、`/an memory`（记忆数据）
+
+### 修复：/an invasion trigger 指定类型崩溃 + 省略命名空间无法触发内置入侵（2026-10-24）
+
+**问题现象**：执行 `/an invasion trigger undead_invasion 3 1.5`（省略命名空间写法）时服务端抛 `IllegalArgumentException: TranslatableContents' arguments must be either a Component, Number, Boolean, or a String`，命令执行失败；内置亡灵入侵通过类型参数永远无法触发（不带类型参数的默认触发不受影响）。
+
+**根因分析**：
+- 省略命名空间的 `undead_invasion` 被 Brigadier 解析为 `minecraft:undead_invasion`，与内置白名单（`adaptive_nemesis:undead_invasion`）不匹配；回退逻辑虽正确换算为模组命名空间 ID，但最终校验只查数据包注册表 `InvasionDataLoader`——项目未内置任何入侵 JSON，内置亡灵入侵为纯代码定义（`InvasionSystem.InvasionType.UNDEAD`），校验必然失败
+- 失败分支的 `Component.translatable("...unknown_type", id)` 将 `ResourceLocation` 对象直接作为翻译参数传入，1.21.1 的 TranslatableContents 仅接受 Component/Number/Boolean/String，抛出异常
+
+**修复方案**（`InvasionCommand.java`）：
+- 最终校验豁免内置亡灵入侵：`containsKey(id) || InvasionType.UNDEAD.getId().equals(id)`
+- 报错翻译参数改为 `id.toString()`
+- 全项目扫描确认无其他 translatable 传入非 Component 参数的同类隐患
+
+**防复发要点**：1.21.1 翻译组件参数只接受 Component/Number/Boolean/String，`ResourceLocation` 等对象必须先 `toString()`；命令 ID 校验需与回退逻辑覆盖同一集合（数据包注册表 + 内置类型），否则回退换算后的合法 ID 会被误拒。
+
+### 修复：入侵敌人生成在水面时未穿戴冰霜行者（2026-10-24）
+
+**问题现象**：入侵敌人生成在水域上方时直接站在水面，未穿戴冰霜行者靴子，随后落水。
+
+**根因分析**（三层叠加）：
+- `findSpawnPos` 使用 `MOTION_BLOCKING_NO_LEAVES` 高度图（水方块计入阻挡），水域上方取得的表面高度即水面；向下 15 格找实心方块失败（深水底部更深）后走兜底分支直接返回水面上方位置 → 敌人生成在水面
+- `applyMobInfoEnhancements` 仅在 `MobInfo.frostWalker` 为 true 时穿冰霜行者，该标志唯一来源是数据包 JSON 的 `frost_walker` 字段；内置亡灵入侵的硬编码回退配置全部传 false → 默认入侵敌人永不带冰霜行者
+- 配置项 `enableFrostWalkerOnWater`（默认 true，注释"是否允许在水面生成敌人时穿戴冰霜行者"）从未被任何运行时逻辑读取，仅在配置界面出现——功能只做了配置壳，执行逻辑未接线
+
+**修复方案**（`InvasionSystem.java`）：
+- `spawnOneMob` 在应用数据包自定义效果后新增水面检测：配置允许、实体为 Mob 且 `isWaterSpawn` 判定生成点位于水面上方时，调用既有的 `applyFrostWalkerBoots`（铁靴 + 冰霜行者 I，掉落率 0）
+- `isWaterSpawn`：从生成点向下扫描至多 3 格（生成点与水面间最多间隔 1 格空气），遇到 `FluidTags.WATER` 判定为水面生成，遇到实心方块判定为地面生成——不依赖固定偏移，对落点计算方式变化免疫
+- 数据包 `frost_walker` 字段的既有逻辑保持不变，水面检测作为无数据包场景的兜底
+- 关键修正：`Level.getHeight` 反编译确认返回"最高阻挡方块 Y + 1"（第一个空闲格），水面兜底落点为水面再高 1 格，判定若只查 `below()` 会命中空气格——初版判定因此失效，改为向下扫描后修复
+- 游戏实测补充：敌人下落穿过水面后才触发结冰盘（仅作用于实体位置 -1 格），脚下水层不在冻结范围，导致"有靴子但没来得及结冰就落水"；新增 `preFreezeWaterSurface` 在生成点下方水层预铺 3x3 霜冰（会自然融化回水，不永久改地形），敌人落地即处于 onGround 状态，后续移动由冰霜行者结冰盘自持扩展
+
+**防复发要点**：新增配置项时必须同步接线到运行时逻辑（grep 确认配置项的读取方存在），否则配置界面上的开关是"假开关"；高度图选点做兜底分支时，需考虑兜底落点的物理环境（水面/空中）是否对实体可站立。
+
 ## v1.0.17 (2026-10-02)
 
 ### 修复：末影龙带冠军词条（Champions 2.10.1.2）生成时血量异常（血条不足 10%）
@@ -29,69 +89,3 @@
 - `NemesisConfig.java`: 新增 `nemesisLootEnabled`（是否启用，默认 false）与 `nemesisLootTables`（逗号分隔战利品表 ID，默认空）两个配置项，toml 配置与数据包配置合并生效
 - 内置示例：`data/adaptive_nemesis/loot_tables/nemesis_example_loot.json`（示例掉落表：钻石/绿宝石/金苹果/附魔金苹果）+ `data/adaptive_nemesis/nemesis_loot/example.json`（引用示例表）；用户数据包参考示例见 `examples/datapack/data/adaptive_nemesis/nemesis_loot/example.json`
 - **使用方式**：配置中开启 `nemesisLootEnabled = true` 即可体验内置示例掉落；进阶用户可配置 `nemesisLootTables` 或编写 `nemesis_loot` 数据包定义自己的掉落表
-
----
-
-## v1.0.16 (2026-08-30)
-
-### 功能：宿敌自动消失
-
-- `NemesisConfig.java`: 新增 `ENABLE_NEMESIS_AUTO_DISAPPEAR`（是否启用）、`NEMESIS_AUTO_DISAPPEAR_SECONDS`（存在时间，默认 300 秒/5 分钟）、`NEMESIS_DISAPPEAR_MESSAGE`（消失时发送提示）三个配置项
-- `NemesisSystem.java`: 添加 `nemesisSpawnTimes` Map 追踪每个宿敌的生成时间戳，新增 `onEntityTick()` 定期轮询检查，存活时间超过配置值后自动调用 `discard()` 移除实体
-- `NemesisSystem.java`: 在 `convertToNemesis()` 和 `convertToNemesisManual()` 中记录宿敌生成时间，确保命令召唤的宿敌同样受自动消失功能控制
-- `zh_cn.json` / `en_us.json`: 新增 `adaptive_nemesis.nemesis.disappear` 翻译键（中文："%s 已经消失了..."，英文："%s has disappeared..."）
-- **效果**：宿敌在自然生成或被命令召唤后，经过指定时间自动从世界中消失，避免长期留存造成性能负担或游戏体验失衡
-
----
-
-
-### 修复：配置类型改为 SERVER，解决联机时服务端配置不生效
-
-- `AdaptiveNemesisMod.java`: 配置注册类型从 `COMMON` 改为 `SERVER`，服务端成为配置权威，NeoForge 自动同步给所有客户端
-- `Config.java`: 新增 `isServerSide()` 方法判断当前环境，`saveToFile()` 增加服务端保护，联机客户端不再尝试写入只读配置
-- `AdaptiveNemesisConfigScreen.java`: 增加 `readOnly` 字段，联机客户端控件置灰、显示只读提示，防止误操作
-- `AdaptiveNemesisConfigScreen.java`: `markChanged()` 增加只读保护，联机客户端禁止保存
-- `en_us.json` / `zh_cn.json`: 新增只读提示本地化键（`readonly_hint`）
-- **注意**：配置文件从 `adaptive_nemesis-common.toml` 改为 `adaptive_nemesis-server.toml`，用户需迁移已有配置
-
-### 修复：装备附魔导致存档崩溃（小退后第二次进存档连接中断）
-
-- `EnchantmentScalingHandler.java`: 在服务器关闭时重置附魔缓存（`resetCaches()` 方法），防止单例模式导致 `Holder.Reference<Enchantment>` 引用失效
-- `EnchantmentScalingHandler.java`: 在 `applyCoreEnchantments()` 中验证 Holder 有效性，双重检查 `ResourceKey` 是否存在于服务器注册表
-- `EnchantmentScalingHandler.java`: 在 `applyModCompatibleEnchantments()` 中添加 `holder.isBound()` 验证，防止网络编码失败
-- `InvasionSystem.java`: 在 `applyFrostWalkerBoots()` 中添加 Holder 验证，防止冰霜行者附魔导致网络编码异常
-- `ModEventHandler.java`: 在 `ServerStoppingEvent` 中调用 `EnchantmentScalingHandler.resetCaches()`，确保服务器关闭时清除失效引用
-- `EnchantmentScalingHandler.java`: 修复 `collectCompatibleEnchantments()` 中的 `Holder.unwrapKey()` API 调用
-
-### 修复：入侵事件无限触发（越杀越多）
-
-- `InvasionSystem.java`: 新增 `playerInvasionCooldowns` Map 跟踪玩家冷却时间（UUID -> 冷却结束时间戳）
-- `InvasionSystem.java`: 在 `incrementUndeadKillCount()` 中添加冷却检查，冷却期内显示剩余时间提示
-- `InvasionSystem.java`: 入侵触发后自动设置冷却时间（默认 15 分钟，可配置）
-- `InvasionSystem.java`: 在 `handleInvasionVictory()` 中清除冷却时间，允许正常触发下一次入侵
-- `zh_cn.json` / `en_us.json`: 新增冷却警告翻译（`cooldown_warning` / `cooldown_warning_minutes` / `cooldown_warning_seconds`）
-- `InvasionConfig.java`: 已有 `invasionCooldownMinutes` 配置项（默认 15 分钟），无需新增配置
-
----
-
-## v1.0.15 (2026-08-09)
-
-### 修复：铁魔法法术抗性/强度机制失控（非宿敌怪也被逐只减免）
-
-- `IronsSpellsCompat.java`: 修复 `maxSpellPowerMultiplier` / `maxSpellResistMultiplier` 配置项为死配置的问题，`applyMobBuffs` 现在真正读取这两个值，将法术强度/施法资源倍率封顶到 `maxSpellPowerMultiplier`（默认 4.0），法术抗性倍率封顶到 `maxSpellResistMultiplier`（默认 3.0），改动后修改 `adaptive_nemesis-common.toml` 的 `[enemyBonusCaps]` 段落即可控制怪物法术抗性/强度
-- `IronsSpellsCompat.java`: `applyMobBuffs` 增加宿敌判定——仅对打有宿敌 NBT 标记（`NemesisSystem.NEMESIS_TAG`）的怪物应用法术抗性/强度/法力加成，普通怪物不再获得法术类加成，法师玩家的多段、短 CD、召唤类法术在打群怪时不再被逐只减免
-- `NemesisSystem.java`: 新增宿敌 NBT 标记常量 `NEMESIS_TAG`，`convertToNemesis` / `convertToNemesisManual` 转化时打上标记
-- `SummonNemesisCommand.java`: `/an nemesis` 命令召唤的宿敌同样打上宿敌标记
-- `AdaptiveNemesisMod.java`: 将宿敌日常生成系统（`NemesisSystem`）注册提前到敌人强化处理器之前——保证 `EntityJoinLevelEvent` 中宿敌转化（打标记）先于自适应缩放执行，否则宿敌会被当作普通怪处理而拿不到法术类加成（原先注册在 `commonSetup` 中，晚于 `EnemyScalingHandler`）
-- `IronsSpellsCompat.java`: `getPlayerSpellStrength` 改用最大法力值（`AttributeRegistry.MAX_MANA`）评估玩家法术强度，不再使用当前法力值，避免施法耗蓝导致强度评估波动、怪物缩放下降
-
----
-
-## v1.0.15 (2026-08-09)
-
-### 修复：配置界面滚动动画低帧率导致文字闪烁
-
-- `AdaptiveNemesisConfigScreen.java`: 修正滚动动画帧间插值公式，改用 `Mth.lerp(partialTick, lastScroll, currentScroll)` 标准插值，滚动内容不再以 20fps 逐 tick 跳变，文字平滑无闪烁
-- `AdaptiveNemesisConfigScreen.java`: `tick()` 中记录上一 tick 滚动位置，并在接近目标时数值收敛对齐，消除动画拖尾抖动
-- `AdaptiveNemesisConfigScreen.java`: 缓存条目翻译组件 (`Component`)，避免每帧为 130+ 个条目重复创建翻译对象，降低渲染开销
-- `AdaptiveNemesisConfigScreen.java`: 滚动条滑块位置同步使用插值后的滚动值，滚动过程整体更平滑

@@ -218,10 +218,11 @@ public class InvasionCommand {
             }
         }
 
-        // 校验：仅允许数据包已加载的入侵类型
-        if (!InvasionDataLoader.getInstance().getAllInvasions().containsKey(id)) {
+        // 校验：允许数据包已加载的入侵类型，以及无需数据包的内置亡灵入侵
+        if (!InvasionDataLoader.getInstance().getAllInvasions().containsKey(id)
+            && !InvasionType.UNDEAD.getId().equals(id)) {
             source.sendFailure(Component.translatable(
-                "adaptive_nemesis.command.invasion.unknown_type", id
+                "adaptive_nemesis.command.invasion.unknown_type", id.toString()
             ));
             return null;
         }

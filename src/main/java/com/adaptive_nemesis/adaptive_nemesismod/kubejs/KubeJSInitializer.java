@@ -20,12 +20,17 @@ import java.util.UUID;
 /**
  * KubeJS 初始化器
  *
- * 此类包含所有对 KubeJS API 的直接依赖，通过 ServiceLoader 机制由 KubeJS 自动发现。
- * 当 KubeJS 未安装时，此类不会被加载，从而避免类加载失败导致的崩溃。
+ * 此类包含所有对 KubeJS API 的直接依赖，通过 {@code src/main/resources/kubejs.plugins.txt}
+ * 注册（KubeJS 2101.x 的插件发现机制：逐个模组文件查找该文件并加载其中列出的、
+ * 实现了 {@link dev.latvian.mods.kubejs.plugin.KubeJSPlugin} 的类）。
+ * 注意：KubeJS 2101.x 不使用 Java ServiceLoader —— 本类只应注册在
+ * kubejs.plugins.txt 中，META-INF/services 方式无效。
+ *
+ * 当 KubeJS 未安装时，此类不会被 KubeJS 加载，从而避免类加载失败导致的崩溃。
  * 模组其他代码通过 KubeJSLoader 检测 KubeJS 可用性后，通过反射调用此类的方法。
  *
  * @author Adaptive Nemesis Team
- * @version 1.2.0
+ * @version 1.2.1
  */
 public class KubeJSInitializer implements KubeJSPlugin {
 

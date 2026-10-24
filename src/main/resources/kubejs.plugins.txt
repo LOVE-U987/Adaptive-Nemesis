@@ -1,1 +1,7 @@
-com.adaptive_nemesis.adaptive_nemesismod.kubejs.AdaptiveNemesisKubeJSPlugin
+# KubeJS 插件注册表（KubeJS 2101.x 通过本文件发现各模组的插件）
+# 每行格式：完整类名 [可选的必需 modid 或 "client" 标记]
+# 注意：此处列出的类必须直接实现 dev.latvian.mods.kubejs.plugin.KubeJSPlugin 接口，
+# KubeJS 加载时会用 isAssignableFrom 过滤掉非实现类（静默跳过）。
+# 历史教训：此文件曾指向桥接类 AdaptiveNemesisKubeJSPlugin（未实现接口），
+# 导致整个 KubeJS 联动静默失效 —— 事件组从未注册，脚本无法监听。
+com.adaptive_nemesis.adaptive_nemesismod.kubejs.KubeJSInitializer
