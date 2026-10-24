@@ -211,7 +211,10 @@ public class NemesisSystem {
         String entityUuid = monster.getUUID().toString();
         nemesisSpawnTimes.put(entityUuid, System.currentTimeMillis());
 
-        monster.addEffect(new MobEffectInstance(MobEffects.GLOWING, Integer.MAX_VALUE));
+        // 发光效果受配置开关控制
+        if (Config.ENABLE_NEMESIS_GLOW.get()) {
+            monster.addEffect(new MobEffectInstance(MobEffects.GLOWING, Integer.MAX_VALUE));
+        }
 
         if (monster.level().getNearestPlayer(monster, 32.0) != null) {
             Player player = monster.level().getNearestPlayer(monster, 32.0);
@@ -322,7 +325,10 @@ public class NemesisSystem {
         String entityUuid = monster.getUUID().toString();
         nemesisSpawnTimes.put(entityUuid, System.currentTimeMillis());
 
-        monster.addEffect(new MobEffectInstance(MobEffects.GLOWING, Integer.MAX_VALUE));
+        // 发光效果受配置开关控制
+        if (Config.ENABLE_NEMESIS_GLOW.get()) {
+            monster.addEffect(new MobEffectInstance(MobEffects.GLOWING, Integer.MAX_VALUE));
+        }
 
         return true;
     }

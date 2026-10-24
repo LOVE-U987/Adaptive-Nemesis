@@ -97,6 +97,12 @@ public class NemesisConfig {
     public final ModConfigSpec.BooleanValue NEMESIS_DISAPPEAR_MESSAGE;
 
     /**
+     * 是否让宿敌自带发光buff
+     * 关闭后宿敌生成时不再附加发光效果
+     */
+    public final ModConfigSpec.BooleanValue ENABLE_NEMESIS_GLOW;
+
+    /**
      * 是否启用宿敌额外自定义掉落
      * 关闭时宿敌死亡只掉落原版掉落物
      */
@@ -162,6 +168,9 @@ public class NemesisConfig {
         
         NEMESIS_DISAPPEAR_MESSAGE = builder.comment("宿敌消失时是否向附近玩家发送提示消息")
             .define("nemesisDisappearMessage", true);
+
+        ENABLE_NEMESIS_GLOW = builder.comment("是否让宿敌自带发光buff")
+            .define("enableNemesisGlow", true);
 
         NEMESIS_LOOT_ENABLED = builder.comment("是否启用宿敌额外自定义掉落")
             .define("nemesisLootEnabled", false);

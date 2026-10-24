@@ -86,9 +86,11 @@ public class AdaptiveNemesisMod {
         ModNetworking.register(modEventBus);
         
         // 注册配置
-        // 使用 SERVER 类型：配置以服务端为权威，NeoForge 会自动把服务端配置同步给所有连接的客户端，
-        // 解决此前 COMMON 类型下服务端与客户端各自加载各自配置文件、联机时服务端配置不生效的问题。
-        modContainer.registerConfig(ModConfig.Type.SERVER, Config.SPEC);
+        // 使用 COMMON 类型：配置文件位于 config/ 目录，游戏启动即加载，全局生效。
+        // 注：1.0.16 曾改为 SERVER 类型，但 SERVER 配置按存档隔离（读取 saves/<世界>/serverconfig/），
+        // 导致 config/ 下的配置文件不被读取、主菜单配置界面因配置未加载而崩溃，故回退为 COMMON。
+        // 联机场景下客户端为只读提示，服务端配置以服务端 config/ 文件为权威。
+        modContainer.registerConfig(ModConfig.Type.COMMON, Config.SPEC);
 
         // 注册游戏事件处理器
         registerEventHandlers();

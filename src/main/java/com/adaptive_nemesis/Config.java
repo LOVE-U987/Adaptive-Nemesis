@@ -155,6 +155,7 @@ public class Config {
     public static final ModConfigSpec.BooleanValue NEMESIS_DISAPPEAR_MESSAGE = NEMESIS.NEMESIS_DISAPPEAR_MESSAGE;
     public static final ModConfigSpec.BooleanValue NEMESIS_LOOT_ENABLED = NEMESIS.NEMESIS_LOOT_ENABLED;
     public static final ModConfigSpec.ConfigValue<String> NEMESIS_LOOT_TABLES = NEMESIS.NEMESIS_LOOT_TABLES;
+    public static final ModConfigSpec.BooleanValue ENABLE_NEMESIS_GLOW = NEMESIS.ENABLE_NEMESIS_GLOW;
 
     public static final ModConfigSpec.BooleanValue ENABLE_INVASION = INVASION.ENABLE_INVASION;
     public static final ModConfigSpec.DoubleValue INVASION_TRIGGER_CHANCE = INVASION.INVASION_TRIGGER_CHANCE;
@@ -189,7 +190,8 @@ public class Config {
     /**
      * 保存配置到文件
      * 在配置界面修改后调用，确保修改持久化
-     * 联机客户端加载的是只读的 SERVER 配置，不允许写文件，直接返回
+     * 联机客户端本地的 COMMON 配置虽可写，但不会影响服务端，
+     * 为避免误导，联机客户端不允许写文件，直接返回
      */
     public static void saveToFile() {
         if (!isServerSide()) {
@@ -212,9 +214,9 @@ public class Config {
     /**
      * 当前是否为服务端侧
      * dedicated server 直接视为服务端；客户端中单机集成服务器（isSingleplayer==true）共享同一进程配置、可写，
-     * 联机(false)加载的是只读的 SERVER 配置。
+     * 联机(false)客户端的本地配置不影响服务端，按只读处理。
      *
-     * @return true 表示可读写服务端配置，false 表示只读的联机客户端
+     * @return true 表示可读写配置文件，false 表示只读的联机客户端
      */
     public static boolean isServerSide() {
         // dedicated server 直接视为服务端

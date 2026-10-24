@@ -4,6 +4,22 @@
 
 ## v1.0.18 (2026-10-18)
 
+### 修复：发光效果配置失效（v1.0.16 回归）+ 宿敌发光无开关（2026-10-25）
+
+**问题现象**：1.0.16 起关闭发光的配置全面失效——修改 `config/` 下的配置文件不生效；主菜单打开配置界面直接崩溃；配置界面内修改关闭发光后宿敌依然发光；服务器上修改同样无效。
+
+**根因分析**：
+- 1.0.16 将配置类型由 COMMON 改为 SERVER。NeoForge 21.1 中 SERVER 配置按存档隔离，实际读取 `saves/<世界>/serverconfig/` 目录，`config/` 目录下的同名文件完全不参与加载——修改配置文件自然无效，服务器场景同理
+- SERVER 配置仅在服务器（含单机集成服务器）启动时加载，主菜单阶段配置未加载，任何 `ConfigValue.get()` 调用抛出 `IllegalStateException: Cannot get config value before config is loaded`——配置界面第一行取值即崩溃
+- 宿敌系统（NemesisSystem）两处发光 buff 为硬编码，不受任何配置项控制，与 `enableGlowingEffect`（入侵怪发光开关）无关，配置界面关闭后宿敌依旧发光
+
+**修复方案**：
+- 配置类型回退为 COMMON（`AdaptiveNemesisMod.java`）：配置文件回到 `config/` 目录、游戏启动即加载、全局生效，与 1.20.1 版行为一致
+- 联机客户端只读策略保留（`Config.saveToFile()`）：COMMON 配置下联机客户端本地文件虽可写但不影响服务端，为避免误导仍禁止写入并提示只读
+- 新增宿敌发光开关 `enableNemesisGlow`（默认 true，`NemesisConfig`）：`NemesisSystem` 两处硬编码发光改为受该配置控制
+
+**迁移提醒**：从 1.0.16~1.0.17 升级后，若曾在单机配置界面或存档 `serverconfig` 中修改过配置，这些值随 COMMON 回退不再被读取，需在 `config/adaptive_nemesis-common.toml` 中重新设置一次。
+
 ### 修复：KubeJS 自定义事件从未注册（联动静默失效）
 
 **问题现象**：整合包安装 KubeJS 后，脚本中监听 `adaptive_nemesis.*` 事件（`entity_scale`、`damage_calculation`、`invasion_start` 等 8 个事件）完全无效——事件组从未注册到 KubeJS，脚本加载时无报错（脚本未监听到未注册的事件组只是调用时 console 报 "Unknown event"），模组侧事件触发链静默空转。
