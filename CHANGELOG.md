@@ -1,5 +1,32 @@
 ## v1.0.17 (2026-10-02)
 
+### 修复：KubeJS 命令示例脚本 adaptive_nemesis_invasion.js 出厂语法错误（2026-10-25）
+
+**问题现象**：该示例脚本自分支创建起从未成功加载，每次 `/reload` 报 `missing ) after argument list`。
+
+**根因**：脚本建立在从未实现的 API 上——调用的 `adaptiveNemesis` 全局绑定从未被模组注册（实际只有 `adaptive_nemesis.*` 事件组），`ServerEvents.commandRegistry` 使用了虚构的 `event.register('名称', command => {...})` 签名（KubeJS 6 真实签名为 `event.register(Commands.literal(...))` Brigadier 风格），行 60 报错点只是错误嵌套的解析落点。
+
+**修复**：整体重写为 KubeJS 6 正确语法——`Java.loadClass` 显式加载参数类型、`Commands.literal/argument` 注册、`performPrefixedCommand` 转发模组原生命令 `/an invasion trigger`；提供 `/trigger_invasion`（默认参数）与 `/trigger_invasion_custom <波次> <难度倍率>` 两个示例命令（权限等级 2）。
+
+### 功能：入侵敌人涉水自持（冰霜行者路径援助）（2026-10-25）
+
+**背景**：冰霜行者援助此前只在生成瞬间生效——生成在水面上的敌人穿靴 + 预铺霜冰；但陆地生成、移动路径上遇到水的敌人没有任何运行时援助，直接落水（1.21.1 与 1.20.1 均存在该缺口）。
+
+**改动**（`InvasionSystem.java`）：
+- 入侵 tick 每 20 tick 扫描一次所有活动入侵的已生成敌人，复用 `enableFrostWalkerOnWater` 配置开关
+- 判定"身体在水中或脚下为水"的敌人：脚下无冰霜行者附魔时补穿靴子（已有附魔则跳过，避免覆盖装备缩放结果），随后冻结脚下一层 3x3 水面为霜冰
+- 只冻结脚下层、不冻结身体所在格，防止实体被卡入实心方块；深水场景下敌人逐层下沉、逐层冻结，最终站上冰柱恢复 onGround，此后由冰霜行者结冰盘自持扩展
+- 霜冰自然融化回水，不永久改变地形
+
+### 移植：main 三组修复回移（2026-10-25）
+
+自 main（NeoForge 1.21.1，已实测）以 1.20.1 API 适配移植，经独立计划审核（PASS）：
+
+- **KubeJS 注册清理**：删除无效的 `META-INF/services/dev.latvian.mods.kubejs.KubeJSPlugin`（KubeJS 6 反编译实证仅从 jar 根目录 `kubejs.plugins.txt` 发现插件，`Lazy.serviceLoader` 只用于平台内部实现）；修正 `KubeJSInitializer` / `AdaptiveNemesisKubeJSPlugin` 的 ServiceLoader 误导注释；补充 `adaptive_nemesis_kubejs_test.js`（8 事件只读观察测试脚本）与 `adaptive_nemesis_events.js`（监听示例），内容与 main 版本一致
+- **入侵命令内置入侵误拒修复**：`/an invasion trigger undead_invasion`（省略命名空间，`tryParse` 返回 null）回退到模组命名空间解析；最终校验豁免内置亡灵入侵（此前只查数据包注册表，内置入侵永远无法通过类型参数触发）；回退构造 `ResourceLocation` 增加非法字符异常兜底；成功消息的 `InvasionType` 对象参数改为 `getId().toString()` 字符串（1.20.1 `TranslatableContents` 对非 Component 参数走 `toString()` 不崩溃，与 main 对齐后消除对宽松行为的依赖）
+- **水面生成冰霜行者**：`isWaterSpawn` 向下扫描至多 3 格判定水面生成（`getHeight` 返回第一个空闲格，兜底落点在水面上方 1 格，固定偏移判定会命中空气格）；`preFreezeWaterSurface` 在生成点下方水层预铺 3x3 霜冰（自然融化回水，不永久改地形），敌人落地即 onGround，后续移动由冰霜行者结冰盘自持扩展；激活死配置 `enableFrostWalkerOnWater`（默认 true，此前无任何运行时读取方）；既有 `applyFrostWalkerBoots`（`Enchantments.FROST_WALKER` 非 Holder 形态）保持不变
+- 与 main 行为差异说明：1.20.1 无 1.21.1 的 `TranslatableContents` 参数严格校验，命令报错参数本就为 String，故不存在对应崩溃问题，本组移植只修误拒逻辑
+
 ### 功能：宿敌发光新增配置开关（2026-10-25）
 
 **背景**：宿敌生成时的发光 buff 为硬编码，不受任何配置项控制（与入侵怪的 `enableGlowingEffect` 无关），无法关闭。

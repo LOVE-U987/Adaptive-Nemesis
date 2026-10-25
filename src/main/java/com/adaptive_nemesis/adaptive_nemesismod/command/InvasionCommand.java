@@ -12,6 +12,7 @@ import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.context.CommandContext;
 import com.mojang.brigadier.suggestion.SuggestionProvider;
 
+import net.minecraft.ResourceLocationException;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
 import net.minecraft.network.chat.Component;
@@ -166,13 +167,14 @@ public class InvasionCommand {
         }
 
         if (success) {
+            String typeId = type.getId().toString();
             if (customWaves != null && customDifficulty != null) {
                 source.sendSuccess(() -> Component.translatable(
-                    "adaptive_nemesis.command.invasion.trigger_success_detailed", type, customWaves, customDifficulty
+                    "adaptive_nemesis.command.invasion.trigger_success_detailed", typeId, customWaves, customDifficulty
                 ), true);
             } else {
                 source.sendSuccess(() -> Component.translatable(
-                    "adaptive_nemesis.command.invasion.trigger_success_type", type
+                    "adaptive_nemesis.command.invasion.trigger_success_type", typeId
                 ), true);
             }
             AdaptiveNemesisMod.LOGGER.debug(
@@ -188,6 +190,12 @@ public class InvasionCommand {
     /**
      * 从命令参数解析入侵类型标识符
      *
+     * 支持两种写法：
+     * 1. 完整资源位置：{@code <namespace>:<path>}
+     * 2. 省略命名空间：{@code <path>}（如 {@code undead_invasion}），
+     *    回退到模组命名空间 {@code adaptive_nemesis:<path>} 解析，
+     *    从而可直接触发无需数据包的内置亡灵入侵
+     *
      * @param context 命令上下文
      * @return 入侵类型资源位置，解析失败或不存在时返回 null 并已发送错误消息
      */
@@ -195,21 +203,67 @@ public class InvasionCommand {
         CommandSourceStack source = context.getSource();
         String typeString = StringArgumentType.getString(context, "type");
         ResourceLocation id = ResourceLocation.tryParse(typeString);
-        if (id == null) {
-            source.sendFailure(Component.translatable(
-                "adaptive_nemesis.command.invasion.unknown_type", typeString
-            ));
-            return null;
+
+        // 内置亡灵入侵（adaptive_nemesis:undead_invasion）无需数据包也可触发
+        if (InvasionType.UNDEAD.getId().equals(id)) {
+            return id;
         }
 
-        if (!InvasionDataLoader.getInstance().getAllInvasions().containsKey(id)) {
-            source.sendFailure(Component.translatable(
-                "adaptive_nemesis.command.invasion.unknown_type", typeString
-            ));
+        // 省略命名空间时 tryParse 返回 null，回退到模组命名空间再试
+        if (id == null) {
+            id = tryParseModNamespaceId(typeString);
+            if (id == null) {
+                sendUnknownType(source, typeString);
+                return null;
+            }
+        }
+
+        // minecraft: 命名空间未加载时，回退尝试模组命名空间
+        if ("minecraft".equals(id.getNamespace())
+            && !InvasionDataLoader.getInstance().getAllInvasions().containsKey(id)) {
+            ResourceLocation modId = tryParseModNamespaceId(id.getPath());
+            if (modId != null) {
+                id = modId;
+            }
+        }
+
+        // 校验：允许数据包已加载的入侵类型，以及无需数据包的内置亡灵入侵
+        if (!InvasionDataLoader.getInstance().getAllInvasions().containsKey(id)
+            && !InvasionType.UNDEAD.getId().equals(id)) {
+            sendUnknownType(source, id.toString());
             return null;
         }
 
         return id;
+    }
+
+    /**
+     * 尝试按模组命名空间解析入侵类型路径
+     *
+     * 输入可能包含非法路径字符（tryParse 失败的原因不限于省略命名空间），
+     * 构造资源位置时捕获非法输入异常并返回 null，避免命令执行崩溃。
+     *
+     * @param path 入侵类型路径
+     * @return 解析成功返回资源位置，非法输入返回 null
+     */
+    private static ResourceLocation tryParseModNamespaceId(String path) {
+        try {
+            return ResourceLocation.fromNamespaceAndPath(AdaptiveNemesisMod.MODID, path);
+        } catch (ResourceLocationException e) {
+            return null;
+        }
+    }
+
+    /**
+     * 发送未知入侵类型错误消息
+     *
+     * @param source 命令来源
+     * @param typeString 用户输入的类型标识
+     */
+    private static void sendUnknownType(CommandSourceStack source, String typeString) {
+        source.sendFailure(Component.translatable(
+            "adaptive_nemesis.command.invasion.unknown_type", typeString
+        ));
     }
 
     /**

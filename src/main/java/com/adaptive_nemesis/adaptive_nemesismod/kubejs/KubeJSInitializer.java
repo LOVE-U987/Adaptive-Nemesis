@@ -20,7 +20,8 @@ import java.util.UUID;
 /**
  * KubeJS 初始化器
  *
- * 此类包含所有对 KubeJS API 的直接依赖，通过 ServiceLoader 机制由 KubeJS 自动发现。
+ * 此类包含所有对 KubeJS API 的直接依赖，注册于 jar 根目录的 kubejs.plugins.txt
+ * （KubeJS 唯一的插件发现机制，不使用 Java ServiceLoader）。
  * 当 KubeJS 未安装时，此类不会被加载，从而避免类加载失败导致的崩溃。
  * 模组其他代码通过 KubeJSLoader 检测 KubeJS 可用性后，通过反射调用此类的方法。
  *

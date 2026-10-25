@@ -31,11 +31,14 @@ import net.minecraft.world.level.storage.loot.parameters.LootContextParamSets;
 import net.minecraft.world.level.storage.loot.parameters.LootContextParams;
 import net.minecraft.world.entity.*;
 import net.minecraft.world.entity.ai.goal.Goal;
+import net.minecraft.world.item.enchantment.EnchantmentHelper;
 import net.minecraft.world.item.enchantment.Enchantments;
 import net.minecraft.world.entity.ai.navigation.PathNavigation;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.Items;
+import net.minecraft.tags.FluidTags;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.levelgen.Heightmap;
 import net.minecraft.world.phys.Vec3;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
@@ -86,6 +89,9 @@ public class InvasionSystem {
 
     /** 随机数生成器 */
     private final Random random = new Random();
+
+    /** 涉水敌人援助计时器（每 20 tick 扫描一次） */
+    private int waterAssistTimer = 0;
 
     /** 首次入侵所需击杀数 */
     private static final int FIRST_INVASION_KILLS_REQUIRED = 25;
@@ -244,6 +250,12 @@ public class InvasionSystem {
                     iterator.remove();
                 }
             }
+        }
+
+        // 每 20 tick 一次：为路径涉水的入侵敌人补穿冰霜行者并冻结脚下水面
+        if (++waterAssistTimer >= 20) {
+            waterAssistTimer = 0;
+            assistWaterloggedMobs();
         }
     }
 
@@ -405,6 +417,14 @@ public class InvasionSystem {
         // 应用数据包自定义效果
         applyMobInfoEnhancements(enemy, mobInfo);
 
+        // 水面生成兜底：按配置为生成在水面上方的敌人铺设临时冰面并补穿冰霜行者靴子
+        if (Config.INVASION.ENABLE_FROST_WALKER_ON_WATER.get()
+            && enemy instanceof Mob mob
+            && isWaterSpawn(level, spawnPos)) {
+            preFreezeWaterSurface(level, spawnPos);
+            applyFrostWalkerBoots(mob);
+        }
+
         applyGlowingEffect(enemy);
         enemy.setPos(spawnPos.getX() + 0.5, spawnPos.getY(), spawnPos.getZ() + 0.5);
 
@@ -554,6 +574,115 @@ public class InvasionSystem {
         }
 
         return new BlockPos(x, surfaceY + 1, z);
+    }
+
+    /**
+     * 判断生成点是否位于水面上方
+     *
+     * 生成点位于水面上方时，脚下间隔最多一格空气即为水面（getHeight 返回第一个
+     * 空闲格，水面兜底落点再高 1 格），向下扫描至多 3 格，遇到水判定为水面生成，
+     * 遇到实心方块判定为正常地面生成。
+     *
+     * @param level 服务端世界
+     * @param spawnPos 生成点位置
+     * @return 生成点位于水面上方时返回 true
+     */
+    private boolean isWaterSpawn(Level level, BlockPos spawnPos) {
+        BlockPos below = spawnPos.below();
+        for (int i = 0; i < 3; i++) {
+            if (level.getFluidState(below).is(FluidTags.WATER)) {
+                return true;
+            }
+            if (!level.isEmptyBlock(below)) {
+                return false;
+            }
+            below = below.below();
+        }
+        return false;
+    }
+
+    /**
+     * 在生成点下方水面上铺设临时冰面
+     *
+     * 使用霜冰（会自然融化回水，不永久改变地形），在生成点正下方水面及
+     * 周围 3x3 范围内将表面水方块替换为霜冰，确保敌人落地即站立在实心
+     * 方块上（onGround），避免下落穿过水面落水后冰霜行者结冰盘够不到脚下。
+     *
+     * @param level 服务端世界
+     * @param spawnPos 生成点位置
+     */
+    private void preFreezeWaterSurface(Level level, BlockPos spawnPos) {
+        BlockPos surface = spawnPos.below(2);
+        for (BlockPos pos : BlockPos.betweenClosed(surface.offset(-1, 0, -1), surface.offset(1, 0, 1))) {
+            if (level.getFluidState(pos).is(FluidTags.WATER)
+                && level.getFluidState(pos.above()).isEmpty()) {
+                level.setBlockAndUpdate(pos, Blocks.FROSTED_ICE.defaultBlockState());
+            }
+        }
+    }
+
+    /**
+     * 为路径涉水的入侵敌人提供冰霜行者援助
+     *
+     * 每 20 tick 由入侵 tick 调度：遍历所有活动入侵的已生成敌人，
+     * 凡身体处于水中或脚下为水的敌人，补穿冰霜行者靴子并冻结脚下
+     * 一层水面，使其尽快恢复 onGround 站上冰面；站上冰面后由冰霜
+     * 行者的结冰盘自持扩展，解决"陆地生成、路径遇水落水"的缺口。
+     */
+    private void assistWaterloggedMobs() {
+        if (!Config.INVASION.ENABLE_FROST_WALKER_ON_WATER.get()) {
+            return;
+        }
+        for (ActiveInvasion invasion : activeInvasions.values()) {
+            Level level = invasion.getLevel();
+            if (!(level instanceof ServerLevel serverLevel)) {
+                continue;
+            }
+            for (ActiveInvasion.MobInfo mobInfo : invasion.mobsLeft) {
+                if (mobInfo.uuid == null) {
+                    continue;
+                }
+                if (serverLevel.getEntity(mobInfo.uuid) instanceof Mob mob && isMobInWater(mob)) {
+                    assistWaterloggedMob(mob);
+                }
+            }
+        }
+    }
+
+    /**
+     * 判断怪物是否处于水中或脚下为水
+     *
+     * @param mob 目标怪物
+     * @return 身体在水中或脚下格为水时返回 true
+     */
+    private boolean isMobInWater(Mob mob) {
+        return mob.isInWater()
+            || mob.level().getFluidState(mob.blockPosition()).is(FluidTags.WATER)
+            || mob.level().getFluidState(mob.blockPosition().below()).is(FluidTags.WATER);
+    }
+
+    /**
+     * 为单只涉水怪物施加援助
+     *
+     * 脚下无冰霜行者附魔时补穿靴子（避免覆盖装备缩放的既有附魔），
+     * 随后冻结怪物脚下一层 3x3 水面；只冻结脚下层、不冻结身体
+     * 所在格，防止实体被卡入实心方块。
+     *
+     * @param mob 目标怪物
+     */
+    private void assistWaterloggedMob(Mob mob) {
+        ItemStack boots = mob.getItemBySlot(EquipmentSlot.FEET);
+        if (boots.isEmpty()
+            || EnchantmentHelper.getItemEnchantmentLevel(Enchantments.FROST_WALKER, boots) <= 0) {
+            applyFrostWalkerBoots(mob);
+        }
+
+        BlockPos floor = mob.blockPosition().below();
+        for (BlockPos pos : BlockPos.betweenClosed(floor.offset(-1, 0, -1), floor.offset(1, 0, 1))) {
+            if (mob.level().getFluidState(pos).is(FluidTags.WATER)) {
+                mob.level().setBlockAndUpdate(pos, Blocks.FROSTED_ICE.defaultBlockState());
+            }
+        }
     }
 
     /**
