@@ -32,6 +32,7 @@ import net.minecraft.world.level.storage.loot.parameters.LootContextParamSets;
 import net.minecraft.world.level.storage.loot.parameters.LootContextParams;
 import net.minecraft.world.entity.*;
 import net.minecraft.world.entity.ai.goal.Goal;
+import net.minecraft.world.item.enchantment.EnchantmentHelper;
 import net.minecraft.world.item.enchantment.Enchantments;
 import net.minecraft.world.entity.ai.navigation.PathNavigation;
 import net.minecraft.world.entity.player.Player;
@@ -91,6 +92,9 @@ public class InvasionSystem {
     private final Map<UUID, Long> playerInvasionCooldowns = new HashMap<>();
     /** 随机数生成器 */
     private final Random random = new Random();
+
+    /** 涉水敌人援助计时器（每 20 tick 扫描一次） */
+    private int waterAssistTimer = 0;
 
     /** 首次入侵所需击杀数 */
     private static final int FIRST_INVASION_KILLS_REQUIRED = 25;
@@ -248,6 +252,12 @@ public class InvasionSystem {
                     iterator.remove();
                 }
             }
+        }
+
+        // 每 20 tick 一次：为路径涉水的入侵敌人补穿冰霜行者并冻结脚下水面
+        if (++waterAssistTimer >= 20) {
+            waterAssistTimer = 0;
+            assistWaterloggedMobs();
         }
     }
 
@@ -534,13 +544,10 @@ public class InvasionSystem {
         if (!(mob.level() instanceof ServerLevel serverLevel)) {
             return;
         }
-        Registry<net.minecraft.world.item.enchantment.Enchantment> enchantmentRegistry =
-            serverLevel.registryAccess().registryOrThrow(Registries.ENCHANTMENT);
-        Holder.Reference<net.minecraft.world.item.enchantment.Enchantment> holder =
-            enchantmentRegistry.getHolder(ResourceKey.create(Registries.ENCHANTMENT,
-                ResourceLocation.fromNamespaceAndPath("minecraft", "frost_walker"))).orElse(null);
-        if (holder == null || !holder.isBound()) {
-            AdaptiveNemesisMod.LOGGER.warn("⛔ Frost Walker Holder 无效，无法为 {} 装备冰霜行者", 
+        Holder<net.minecraft.world.item.enchantment.Enchantment> holder =
+            getFrostWalkerHolder(serverLevel);
+        if (holder == null) {
+            AdaptiveNemesisMod.LOGGER.warn("⛔ Frost Walker Holder 无效，无法为 {} 装备冰霜行者",
                 EntityType.getKey(mob.getType()));
             return;
         }
@@ -548,6 +555,24 @@ public class InvasionSystem {
         boots.enchant(holder, 1);
         mob.setItemSlot(EquipmentSlot.FEET, boots);
         mob.setDropChance(EquipmentSlot.FEET, 0.0f);
+    }
+
+    /**
+     * 解析冰霜行者附魔的 Holder
+     *
+     * @param serverLevel 服务端世界
+     * @return 附魔 Holder，注册表缺失或未绑定时返回 null
+     */
+    private Holder<net.minecraft.world.item.enchantment.Enchantment> getFrostWalkerHolder(ServerLevel serverLevel) {
+        Registry<net.minecraft.world.item.enchantment.Enchantment> enchantmentRegistry =
+            serverLevel.registryAccess().registryOrThrow(Registries.ENCHANTMENT);
+        Holder.Reference<net.minecraft.world.item.enchantment.Enchantment> holder =
+            enchantmentRegistry.getHolder(ResourceKey.create(Registries.ENCHANTMENT,
+                ResourceLocation.fromNamespaceAndPath("minecraft", "frost_walker"))).orElse(null);
+        if (holder == null || !holder.isBound()) {
+            return null;
+        }
+        return holder;
     }
 
     /**
@@ -625,6 +650,86 @@ public class InvasionSystem {
                 level.setBlockAndUpdate(pos, Blocks.FROSTED_ICE.defaultBlockState());
             }
         }
+    }
+
+    /**
+     * 为路径涉水的入侵敌人提供冰霜行者援助
+     *
+     * 每 20 tick 由入侵 tick 调度：遍历所有活动入侵的已生成敌人，
+     * 凡身体处于水中或脚下为水的敌人，补穿冰霜行者靴子并冻结脚下
+     * 一层水面，使其尽快恢复 onGround 站上冰面；站上冰面后由冰霜
+     * 行者的结冰盘自持扩展，解决"陆地生成、路径遇水落水"的缺口。
+     */
+    private void assistWaterloggedMobs() {
+        if (!Config.INVASION.ENABLE_FROST_WALKER_ON_WATER.get()) {
+            return;
+        }
+        for (ActiveInvasion invasion : activeInvasions.values()) {
+            Level level = invasion.getLevel();
+            if (!(level instanceof ServerLevel serverLevel)) {
+                continue;
+            }
+            for (ActiveInvasion.MobInfo mobInfo : invasion.mobsLeft) {
+                if (mobInfo.uuid == null) {
+                    continue;
+                }
+                if (serverLevel.getEntity(mobInfo.uuid) instanceof Mob mob && isMobInWater(mob)) {
+                    assistWaterloggedMob(mob);
+                }
+            }
+        }
+    }
+
+    /**
+     * 判断怪物是否处于水中或脚下为水
+     *
+     * @param mob 目标怪物
+     * @return 身体在水中或脚下格为水时返回 true
+     */
+    private boolean isMobInWater(Mob mob) {
+        return mob.isInWater()
+            || mob.level().getFluidState(mob.blockPosition()).is(FluidTags.WATER)
+            || mob.level().getFluidState(mob.blockPosition().below()).is(FluidTags.WATER);
+    }
+
+    /**
+     * 为单只涉水怪物施加援助
+     *
+     * 脚下无冰霜行者附魔时补穿靴子（避免覆盖装备缩放的既有附魔），
+     * 随后冻结怪物脚下一层 3x3 水面；只冻结脚下层、不冻结身体
+     * 所在格，防止实体被卡入实心方块。
+     *
+     * @param mob 目标怪物
+     */
+    private void assistWaterloggedMob(Mob mob) {
+        ItemStack boots = mob.getItemBySlot(EquipmentSlot.FEET);
+        if (boots.isEmpty() || !bootsHasFrostWalker(mob, boots)) {
+            applyFrostWalkerBoots(mob);
+        }
+
+        BlockPos floor = mob.blockPosition().below();
+        for (BlockPos pos : BlockPos.betweenClosed(floor.offset(-1, 0, -1), floor.offset(1, 0, 1))) {
+            if (mob.level().getFluidState(pos).is(FluidTags.WATER)) {
+                mob.level().setBlockAndUpdate(pos, Blocks.FROSTED_ICE.defaultBlockState());
+            }
+        }
+    }
+
+    /**
+     * 检查靴子是否已附带冰霜行者附魔
+     *
+     * @param mob 目标怪物（用于解析附魔注册表）
+     * @param boots 待检查的靴子
+     * @return 已附带冰霜行者时返回 true
+     */
+    private boolean bootsHasFrostWalker(Mob mob, ItemStack boots) {
+        if (!(mob.level() instanceof ServerLevel serverLevel)) {
+            return false;
+        }
+        Holder<net.minecraft.world.item.enchantment.Enchantment> holder =
+            getFrostWalkerHolder(serverLevel);
+        return holder != null
+            && EnchantmentHelper.getItemEnchantmentLevel(holder, boots) > 0;
     }
 
     /**
