@@ -45,17 +45,19 @@ public class PlayerStrengthEvaluator {
     
     /**
      * 缓存刷新间隔（tick）
+     *
+     * 纯技术常量（5秒 = 100 tick），仅用于控制强度重算频率，不作为玩法参数开放配置。
      */
     private static final int CACHE_REFRESH_INTERVAL = 100; // 5秒
-    
+
     /**
      * 私有构造函数 - 单例模式
      */
     private PlayerStrengthEvaluator() {}
-    
+
     /**
      * 获取单例实例
-     * 
+     *
      * @return PlayerStrengthEvaluator 实例
      */
     public static synchronized PlayerStrengthEvaluator getInstance() {
@@ -64,12 +66,12 @@ public class PlayerStrengthEvaluator {
         }
         return INSTANCE;
     }
-    
+
     /**
      * 初始化评估系统
      */
     public void initialize() {
-        AdaptiveNemesisMod.LOGGER.debug("🧠 玩家强度评估系统已初始化");
+        AdaptiveNemesisMod.LOGGER.debug("玩家强度评估系统已初始化");
     }
     
     /**

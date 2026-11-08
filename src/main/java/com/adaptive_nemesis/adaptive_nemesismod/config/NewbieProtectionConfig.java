@@ -37,6 +37,11 @@ public class NewbieProtectionConfig {
     */
     public final ModConfigSpec.IntValue DEATH_STREAK_THRESHOLD;
 
+    /**
+     * 构造新手保护配置
+     *
+     * @param builder 配置构建器，由 Config 聚合类统一传入
+     */
     public NewbieProtectionConfig(ModConfigSpec.Builder builder) {
         builder.push("newbieProtection");
         ENABLE_NEWBIE_PROTECTION = builder.comment("是否启用新手保护机制").comment("Enable newbie protection mechanism").define("enableNewbieProtection", true);

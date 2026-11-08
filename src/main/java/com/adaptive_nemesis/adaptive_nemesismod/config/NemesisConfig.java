@@ -115,6 +115,11 @@ public class NemesisConfig {
      */
     public final ModConfigSpec.ConfigValue<String> NEMESIS_LOOT_TABLES;
 
+    /**
+     * 构造宿敌系统配置
+     *
+     * @param builder 配置构建器，由 Config 聚合类统一传入
+     */
     public NemesisConfig(ModConfigSpec.Builder builder) {
         builder.push("nemesis");
         

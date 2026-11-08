@@ -27,6 +27,11 @@ public class WatchdogConfig {
      */
     public final ModConfigSpec.IntValue WATCHDOG_CRITICAL_THRESHOLD;
 
+    /**
+     * 构造看门狗配置
+     *
+     * @param builder 配置构建器，由 Config 聚合类统一传入
+     */
     public WatchdogConfig(ModConfigSpec.Builder builder) {
         builder.push("watchdog");
         ENABLE_WATCHDOG = builder

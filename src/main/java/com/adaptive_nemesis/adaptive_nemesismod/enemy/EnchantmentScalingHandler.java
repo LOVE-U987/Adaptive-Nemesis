@@ -13,9 +13,6 @@ import java.util.regex.PatternSyntaxException;
 
 import com.adaptive_nemesis.adaptive_nemesismod.AdaptiveNemesisMod;
 import com.adaptive_nemesis.adaptive_nemesismod.Config;
-import com.adaptive_nemesis.adaptive_nemesismod.enemy.EntityFilterHelper;
-import com.adaptive_nemesis.adaptive_nemesismod.player.PlayerStrengthData;
-import com.adaptive_nemesis.adaptive_nemesismod.player.PlayerStrengthEvaluator;
 
 import net.minecraft.core.Holder;
 import net.minecraft.core.Registry;
@@ -24,7 +21,6 @@ import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
-import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.tags.ItemTags;
 import net.minecraft.tags.TagKey;
 import net.minecraft.world.entity.EntityType;
@@ -112,25 +108,38 @@ public class EnchantmentScalingHandler {
 
     /**
      * 构建模组装备与附魔候选缓存
-     * 仅在服务端首次需要时执行一次，避免每次实体生成都扫描整个注册表
+     *
+     * 仅在服务端首次需要时执行一次（cachesBuilt 快速路径），
+     * 避免每次实体生成都扫描整个注册表；缓存失效重建仅由
+     * {@link #resetCaches()}（服务器关闭时调用）负责，防止重启后
+     * 继续使用失效的 Holder 引用。
      *
      * @param level 服务端世界，用于获取注册表访问器
      */
     private synchronized void buildCaches(ServerLevel level) {
-        // 强制重置所有缓存，防止服务器重启时使用失效的 Holder 引用
-        cachesBuilt = false;
-        modEquipmentCache = null;
-        modMainHandWeaponsCache = null;
-        modShieldsCache = null;
-        modOffHandWeaponsCache = null;
-        modEnchantmentCache = null;
-        
-        // 不再需要检查，因为我们总是强制重建
-        // if (cachesBuilt) { return; }
+        // 快速路径：缓存已构建时直接返回，避免二次生成时全量扫描注册表
+        if (cachesBuilt) {
+            return;
+        }
 
         Registry<Item> itemRegistry = level.registryAccess().registryOrThrow(Registries.ITEM);
         Registry<Enchantment> enchantmentRegistry = level.registryAccess().registryOrThrow(Registries.ENCHANTMENT);
 
+        initCacheContainers();
+        buildEquipmentCache(itemRegistry);
+        buildEnchantmentCache(enchantmentRegistry);
+
+        cachesBuilt = true;
+
+        if (Config.ENABLE_DEBUG_LOG.get()) {
+            logCachesBuilt();
+        }
+    }
+
+    /**
+     * 初始化各缓存容器为空集合
+     */
+    private void initCacheContainers() {
         modEquipmentCache = new EnumMap<>(EquipmentSlot.class);
         modEquipmentCache.put(EquipmentSlot.HEAD, new ArrayList<>());
         modEquipmentCache.put(EquipmentSlot.CHEST, new ArrayList<>());
@@ -140,7 +149,14 @@ public class EnchantmentScalingHandler {
         modMainHandWeaponsCache = new ArrayList<>();
         modShieldsCache = new ArrayList<>();
         modOffHandWeaponsCache = new ArrayList<>();
+    }
 
+    /**
+     * 扫描物品注册表，收集模组装备（护甲、武器、盾牌）候选
+     *
+     * @param itemRegistry 物品注册表
+     */
+    private void buildEquipmentCache(Registry<Item> itemRegistry) {
         TagKey<Item> shieldTag = TagKey.create(Registries.ITEM, ResourceLocation.withDefaultNamespace("shields"));
 
         for (Item item : itemRegistry) {
@@ -161,7 +177,14 @@ public class EnchantmentScalingHandler {
                 modShieldsCache.add(item);
             }
         }
+    }
 
+    /**
+     * 扫描附魔注册表，收集模组附魔候选（过滤危险附魔）
+     *
+     * @param enchantmentRegistry 附魔注册表
+     */
+    private void buildEnchantmentCache(Registry<Enchantment> enchantmentRegistry) {
         modEnchantmentCache = new ArrayList<>();
         for (Enchantment enchant : enchantmentRegistry) {
             ResourceKey<Enchantment> key = enchantmentRegistry.getResourceKey(enchant).orElse(null);
@@ -171,20 +194,25 @@ public class EnchantmentScalingHandler {
             if (isDangerousEnchantment(enchantHolder)) continue;
             modEnchantmentCache.add(enchantHolder);
         }
-
-        cachesBuilt = true;
-
-        if (Config.ENABLE_DEBUG_LOG.get()) {
-            AdaptiveNemesisMod.LOGGER.debug(
-                "🗂️ EnchantmentScalingHandler 缓存已构建: 护甲={}, 主手武器={}, 盾牌={}, 副手武器={}, 附魔={}",
-                modEquipmentCache.values().stream().mapToInt(List::size).sum(),
-                modMainHandWeaponsCache.size(),
-                modShieldsCache.size(),
-                modOffHandWeaponsCache.size(),
-                modEnchantmentCache.size()
-            );
-        }
     }
+
+    /**
+     * 输出缓存构建结果调试日志
+     */
+    private void logCachesBuilt() {
+        AdaptiveNemesisMod.LOGGER.debug(
+            "EnchantmentScalingHandler 缓存已构建: 护甲={}, 主手武器={}, 盾牌={}, 副手武器={}, 附魔={}",
+            modEquipmentCache.values().stream().mapToInt(List::size).sum(),
+            modMainHandWeaponsCache.size(),
+            modShieldsCache.size(),
+            modOffHandWeaponsCache.size(),
+            modEnchantmentCache.size()
+        );
+    }
+    /**
+     * 武器类核心附魔候选（主手/副手）
+     * 不含效率（EFFICIENCY）：效率只对挖掘工具生效，剑上效率无意义
+     */
     @SuppressWarnings("unchecked")
     private static final ResourceKey<Enchantment>[] WEAPON_ENCHANTMENTS = new ResourceKey[] {
         Enchantments.SHARPNESS,
@@ -194,10 +222,14 @@ public class EnchantmentScalingHandler {
         Enchantments.KNOCKBACK,
         Enchantments.LOOTING,
         Enchantments.SWEEPING_EDGE,
-        Enchantments.UNBREAKING,
-        Enchantments.EFFICIENCY
+        Enchantments.UNBREAKING
     };
 
+    /**
+     * 护甲类核心附魔候选（四甲位通用）
+     * 不含呼吸/水下速掘/深海探索者/摔落缓冲：这些附魔仅对单一槽位生效，
+     * 通用候选表只保留全甲位适用项；单槽位适用性由应用前的 canEnchant 校验兜底
+     */
     @SuppressWarnings("unchecked")
     private static final ResourceKey<Enchantment>[] ARMOR_ENCHANTMENTS = new ResourceKey[] {
         Enchantments.PROTECTION,
@@ -205,11 +237,7 @@ public class EnchantmentScalingHandler {
         Enchantments.BLAST_PROTECTION,
         Enchantments.PROJECTILE_PROTECTION,
         Enchantments.THORNS,
-        Enchantments.UNBREAKING,
-        Enchantments.RESPIRATION,
-        Enchantments.AQUA_AFFINITY,
-        Enchantments.FEATHER_FALLING,
-        Enchantments.DEPTH_STRIDER
+        Enchantments.UNBREAKING
     };
 
     @SuppressWarnings("unchecked")
@@ -219,15 +247,6 @@ public class EnchantmentScalingHandler {
         Enchantments.FLAME,
         Enchantments.INFINITY,
         Enchantments.UNBREAKING
-    };
-
-    /**
-     * 生成时无法被攻击的怪物NBT标签黑名单
-     */
-    private static final String[] INVULNERABLE_TAGS = {
-        "Invulnerable",
-        "NoAI",
-        "PersistenceRequired"
     };
 
     private EnchantmentScalingHandler() {}
@@ -251,7 +270,7 @@ public class EnchantmentScalingHandler {
             INSTANCE.modShieldsCache = null;
             INSTANCE.modOffHandWeaponsCache = null;
             INSTANCE.modEnchantmentCache = null;
-            AdaptiveNemesisMod.LOGGER.debug("🗑️ EnchantmentScalingHandler 缓存已重置");
+            AdaptiveNemesisMod.LOGGER.debug("EnchantmentScalingHandler 缓存已重置");
         }
     }
 
@@ -298,53 +317,26 @@ public class EnchantmentScalingHandler {
 
     /**
      * 获取当前难度倍率
-     * ⚠️ 注意：此方法在 FinalizeSpawnEvent 中调用，那时实体所在区块可能尚未完全生成。
-     * 使用 getEntitiesOfClass + AABB 会触发范围内其他区块的加载，与正在进行的世界生成形成死锁。
-     * 改用玩家列表迭代 + 距离检查，不会触发新的区块加载。
+     *
+     * 统一复用 {@link EnemyScalingHandler#calculateDifficultyMultiplier(Mob)} 的同源倍率：
+     * 与敌人属性缩放共享玩家强度评估、浮动层、缓动层、世界阶段加成、
+     * 硬上限与配置上限以及玩家空间索引，避免装备难度与属性难度公式脱节。
+     *
+     * 注意：此方法在 FinalizeSpawnEvent 中调用，实体所在区块可能尚未完全生成，
+     * EnemyScalingHandler 内部使用玩家空间索引 + 距离检查，不触发新的区块加载。
+     *
+     * @param mob 目标怪物
+     * @return 难度倍率（与敌人属性缩放同源，下限 1.0）
      */
     private double getDifficultyMultiplier(Mob mob) {
-        if (!(mob.level() instanceof ServerLevel serverLevel)) {
-            return 1.0;
-        }
-
-        // 获取附近玩家的强度（安全遍历玩家列表，不触发区块加载）
-        double range = Config.AREA_SYNC_RANGE.get() * 16;
-        double rangeSq = range * range;
-        List<ServerPlayer> nearbyPlayers = new ArrayList<>();
-
-        for (ServerPlayer player : serverLevel.getServer().getPlayerList().getPlayers()) {
-            if (player.level() == serverLevel && player.distanceToSqr(mob) <= rangeSq) {
-                nearbyPlayers.add(player);
-            }
-        }
-
-        if (nearbyPlayers.isEmpty()) {
-            return 1.0;
-        }
-
-        double totalStrength = 0;
-        for (ServerPlayer player : nearbyPlayers) {
-            var data = com.adaptive_nemesis.adaptive_nemesismod.player.PlayerStrengthEvaluator.getInstance()
-                .getPlayerStrength(player);
-            if (data != null) {
-                totalStrength += data.getTotalStrength();
-            }
-        }
-        double avgStrength = totalStrength / nearbyPlayers.size();
-
-        // 基于玩家强度和基础倍率计算难度系数
-        double baseMultiplier = 1.0 + (avgStrength * Config.DIFFICULTY_BASE_MULTIPLIER.get() / 100.0);
-
-        // 应用世界阶段
-        if (Config.ENABLE_WORLD_STAGE.get()) {
-            baseMultiplier *= WorldStageManager.getInstance().getWorldStageMultiplier();
-        }
-
-        return Math.max(1.0, Math.min(baseMultiplier, 20.0));
+        return EnemyScalingHandler.getInstance().calculateDifficultyMultiplier(mob);
     }
 
     /**
      * 应用装备强化
+     *
+     * 本方法仅负责流程编排：概率计算、槽位遍历、掉落禁用与状态验证
+     * 分别拆分到各子方法中。
      *
      * @param mob 目标怪物
      * @param difficultyMultiplier 难度倍率
@@ -355,58 +347,90 @@ public class EnchantmentScalingHandler {
         int enchantLevel = calculateEnchantLevel(difficultyMultiplier);
 
         // 判断该生物是否能使用装备（手持物品+盔甲）
-        // 只有僵尸类、骷髅类这类有手的人形敌对生物才配发装备
-        // 不然苦力怕、蜘蛛、史莱姆穿盔甲锄头太抽象了 😂
+        // 只有僵尸类、骷髅类这类有手的人形敌对生物才配发装备，
+        // 苦力怕、蜘蛛、史莱姆等非人形生物不生成任何装备
         boolean canEquipGear = isHumanoidMob(mob);
 
-        // 遍历所有装备槽
         for (EquipmentSlot slot : EquipmentSlot.values()) {
-            boolean isArmor = slot.getType() == EquipmentSlot.Type.HUMANOID_ARMOR;
-            boolean isHand = slot == EquipmentSlot.MAINHAND || slot == EquipmentSlot.OFFHAND;
-            if (!isArmor && !isHand) {
-                continue;
-            }
+            scaleEquipmentSlot(mob, slot, canEquipGear, difficultyMultiplier, enchantChance, enchantLevel, serverLevel);
+        }
 
-            // 配置禁用的部位直接跳过
-            if (isSlotDisabled(slot)) {
-                continue;
-            }
+        applyDropChanceOverride(mob);
+        validateMobState(mob);
+    }
 
-            // 非人形生物不生成任何装备（武器、盾牌、盔甲全跳过）
-            if (!canEquipGear) {
-                continue;
-            }
+    /**
+     * 处理单个装备槽位的生成与附魔
+     *
+     * @param mob 目标怪物
+     * @param slot 装备槽位
+     * @param canEquipGear 该生物是否可配发装备（人形判定）
+     * @param difficultyMultiplier 难度倍率
+     * @param enchantChance 附魔概率
+     * @param enchantLevel 附魔等级上限
+     * @param serverLevel 服务端世界
+     */
+    private void scaleEquipmentSlot(
+        Mob mob,
+        EquipmentSlot slot,
+        boolean canEquipGear,
+        double difficultyMultiplier,
+        float enchantChance,
+        int enchantLevel,
+        ServerLevel serverLevel
+    ) {
+        boolean isArmor = slot.getType() == EquipmentSlot.Type.HUMANOID_ARMOR;
+        boolean isHand = slot == EquipmentSlot.MAINHAND || slot == EquipmentSlot.OFFHAND;
+        if (!isArmor && !isHand) {
+            return;
+        }
 
-            ItemStack stack = mob.getItemBySlot(slot);
-            if (stack.isEmpty()) {
-                // 有一定概率为怪物生成装备（如果原本没有）
-                if (shouldGrantEquipment(difficultyMultiplier, slot)) {
-                    stack = createEquipmentForSlot(mob, slot, difficultyMultiplier, serverLevel);
-                    if (!stack.isEmpty()) {
-                        mob.setItemSlot(slot, stack);
-                    }
+        // 配置禁用的部位直接跳过
+        if (isSlotDisabled(slot)) {
+            return;
+        }
+
+        // 非人形生物不生成任何装备（武器、盾牌、盔甲全跳过）
+        if (!canEquipGear) {
+            return;
+        }
+
+        ItemStack stack = mob.getItemBySlot(slot);
+        if (stack.isEmpty()) {
+            // 有一定概率为怪物生成装备（如果原本没有）
+            if (shouldGrantEquipment(difficultyMultiplier, slot)) {
+                stack = createEquipmentForSlot(mob, slot, difficultyMultiplier, serverLevel);
+                if (!stack.isEmpty()) {
+                    mob.setItemSlot(slot, stack);
                 }
-            }
-
-            // 为所有装备（自然生成或新创建）添加附魔
-            if (!stack.isEmpty() && random.nextFloat() < enchantChance) {
-                applyEnchantments(stack, slot, enchantLevel, serverLevel);
             }
         }
 
-        // 如果配置了禁用装备掉落，设置所有装备槽位的掉落概率为0
+        // 为所有装备（自然生成或新创建）添加附魔
+        if (!stack.isEmpty() && random.nextFloat() < enchantChance) {
+            applyEnchantments(stack, slot, enchantLevel, serverLevel);
+        }
+    }
+
+    /**
+     * 应用掉落概率覆盖：配置禁用装备掉落时将所有槽位掉落概率归零
+     *
+     * @param mob 目标怪物
+     */
+    private void applyDropChanceOverride(Mob mob) {
         if (Config.DISABLE_EQUIPMENT_DROP.get()) {
             for (EquipmentSlot slot : EquipmentSlot.values()) {
                 mob.setDropChance(slot, 0.0F);
             }
         }
-
-        // 装备生成后验证怪物状态
-        validateMobState(mob);
     }
 
     /**
      * 计算附魔概率 - 纯计算版本，可测试
+     *
+     * 使用历史默认上限 0.95（现运行时上限由配置项
+     * {@code enchantmentChanceCap} 控制，见四参重载）。
+     * 保留三参签名以维持既有单元测试与调用兼容。
      *
      * @param difficultyMultiplier 难度倍率
      * @param baseChance 基础概率
@@ -414,18 +438,32 @@ public class EnchantmentScalingHandler {
      * @return 最终附魔概率（上限0.95）
      */
     static float calculateEnchantChance(double difficultyMultiplier, float baseChance, float chancePerDifficulty) {
-        float additionalChance = (float) ((difficultyMultiplier - 1.0) * chancePerDifficulty);
-        return Math.max(0f, Math.min(baseChance + additionalChance, 0.95f));
+        return calculateEnchantChance(difficultyMultiplier, baseChance, chancePerDifficulty, 0.95f);
     }
 
     /**
-     * 计算附魔概率（包装方法 - 从Config读取参数）
+     * 计算附魔概率 - 纯计算版本（带可配置上限），可测试
+     *
+     * @param difficultyMultiplier 难度倍率
+     * @param baseChance 基础概率
+     * @param chancePerDifficulty 每单位难度的概率增量
+     * @param maxChance 概率上限
+     * @return 最终附魔概率（不低于 0，不超过 maxChance）
+     */
+    static float calculateEnchantChance(double difficultyMultiplier, float baseChance, float chancePerDifficulty, float maxChance) {
+        float additionalChance = (float) ((difficultyMultiplier - 1.0) * chancePerDifficulty);
+        return Math.max(0f, Math.min(baseChance + additionalChance, maxChance));
+    }
+
+    /**
+     * 计算附魔概率（包装方法 - 从Config读取参数，含概率上限配置）
      */
     private float calculateEnchantChance(double difficultyMultiplier) {
         return calculateEnchantChance(
             difficultyMultiplier,
             Config.ENCHANTMENT_CHANCE_BASE.get().floatValue(),
-            Config.ENCHANTMENT_CHANCE_PER_DIFFICULTY.get().floatValue()
+            Config.ENCHANTMENT_CHANCE_PER_DIFFICULTY.get().floatValue(),
+            Config.ENCHANTMENT_CHANCE_CAP.get().floatValue()
         );
     }
 
@@ -477,18 +515,6 @@ public class EnchantmentScalingHandler {
         float chancePerDifficulty = Config.EQUIPMENT_CHANCE_PER_DIFFICULTY.get().floatValue();
         float totalChance = shouldGrantEquipmentChance(difficultyMultiplier, slot == EquipmentSlot.MAINHAND, baseChance, chancePerDifficulty);
         return random.nextFloat() < totalChance;
-    }
-
-    /**
-     * 判断是否应该给怪物生成装备 - 纯计算版本，可测试
-     *
-     * @param difficultyMultiplier 难度倍率
-     * @param isMainhand 是否为主手槽
-     * @return 生成装备的概率
-     */
-    @Deprecated
-    static float shouldGrantEquipmentChance(double difficultyMultiplier, boolean isMainhand) {
-        return shouldGrantEquipmentChance(difficultyMultiplier, isMainhand, 0.15f, 0.10f);
     }
 
     /**
@@ -588,7 +614,7 @@ public class EnchantmentScalingHandler {
                     modItems.add(item);
                 } else if (Config.ENABLE_DEBUG_LOG.get()) {
                     AdaptiveNemesisMod.LOGGER.debug(
-                        "⛔ 过滤超模/黑名单武器: {} (伤害={}, 上限={})",
+                        "过滤超模/黑名单武器: {} (伤害={}, 上限={})",
                         BuiltInRegistries.ITEM.getKey(item),
                         String.format("%.1f", weaponDamage),
                         String.format("%.1f", damageCap)
@@ -649,51 +675,60 @@ public class EnchantmentScalingHandler {
 
         // 配置未变化时使用缓存
         if (!lastDisabledSlotsHash.equals(raw)) {
-            lastDisabledSlotsHash = raw;
-            disabledSlots.clear();
+            refreshDisabledSlots(raw);
+        }
 
-            if (!raw.isEmpty()) {
-                String[] parts = raw.split(",");
-                for (String part : parts) {
-                    String token = part.trim().toLowerCase();
-                    if (token.isEmpty()) {
-                        continue;
+        return disabledSlots.contains(slot);
+    }
+
+    /**
+     * 解析禁用部位配置并刷新缓存
+     *
+     * @param raw 已 trim 的原始配置串
+     */
+    private void refreshDisabledSlots(String raw) {
+        lastDisabledSlotsHash = raw;
+        disabledSlots.clear();
+
+        if (!raw.isEmpty()) {
+            String[] parts = raw.split(",");
+            for (String part : parts) {
+                String token = part.trim().toLowerCase();
+                if (token.isEmpty()) {
+                    continue;
+                }
+                switch (token) {
+                    case "hand" -> {
+                        disabledSlots.add(EquipmentSlot.MAINHAND);
+                        disabledSlots.add(EquipmentSlot.OFFHAND);
                     }
-                    switch (token) {
-                        case "hand" -> {
-                            disabledSlots.add(EquipmentSlot.MAINHAND);
-                            disabledSlots.add(EquipmentSlot.OFFHAND);
-                        }
-                        case "armor" -> {
-                            disabledSlots.add(EquipmentSlot.HEAD);
-                            disabledSlots.add(EquipmentSlot.CHEST);
-                            disabledSlots.add(EquipmentSlot.LEGS);
-                            disabledSlots.add(EquipmentSlot.FEET);
-                        }
-                        default -> {
-                            EquipmentSlot parsed = parseSlot(token);
-                            if (parsed != null) {
-                                disabledSlots.add(parsed);
-                            } else if (Config.ENABLE_DEBUG_LOG.get()) {
-                                AdaptiveNemesisMod.LOGGER.warn(
-                                    "⚠️ 未知的禁用装备部位: '{}'，有效值: mainhand, offhand, head, chest, legs, feet, hand, armor",
-                                    part.trim()
-                                );
-                            }
+                    case "armor" -> {
+                        disabledSlots.add(EquipmentSlot.HEAD);
+                        disabledSlots.add(EquipmentSlot.CHEST);
+                        disabledSlots.add(EquipmentSlot.LEGS);
+                        disabledSlots.add(EquipmentSlot.FEET);
+                    }
+                    default -> {
+                        EquipmentSlot parsed = parseSlot(token);
+                        if (parsed != null) {
+                            disabledSlots.add(parsed);
+                        } else if (Config.ENABLE_DEBUG_LOG.get()) {
+                            AdaptiveNemesisMod.LOGGER.warn(
+                                "未知的禁用装备部位: '{}'，有效值: mainhand, offhand, head, chest, legs, feet, hand, armor",
+                                part.trim()
+                            );
                         }
                     }
                 }
             }
-
-            if (Config.ENABLE_DEBUG_LOG.get() && !disabledSlots.isEmpty()) {
-                AdaptiveNemesisMod.LOGGER.debug(
-                    "🛡️ 禁用的装备部位已加载: {} (原始配置='{}')",
-                    disabledSlots, raw
-                );
-            }
         }
 
-        return disabledSlots.contains(slot);
+        if (Config.ENABLE_DEBUG_LOG.get() && !disabledSlots.isEmpty()) {
+            AdaptiveNemesisMod.LOGGER.debug(
+                "禁用的装备部位已加载: {} (原始配置='{}')",
+                disabledSlots, raw
+            );
+        }
     }
 
     /**
@@ -732,35 +767,7 @@ public class EnchantmentScalingHandler {
 
         // 配置未变化时使用缓存
         if (!lastEquipmentBlacklistHash.equals(raw)) {
-            lastEquipmentBlacklistHash = raw;
-            equipmentBlacklistPatterns.clear();
-
-            if (!raw.isEmpty()) {
-                String[] parts = raw.split(",");
-                for (String part : parts) {
-                    String trimmed = part.trim();
-                    if (trimmed.isEmpty()) {
-                        continue;
-                    }
-                    try {
-                        // 将通配符 * 转换为正则 .*
-                        String regex = "\\Q" + trimmed.replace("*", "\\E.*\\Q") + "\\E";
-                        equipmentBlacklistPatterns.add(Pattern.compile(regex));
-                    } catch (PatternSyntaxException e) {
-                        AdaptiveNemesisMod.LOGGER.warn(
-                            "装备黑名单条目解析失败: '{}', 原因: {}",
-                            trimmed, e.getMessage()
-                        );
-                    }
-                }
-            }
-
-            if (Config.ENABLE_DEBUG_LOG.get() && !equipmentBlacklistPatterns.isEmpty()) {
-                AdaptiveNemesisMod.LOGGER.debug(
-                    "装备黑名单已加载: {} 条规则, 原始配置='{}'",
-                    equipmentBlacklistPatterns.size(), raw
-                );
-            }
+            refreshEquipmentBlacklistPatterns(raw);
         }
 
         if (equipmentBlacklistPatterns.isEmpty()) {
@@ -777,7 +784,7 @@ public class EnchantmentScalingHandler {
             if (pattern.matcher(itemId).matches()) {
                 if (Config.ENABLE_DEBUG_LOG.get()) {
                     AdaptiveNemesisMod.LOGGER.debug(
-                        "⛔ 黑名单过滤装备: {}",
+                        "黑名单过滤装备: {}",
                         itemId
                     );
                 }
@@ -786,6 +793,43 @@ public class EnchantmentScalingHandler {
         }
 
         return false;
+    }
+
+    /**
+     * 解析装备黑名单配置并刷新正则缓存
+     *
+     * @param raw 已 trim 的原始配置串
+     */
+    private void refreshEquipmentBlacklistPatterns(String raw) {
+        lastEquipmentBlacklistHash = raw;
+        equipmentBlacklistPatterns.clear();
+
+        if (!raw.isEmpty()) {
+            String[] parts = raw.split(",");
+            for (String part : parts) {
+                String trimmed = part.trim();
+                if (trimmed.isEmpty()) {
+                    continue;
+                }
+                try {
+                    // 将通配符 * 转换为正则 .*
+                    String regex = "\\Q" + trimmed.replace("*", "\\E.*\\Q") + "\\E";
+                    equipmentBlacklistPatterns.add(Pattern.compile(regex));
+                } catch (PatternSyntaxException e) {
+                    AdaptiveNemesisMod.LOGGER.warn(
+                        "装备黑名单条目解析失败: '{}', 原因: {}",
+                        trimmed, e.getMessage()
+                    );
+                }
+            }
+        }
+
+        if (Config.ENABLE_DEBUG_LOG.get() && !equipmentBlacklistPatterns.isEmpty()) {
+            AdaptiveNemesisMod.LOGGER.debug(
+                "装备黑名单已加载: {} 条规则, 原始配置='{}'",
+                equipmentBlacklistPatterns.size(), raw
+            );
+        }
     }
 
     /**
@@ -805,6 +849,11 @@ public class EnchantmentScalingHandler {
 
     /**
      * 应用原版核心附魔
+     *
+     * 应用前对每个候选做三重过滤：
+     * 1. 危险附魔过滤（伤害免疫等游戏破坏性效果）；
+     * 2. 适用物品校验（附魔必须支持该物品类型，如剑不适用效率类）；
+     * 3. 互斥校验（按附墨注册表的 exclusiveSet 语义，如保护系四附魔互斥）。
      *
      * @param stack 装备物品
      * @param slot 装备槽位
@@ -826,39 +875,85 @@ public class EnchantmentScalingHandler {
             // 跳过危险附魔（如伤害免疫等游戏破坏性效果）
             if (isDangerousEnchantment(enchantHolder)) continue;
 
-            // 随机附魔等级（1到maxLevel之间）
-            int level = random.nextInt(maxLevel) + 1;
+            // 应用单条核心附魔（含适用性与互斥校验）
+            applyOneCoreEnchantment(stack, enchantHolder, enchantKey, maxLevel);
+        }
+    }
 
-            try {
-                // 验证 holder 是否有效且与服务器注册表匹配
-                if (!enchantHolder.isBound()) {
-                    if (Config.ENABLE_DEBUG_LOG.get()) {
-                        AdaptiveNemesisMod.LOGGER.debug("⛐ 核心附魔 holder 未关联, 跳过：{}", enchantKey.location());
-                    }
-                    continue;
-                }
-                
-                // 双重检查：验证 ResourceKey 是否在服务器注册表中存在
-                // 这是为了防止网络编码时客户端找不到附魔 ID
-                Holder.Reference<Enchantment> verifiedHolder = enchantmentRegistry.getHolder(enchantKey).orElse(null);
-                if (verifiedHolder == null) {
-                    if (Config.ENABLE_DEBUG_LOG.get()) {
-                        AdaptiveNemesisMod.LOGGER.debug("⛐ 核心附魔 ResourceKey 在服务器注册表中不存在, 跳过：{}", enchantKey.location());
-                    }
-                    continue;
-                }
-                
-                stack.enchant(verifiedHolder, level);
-            } catch (Exception e) {
-                // 附魔冲突或不兼容时静默跳过
+    /**
+     * 应用单条核心附魔
+     *
+     * 执行适用物品校验、互斥校验与 holder 绑定校验后写入附魔。
+     *
+     * @param stack 装备物品
+     * @param enchantHolder 附魔 holder
+     * @param enchantKey 附魔注册键（用于日志）
+     * @param maxLevel 最高附魔等级
+     */
+    private void applyOneCoreEnchantment(
+        ItemStack stack,
+        Holder.Reference<Enchantment> enchantHolder,
+        ResourceKey<Enchantment> enchantKey,
+        int maxLevel
+    ) {
+        // 随机附魔等级（1到maxLevel之间）
+        int level = random.nextInt(maxLevel) + 1;
+
+        try {
+            // 验证 holder 是否有效
+            if (!enchantHolder.isBound()) {
                 if (Config.ENABLE_DEBUG_LOG.get()) {
-                    AdaptiveNemesisMod.LOGGER.debug(
-                        "⛐ 核心附魔应用失败：{} (level={}), 原因：{}",
-                        enchantKey.location(), level, e.getMessage()
-                    );
+                    AdaptiveNemesisMod.LOGGER.debug("核心附魔 holder 未关联, 跳过：{}", enchantKey.location());
                 }
+                return;
+            }
+
+            // 适用物品校验：附魔必须支持当前物品（如效率不适用剑、深海探索者不适用头盔）
+            if (!enchantHolder.value().canEnchant(stack)) {
+                if (Config.ENABLE_DEBUG_LOG.get()) {
+                    AdaptiveNemesisMod.LOGGER.debug("核心附魔 {} 不适用于当前物品, 跳过", enchantKey.location());
+                }
+                return;
+            }
+
+            // 互斥校验：与装备已有附魔不兼容（如保护系互斥）则跳过
+            if (!isCompatibleWithExisting(stack, enchantHolder)) {
+                if (Config.ENABLE_DEBUG_LOG.get()) {
+                    AdaptiveNemesisMod.LOGGER.debug("核心附魔 {} 与已有附魔互斥, 跳过", enchantKey.location());
+                }
+                return;
+            }
+
+            stack.enchant(enchantHolder, level);
+        } catch (Exception e) {
+            // 附魔冲突或不兼容时静默跳过
+            if (Config.ENABLE_DEBUG_LOG.get()) {
+                AdaptiveNemesisMod.LOGGER.debug(
+                    "核心附魔应用失败：{} (level={}), 原因：{}",
+                    enchantKey.location(), level, e.getMessage()
+                );
             }
         }
+    }
+
+    /**
+     * 检查候选附魔与装备已有附魔是否兼容
+     *
+     * 使用附魔注册表的 exclusiveSet 语义（{@link Enchantment#areCompatible}），
+     * 覆盖保护系互斥、锋利/亡灵杀手/节肢杀手互斥等冲突关系。
+     * 候选与自身同 ID 时 areCompatible 返回 false，可同时避免同附魔重复写入。
+     *
+     * @param stack 装备物品
+     * @param candidate 候选附魔
+     * @return 如果与全部已有附魔兼容返回 true
+     */
+    private boolean isCompatibleWithExisting(ItemStack stack, Holder<Enchantment> candidate) {
+        for (Holder<Enchantment> existing : stack.getEnchantments().keySet()) {
+            if (!Enchantment.areCompatible(candidate, existing)) {
+                return false;
+            }
+        }
+        return true;
     }
 
     /**
@@ -899,7 +994,7 @@ public class EnchantmentScalingHandler {
                 // 验证 holder 是否有效
                 if (!holder.isBound()) {
                     if (Config.ENABLE_DEBUG_LOG.get()) {
-                        AdaptiveNemesisMod.LOGGER.debug("⛔ 模组附魔 holder 未关联，跳过：{}", holder.key().location());
+                        AdaptiveNemesisMod.LOGGER.debug("模组附魔 holder 未关联，跳过：{}", holder.key().location());
                     }
                     continue;
                 }
@@ -908,7 +1003,7 @@ public class EnchantmentScalingHandler {
             } catch (Exception e) {
                 if (Config.ENABLE_DEBUG_LOG.get()) {
                     AdaptiveNemesisMod.LOGGER.debug(
-                        "⛔ 模组附魔应用失败: {} (level={}), 原因: {}",
+                        "模组附魔应用失败: {} (level={}), 原因: {}",
                         holder.key().location(), level, e.getMessage()
                     );
                 }
@@ -927,7 +1022,7 @@ public class EnchantmentScalingHandler {
             .registryOrThrow(Registries.ENCHANTMENT);
         
         // 收集已有附魔用于冲突检查
-        // ⚠️ 使用 ResourceLocation 而不是 Enchantment 对象作为 key
+        // 使用 ResourceLocation 而不是 Enchantment 对象作为 key
         // 因为 Enchantment 没有正确重写 hashCode/equals，且 Holder 可能在网络传输中失去绑定
         Set<ResourceLocation> existingEnchants = new HashSet<>();
         for (Holder<Enchantment> holder : stack.getEnchantments().keySet()) {
@@ -943,10 +1038,10 @@ public class EnchantmentScalingHandler {
 
         List<Holder.Reference<Enchantment>> candidates = new ArrayList<>();
         for (Holder.Reference<Enchantment> holder : modEnchantmentCache) {
-            // ⚠️ 检查 holder 是否保持绑定，防止序列化解绑后导致网络编码失败
+            // 检查 holder 是否保持绑定，防止序列化解绑后导致网络编码失败
             if (!holder.isBound()) {
                 if (Config.ENABLE_DEBUG_LOG.get()) {
-                    AdaptiveNemesisMod.LOGGER.debug("⚠️ 跳过失去绑定的附魔 Holder");
+                    AdaptiveNemesisMod.LOGGER.debug("跳过失去绑定的附魔 Holder");
                 }
                 continue;
             }
@@ -962,7 +1057,7 @@ public class EnchantmentScalingHandler {
                 // 跳过有问题的附魔
                 if (Config.ENABLE_DEBUG_LOG.get()) {
                     AdaptiveNemesisMod.LOGGER.debug(
-                        "⛔ 模组附魔候选检查失败：{}, 原因：{}",
+                        "模组附魔候选检查失败：{}, 原因：{}",
                         holder.key().location(), e.getMessage()
                     );
                 }
@@ -984,22 +1079,14 @@ public class EnchantmentScalingHandler {
     }
 
     /**
-     * 获取怪物类型（用于日志输出）
-     */
-    private String getMobType(Mob mob) {
-        ResourceLocation id = EntityType.getKey(mob.getType());
-        return id != null ? id.toString() : "unknown";
-    }
-
-    /**
      * 判断生物是否为人形生物（有手能拿武器/穿盔甲）
-     * 
+     *
      * 精准判定规则：
-     * - 僵尸系：僵尸、尸壳、溺尸、僵尸村民、僵尸猪灵 ✅
-     * - 骷髅系：骷髅、流浪者、凋零骷髅、沼骸 ✅
-     * - 灾厄村民（有手的）：卫道士、掠夺者、唤魔者、幻术师 ✅
-     * - 猪灵系：猪灵、猪灵蛮兵 ✅
-     * - 其他非人形生物（蜘蛛、苦力怕、女巫、末影人、幻翼等）：❌
+     * - 僵尸系：僵尸、尸壳、溺尸、僵尸村民、僵尸猪灵
+     * - 骷髅系：骷髅、流浪者、凋零骷髅、沼骸
+     * - 灾厄村民（有手的）：卫道士、掠夺者、唤魔者、幻术师
+     * - 猪灵系：猪灵、猪灵蛮兵
+     * - 其他非人形生物（蜘蛛、苦力怕、女巫、末影人、幻翼等）均不配发装备
      *
      * @param mob 目标生物
      * @return 如果为人形生物返回 true
@@ -1009,31 +1096,31 @@ public class EnchantmentScalingHandler {
         if (entityId == null) return false;
         String id = entityId.toString();
 
-        // 僵尸及其变种 - 经典持械单位 💀
+        // 僵尸及其变种 - 经典持械单位
         if (id.equals("minecraft:zombie") || id.equals("minecraft:husk") ||
             id.equals("minecraft:drowned") || id.equals("minecraft:zombie_villager") ||
             id.equals("minecraft:zombified_piglin")) {
             return true;
         }
 
-        // 骷髅及其变种 - 弓箭手军团 🏹
+        // 骷髅及其变种 - 弓箭手军团
         if (id.equals("minecraft:skeleton") || id.equals("minecraft:stray") ||
             id.equals("minecraft:wither_skeleton") || id.equals("minecraft:bogged")) {
             return true;
         }
 
-        // 有手的灾厄村民 - 一条区的武装分子 ⚔️
+        // 有手的灾厄村民
         if (id.equals("minecraft:vindicator") || id.equals("minecraft:pillager") ||
             id.equals("minecraft:evoker") || id.equals("minecraft:illusioner")) {
             return true;
         }
 
-        // 猪灵系 - 下界武斗派 🔥
+        // 猪灵系
         if (id.equals("minecraft:piglin") || id.equals("minecraft:piglin_brute")) {
             return true;
         }
 
-        // 其他统统不发装备，你们不配 🤷
+        // 其余生物一律不配发装备
         return false;
     }
 
@@ -1041,7 +1128,7 @@ public class EnchantmentScalingHandler {
      * 初始化
      */
     public void initialize() {
-        AdaptiveNemesisMod.LOGGER.info("📦 怪物装备/附魔强化系统已初始化");
+        AdaptiveNemesisMod.LOGGER.info("怪物装备/附魔强化系统已初始化");
     }
 
     /**
@@ -1079,7 +1166,7 @@ public class EnchantmentScalingHandler {
         if (isDangerousEnchantmentKey(path)) {
             if (Config.ENABLE_DEBUG_LOG.get()) {
                 AdaptiveNemesisMod.LOGGER.warn(
-                    "⚠️ 跳过危险附魔: {} (来源模组: {})",
+                    "跳过危险附魔: {} (来源模组: {})",
                     enchantId, enchantId.getNamespace()
                 );
             }
@@ -1092,7 +1179,7 @@ public class EnchantmentScalingHandler {
             if (isDangerousEnchantmentKey(descKey)) {
                 if (Config.ENABLE_DEBUG_LOG.get()) {
                     AdaptiveNemesisMod.LOGGER.warn(
-                        "⚠️ 通过描述跳过危险附魔: {} (desc={})",
+                        "通过描述跳过危险附魔: {} (desc={})",
                         enchantId, descKey
                     );
                 }
@@ -1141,41 +1228,71 @@ public class EnchantmentScalingHandler {
 
     /**
      * 怪物生成后状态验证
-     * 检查怪物是否处于可被攻击的正常状态，修复异常状态
+     * 检查怪物是否处于可被攻击的正常状态，修复异常状态。
+     * 死亡或未存活的实体直接跳过，禁止把 0 血实体拉满复活。
      *
      * @param mob 待验证的怪物
      */
     private void validateMobState(Mob mob) {
-        // 检查并清除实体真正的无敌标志（isInvulnerable/setInvulnerable 操作 Entity.invulnerable 字段）
-        // ⚠️ 注意：getPersistentData().getBoolean("Invulnerable") 是模组自定义数据，和实体无敌无关！
+        // 0 血/死亡实体防护：不存活时禁止修复，避免把 0 血实体拉满
+        if (!mob.isAlive()) {
+            return;
+        }
+
+        sanitizeInvulnerableFlag(mob);
+        sanitizeHealthAttribute(mob);
+        ensureCurrentHealthValid(mob);
+    }
+
+    /**
+     * 清除实体真正的无敌标志（isInvulnerable/setInvulnerable 操作 Entity.invulnerable 字段）
+     *
+     * 注意：getPersistentData().getBoolean("Invulnerable") 是模组自定义数据，和实体无敌无关
+     *
+     * @param mob 待修复的怪物
+     */
+    private void sanitizeInvulnerableFlag(Mob mob) {
         if (mob.isInvulnerable()) {
             mob.setInvulnerable(false);
             if (Config.ENABLE_DEBUG_LOG.get()) {
                 AdaptiveNemesisMod.LOGGER.warn(
-                    "🔧 修复怪物 {} 的 Invulnerable 标志（由装备生成导致）",
+                    "修复怪物 {} 的 Invulnerable 标志（由装备生成导致）",
                     mob.getName().getString()
                 );
             }
         }
+    }
 
-        // 检查血量是否有效
+    /**
+     * 修复血量上限属性的非法值（NaN/Infinity/低于 1）
+     *
+     * @param mob 待修复的怪物
+     */
+    private void sanitizeHealthAttribute(Mob mob) {
         var healthAttr = mob.getAttribute(Attributes.MAX_HEALTH);
-        if (healthAttr != null) {
-            double health = healthAttr.getBaseValue();
-            if (Double.isNaN(health) || Double.isInfinite(health)) {
-                healthAttr.setBaseValue(20.0);
-            } else if (health < 1.0) {
-                healthAttr.setBaseValue(Math.max(20.0, health));
-                if (Config.ENABLE_DEBUG_LOG.get()) {
-                    AdaptiveNemesisMod.LOGGER.warn(
-                        "🔧 修复怪物 {} 的无效 MaxHealth: {}",
-                        mob.getName().getString(), health
-                    );
-                }
+        if (healthAttr == null) {
+            return;
+        }
+        double health = healthAttr.getBaseValue();
+        if (Double.isNaN(health) || Double.isInfinite(health)) {
+            healthAttr.setBaseValue(20.0);
+        } else if (health < 1.0) {
+            healthAttr.setBaseValue(Math.max(20.0, health));
+            if (Config.ENABLE_DEBUG_LOG.get()) {
+                AdaptiveNemesisMod.LOGGER.warn(
+                    "修复怪物 {} 的无效 MaxHealth: {}",
+                    mob.getName().getString(), health
+                );
             }
         }
+    }
 
-        // 确保怪物当前血量有效
+    /**
+     * 确保怪物当前血量有效（NaN/Infinity/非正值时拉满至最大血量）
+     *
+     * @param mob 待修复的怪物
+     */
+    private void ensureCurrentHealthValid(Mob mob) {
         float currentHealth = mob.getHealth();
         if (Double.isNaN(currentHealth) || Double.isInfinite(currentHealth) || currentHealth <= 0) {
             mob.setHealth(mob.getMaxHealth());
@@ -1222,7 +1339,7 @@ public class EnchantmentScalingHandler {
     /**
      * 根据动态伤害上限创建安全的武器
      * 从当前品质等级向下尝试，直到找到伤害不超过上限的武器
-     * 如果全不行就掏木剑保底 🤷
+     * 如果全都不符合就使用木剑保底
      *
      * @param tier 期望的品质等级
      * @param damageCap 动态伤害上限
@@ -1247,7 +1364,7 @@ public class EnchantmentScalingHandler {
         // 保底：木剑（1+4=5点伤害，不会超过任何合理上限），除非木剑也被拉黑
         if (Config.ENABLE_DEBUG_LOG.get()) {
             AdaptiveNemesisMod.LOGGER.warn(
-                "⚠️ 所有品质等级的武器均超过伤害上限，使用木剑保底 (cap={})",
+                "所有品质等级的武器均超过伤害上限，使用木剑保底 (cap={})",
                 String.format("%.1f", damageCap)
             );
         }

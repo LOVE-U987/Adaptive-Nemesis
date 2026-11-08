@@ -9,6 +9,7 @@ import com.adaptive_nemesis.adaptive_nemesismod.Config;
 
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.entity.monster.Enemy;
 import net.minecraft.world.phys.Vec3;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.neoforge.event.entity.living.LivingIncomingDamageEvent;
@@ -18,18 +19,18 @@ import net.neoforged.neoforge.event.tick.ServerTickEvent;
 
 /**
  * 智能浮动系统
- * 
+ *
  * 根据玩家表现动态调整难度浮动倍数：
  * - 连续击杀 → 浮动倍数 +10%
  * - 频繁死亡 → 浮动倍数 -15%（弱化，不再是唯一下调依据）
  * - 长时间未战斗 → 浮动倍数自动缓慢下降（新增）
  * - 战斗效率低下 → 浮动倍数适当下调（新增）
- * 
+ *
  * 改进的难度下调机制：不以玩家死亡作为唯一依据，
  * 当玩家避免死亡但难度已超标时，通过空闲衰减和战斗效率评估自动降低难度。
- * 
+ *
  * 目标：让玩家始终感到"有点难，但不多"
- * 
+ *
  * @author Adaptive Nemesis Team
  * @version 2.0.0
  */
@@ -45,11 +46,17 @@ public class AdaptiveFloatSystem {
      * Key: 玩家UUID, Value: 浮动数据
      */
     private final Map<UUID, PlayerFloatData> playerFloatData = new HashMap<>();
-    
+
     /**
      * 服务器Tick计数器 - 用于定时检查空闲衰减
      */
     private int tickCounter = 0;
+
+    /**
+     * 毫秒与分钟的换算系数（1 分钟 = 60000 毫秒）
+     * 纯技术常量，仅用于时间单位换算，不入配置
+     */
+    private static final long MS_PER_MINUTE = 60_000L;
     
     /**
      * 私有构造函数 - 单例模式
@@ -126,7 +133,10 @@ public class AdaptiveFloatSystem {
     
     /**
      * 处理玩家击杀事件
-     * 
+     *
+     * 仅统计对敌对生物（Enemy）的击杀，杀牛羊村民等和平生物不再计入连杀，
+     * 避免通过屠宰牲畜无限提升浮动倍率。
+     *
      * @param event 生物死亡事件
      */
     @SubscribeEvent
@@ -134,7 +144,12 @@ public class AdaptiveFloatSystem {
         if (event.getSource() == null || event.getSource().getEntity() == null) {
             return;
         }
-        
+
+        // 限定敌对生物：非 Enemy 实体（动物、村民等）的死亡不计入击杀
+        if (!(event.getEntity() instanceof Enemy)) {
+            return;
+        }
+
         if (!(event.getSource().getEntity() instanceof ServerPlayer player)) {
             return;
         }
@@ -252,27 +267,31 @@ public class AdaptiveFloatSystem {
     
     /**
      * 处理空闲衰减 - 玩家长时间未战斗时自动降低难度
+     *
+     * 空闲判定阈值由配置项 {@code idleDecayThresholdSeconds} 控制（默认 60 秒），
+     * 玩家超过该时长未参与战斗才会开始衰减。
      */
     private void processIdleDecay() {
         if (!Config.ENABLE_IDLE_DECAY.get()) {
             return;
         }
-        
+
         double decayRate = Config.IDLE_DECAY_RATE.get();
+        long idleThresholdMs = Config.IDLE_DECAY_THRESHOLD_SECONDS.get() * 1000L;
         long currentTime = System.currentTimeMillis();
-        
+
         for (Map.Entry<UUID, PlayerFloatData> entry : playerFloatData.entrySet()) {
             PlayerFloatData data = entry.getValue();
             long inactiveMs = currentTime - data.getLastCombatTime();
-            
-            if (inactiveMs > 60000) {
-                double minutesIdle = inactiveMs / 60000.0;
+
+            if (inactiveMs > idleThresholdMs) {
+                double minutesIdle = inactiveMs / (double) MS_PER_MINUTE;
                 double decayAmount = decayRate * minutesIdle / (60.0 / Config.IDLE_DECAY_CHECK_INTERVAL.get());
-                
+
                 if (decayAmount > 0.001 && data.getCurrentMultiplier() > 1.0) {
                     double newMultiplier = data.getCurrentMultiplier() - decayAmount;
                     data.setMultiplier(Math.max(newMultiplier, Config.FLOAT_MIN.get()));
-                    
+
                     if (Config.ENABLE_DEBUG_LOG.get()) {
                         AdaptiveNemesisMod.LOGGER.debug(
                             "玩家 {} 空闲衰减，浮动倍率降低至 {} (空闲时间: {}秒)",

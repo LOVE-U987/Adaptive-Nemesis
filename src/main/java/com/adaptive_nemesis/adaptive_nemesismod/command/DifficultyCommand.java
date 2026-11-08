@@ -22,6 +22,16 @@ import net.minecraft.network.chat.Component;
 public class DifficultyCommand {
 
     /**
+     * 难度倍率允许的最小值，与 GeneralConfig 中 DIFFICULTY_BASE_MULTIPLIER 的下限一致
+     */
+    private static final double MIN_DIFFICULTY = 0.1;
+
+    /**
+     * 难度倍率允许的最大值，与 GeneralConfig 中 DIFFICULTY_BASE_MULTIPLIER 的上限一致
+     */
+    private static final double MAX_DIFFICULTY = 20.0;
+
+    /**
      * 注册难度命令
      *
      * @return 命令构建器
@@ -31,7 +41,7 @@ public class DifficultyCommand {
             .then(Commands.literal("get")
                 .executes(DifficultyCommand::executeGet))
             .then(Commands.literal("set")
-                .then(Commands.argument("value", DoubleArgumentType.doubleArg(0.1, 10.0))
+                .then(Commands.argument("value", DoubleArgumentType.doubleArg(MIN_DIFFICULTY, MAX_DIFFICULTY))
                     .executes(DifficultyCommand::executeSet)))
             .then(Commands.literal("true_damage")
                 .then(Commands.literal("get")
@@ -92,15 +102,14 @@ public class DifficultyCommand {
         CommandSourceStack source = context.getSource();
         double newValue = DoubleArgumentType.getDouble(context, "value");
 
-        // 注意：这里只是显示，实际修改配置需要重启或使用配置API
+        // 直接写入内存配置并落盘，立即对缩放管线生效
+        Config.DIFFICULTY_BASE_MULTIPLIER.set(newValue);
+        Config.saveToFile();
+
         source.sendSuccess(() -> Component.translatable(
             "adaptive_nemesis.command.difficulty.set_done",
             String.format("%.2f", newValue)
         ), true);
-
-        source.sendSuccess(() -> Component.translatable(
-            "adaptive_nemesis.command.error.config_changes"
-        ), false);
 
         return 1;
     }
@@ -170,14 +179,14 @@ public class DifficultyCommand {
         CommandSourceStack source = context.getSource();
         boolean enabled = BoolArgumentType.getBool(context, "enabled");
 
+        // 直接写入内存配置并落盘，立即对真实伤害转化链路生效
+        Config.ENABLE_TRUE_DAMAGE.set(enabled);
+        Config.saveToFile();
+
         source.sendSuccess(() -> Component.translatable(
             "adaptive_nemesis.command.difficulty.set_true_damage",
             Component.translatable(enabled ? "adaptive_nemesis.command.enabled" : "adaptive_nemesis.command.disabled")
         ), true);
-
-        source.sendSuccess(() -> Component.translatable(
-            "adaptive_nemesis.command.error.config_changes"
-        ), false);
 
         return 1;
     }

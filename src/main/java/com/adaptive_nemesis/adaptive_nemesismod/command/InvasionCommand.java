@@ -1,6 +1,7 @@
 package com.adaptive_nemesis.adaptive_nemesismod.command;
 
 import com.adaptive_nemesis.adaptive_nemesismod.AdaptiveNemesisMod;
+import com.adaptive_nemesis.adaptive_nemesismod.Config;
 import com.adaptive_nemesis.adaptive_nemesismod.invasion.ActiveInvasion;
 import com.adaptive_nemesis.adaptive_nemesismod.invasion.InvasionDataLoader;
 import com.adaptive_nemesis.adaptive_nemesismod.invasion.InvasionSystem;
@@ -280,6 +281,11 @@ public class InvasionCommand {
     private static int executeSetDifficulty(CommandContext<CommandSourceStack> context) {
         CommandSourceStack source = context.getSource();
         double multiplier = DoubleArgumentType.getDouble(context, "multiplier");
+
+        // 接入 invasion 配置的自定义难度开关与倍率：开启开关、写入倍率并落盘
+        Config.INVASION.ENABLE_CUSTOM_DIFFICULTY.set(true);
+        Config.INVASION.CUSTOM_DIFFICULTY_MULTIPLIER.set(multiplier);
+        Config.saveToFile();
 
         source.sendSuccess(() -> Component.translatable(
             "adaptive_nemesis.command.invasion.difficulty_set", multiplier

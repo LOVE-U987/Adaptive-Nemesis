@@ -22,6 +22,11 @@ public class WorldStageConfig {
     */
     public final ModConfigSpec.IntValue WORLD_STAGE_MAX_STAGE;
 
+    /**
+     * 构造世界阶段配置
+     *
+     * @param builder 配置构建器，由 Config 聚合类统一传入
+     */
     public WorldStageConfig(ModConfigSpec.Builder builder) {
         builder.push("worldStage");
         ENABLE_WORLD_STAGE = builder.comment("是否启用世界阶段系统 - 击杀Boss后永久提升世界难度").comment("Enable world stage system - permanently increase difficulty after boss kills").define("enableWorldStage", true);

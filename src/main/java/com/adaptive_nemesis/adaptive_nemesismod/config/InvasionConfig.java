@@ -122,6 +122,11 @@ public class InvasionConfig {
      */
     public final ModConfigSpec.IntValue WARNING_SECONDS_BEFORE_INVASION;
 
+    /**
+     * 构造入侵事件配置
+     *
+     * @param builder 配置构建器，由 Config 聚合类统一传入
+     */
     public InvasionConfig(ModConfigSpec.Builder builder) {
         builder.push("invasion");
         

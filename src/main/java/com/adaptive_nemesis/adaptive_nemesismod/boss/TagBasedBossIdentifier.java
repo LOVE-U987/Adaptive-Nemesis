@@ -12,8 +12,8 @@ import net.minecraft.core.registries.Registries;
  * 通过检查实体类型是否在BOSS标签中来判断是否为Boss。
  * 这是最可靠的识别方式，因为标签由模组开发者明确定义，
  * 不会像血量或名称那样容易产生误判。
- * 
- * 🎯 核心优势：
+ *
+ * 核心优势：
  * - 精准：由模组开发者显式标记Boss，避免误判
  * - 兼容：支持所有模组的Boss实体（只要它们正确注册了标签）
  * - 灵活：支持多个标签来源（minecraft:bosses, c:bosses等）

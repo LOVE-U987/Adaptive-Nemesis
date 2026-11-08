@@ -6,10 +6,13 @@ import com.adaptive_nemesis.adaptive_nemesismod.enemy.EnemyScalingHandler;
 
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
-import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.OwnableEntity;
+import net.minecraft.world.entity.ai.attributes.AttributeInstance;
+import net.minecraft.world.entity.ai.attributes.Attributes;
+import net.minecraft.world.entity.player.Player;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.neoforge.event.entity.living.LivingIncomingDamageEvent;
 
@@ -22,31 +25,18 @@ import java.util.WeakHashMap;
 
 /**
  * Boss伤害上限处理器
- * 
+ *
  * 防止玩家秒杀Boss的特殊机制：
- * - 伤害上限：玩家对Boss的单次伤害存在上限
+ * - 伤害上限：玩家对Boss的单次伤害存在上限（随Boss血量百分比动态放宽）
  * - 属性增幅：Boss生命与伤害获得额外倍率加成
- * - 阶段进化：Boss根据战斗时长动态调整攻击模式
- * 
+ *
+ * 限伤归因（F-58）：直接伤害源为玩家时归因该玩家；宠物/召唤物等可拥有实体
+ * 经 getOwnerUUID 归因到玩家后同样纳入限伤，防止借宠物绕过上限。
+ *
  * @author Adaptive Nemesis Team
- * @version 1.0.0
+ * @version 1.1.0
  */
 public class BossDamageCapHandler {
-    
-    /**
-     * 单例实例
-     */
-    private static BossDamageCapHandler INSTANCE;
-    
-    /**
-     * Boss战斗数据NBT标签键
-     */
-    public static final String BOSS_FIGHT_START_TAG = "adaptive_nemesis_boss_fight_start";
-
-    /**
-     * Boss已受伤害NBT标签键
-     */
-    public static final String BOSS_DAMAGE_TAKEN_TAG = "adaptive_nemesis_boss_damage_taken";
 
     /**
      * Boss Buff已应用标记 - 防止EntityJoinLevelEvent重复触发导致HP爆炸
@@ -84,15 +74,20 @@ public class BossDamageCapHandler {
      * 避免内存泄漏。结果用 synchronizedMap 包装以保证线程安全。
      */
     private final Map<UUID, Boolean> bossResultCache = Collections.synchronizedMap(new WeakHashMap<>());
-    
+
+    /**
+     * 单例实例
+     */
+    private static BossDamageCapHandler INSTANCE;
+
     /**
      * 私有构造函数 - 单例模式
      */
     private BossDamageCapHandler() {}
-    
+
     /**
      * 获取单例实例
-     * 
+     *
      * @return BossDamageCapHandler 实例
      */
     public static synchronized BossDamageCapHandler getInstance() {
@@ -101,10 +96,13 @@ public class BossDamageCapHandler {
         }
         return INSTANCE;
     }
-    
+
     /**
      * 处理实体受到伤害事件
-     * 
+     *
+     * 守卫链依次过滤：识别服务初始化、配置开关、Boss 目标、限伤排除列表、
+     * 归因玩家，全部通过后应用动态伤害上限。
+     *
      * @param event 实体受到伤害事件
      */
     @SubscribeEvent
@@ -118,9 +116,9 @@ public class BossDamageCapHandler {
         if (!Config.ENABLE_BOSS_DAMAGE_CAP.get()) {
             return;
         }
-        
+
         LivingEntity target = event.getEntity();
-        
+
         // 检查目标是否是Boss
         if (!isBoss(target)) {
             return;
@@ -136,39 +134,63 @@ public class BossDamageCapHandler {
             }
             return;
         }
-        
-        // 检查伤害来源是否是玩家
-        DamageSource source = event.getSource();
-        if (source == null || source.getEntity() == null ||
-            !(source.getEntity() instanceof ServerPlayer player)) {
+
+        // 伤害必须可归因到玩家（直接攻击或宠物/召唤物主人）才纳入限伤
+        if (resolveAttributingPlayerId(event.getSource()) == null) {
             return;
         }
-        
-        // 初始化Boss战斗数据
-        initializeBossFightData(target);
-        
-        // 应用伤害上限
+
+        applyDamageCapToEvent(event, target);
+    }
+
+    /**
+     * 解析伤害源归因到的玩家 UUID（F-58）
+     *
+     * 归因顺序：直接伤害源为玩家时取该玩家；否则对可拥有实体
+     * （狼等宠物、召唤物）经 getOwnerUUID 归因到主人玩家。
+     * 主人离线时同样返回其 UUID，宠物伤害依然受限。
+     *
+     * @param source 伤害源
+     * @return 归因玩家的 UUID，无法归因到玩家时返回 null
+     */
+    private UUID resolveAttributingPlayerId(DamageSource source) {
+        if (source == null) {
+            return null;
+        }
+        if (source.getEntity() instanceof Player player) {
+            return player.getUUID();
+        }
+        if (source.getEntity() instanceof OwnableEntity ownable) {
+            return ownable.getOwnerUUID();
+        }
+        return null;
+    }
+
+    /**
+     * 对 Boss 受击事件应用伤害上限
+     *
+     * @param event 实体受到伤害事件
+     * @param boss  Boss实体
+     */
+    private void applyDamageCapToEvent(LivingIncomingDamageEvent event, LivingEntity boss) {
         float originalDamage = event.getAmount();
-        float cappedDamage = applyDamageCap(target, originalDamage);
-        
+        float cappedDamage = applyDamageCap(boss, originalDamage);
+
         if (cappedDamage < originalDamage) {
             event.setAmount(cappedDamage);
-            
+
             if (Config.ENABLE_DEBUG_LOG.get()) {
                 AdaptiveNemesisMod.LOGGER.debug(
                     "Boss {} 伤害被限制: 原始={}, 限制后={}, 上限={}",
-                    target.getName().getString(),
+                    boss.getName().getString(),
                     String.format("%.2f", originalDamage),
                     String.format("%.2f", cappedDamage),
                     String.format("%.2f", Config.BOSS_DAMAGE_CAP.get())
                 );
             }
         }
-        
-        // 记录已受伤害
-        recordDamageTaken(target, cappedDamage);
     }
-    
+
     /**
      * 检查实体是否是Boss
      *
@@ -195,7 +217,8 @@ public class BossDamageCapHandler {
     /**
      * 清空 Boss 识别缓存
      *
-     * 配置热重载或需要强制重新识别时调用。
+     * 配置热重载时由主类 ModConfigEvent.Reloading 调用，
+     * 避免旧配置下的识别结果残留到新配置生效后。
      */
     public void clearBossCache() {
         bossResultCache.clear();
@@ -240,27 +263,6 @@ public class BossDamageCapHandler {
     }
 
     /**
-     * 初始化Boss战斗数据
-     * 
-     * @param boss Boss实体
-     */
-    private void initializeBossFightData(LivingEntity boss) {
-        var persistentData = boss.getPersistentData();
-        
-        if (!persistentData.contains(BOSS_FIGHT_START_TAG)) {
-            persistentData.putLong(BOSS_FIGHT_START_TAG, System.currentTimeMillis());
-            persistentData.putFloat(BOSS_DAMAGE_TAKEN_TAG, 0.0f);
-            
-            if (Config.ENABLE_DEBUG_LOG.get()) {
-                AdaptiveNemesisMod.LOGGER.debug(
-                    "Boss {} 战斗开始，已初始化战斗数据",
-                    boss.getName().getString()
-                );
-            }
-        }
-    }
-    
-    /**
      * 应用伤害上限
      *
      * 动态上限规则：Boss 血量百分比越低，允许的单次伤害上限越高，
@@ -281,55 +283,17 @@ public class BossDamageCapHandler {
 
         return Math.min(originalDamage, (float) dynamicCap);
     }
-    
-    /**
-     * 记录Boss已受伤害
-     * 
-     * @param boss Boss实体
-     * @param damage 本次伤害值
-     */
-    private void recordDamageTaken(LivingEntity boss, float damage) {
-        var persistentData = boss.getPersistentData();
-        float currentDamage = persistentData.getFloat(BOSS_DAMAGE_TAKEN_TAG);
-        persistentData.putFloat(BOSS_DAMAGE_TAKEN_TAG, currentDamage + damage);
-    }
-    
-    /**
-     * 获取Boss战斗持续时间（毫秒）
-     * 
-     * @param boss Boss实体
-     * @return 战斗持续时间，如果未开始返回0
-     */
-    public long getFightDuration(LivingEntity boss) {
-        var persistentData = boss.getPersistentData();
-        if (!persistentData.contains(BOSS_FIGHT_START_TAG)) {
-            return 0;
-        }
-        
-        long startTime = persistentData.getLong(BOSS_FIGHT_START_TAG);
-        return System.currentTimeMillis() - startTime;
-    }
-    
-    /**
-     * 获取Boss已受伤害总量
-     * 
-     * @param boss Boss实体
-     * @return 已受伤害总量
-     */
-    public float getTotalDamageTaken(LivingEntity boss) {
-        return boss.getPersistentData().getFloat(BOSS_DAMAGE_TAKEN_TAG);
-    }
-    
+
     /**
      * 应用Boss属性增幅
      * 在Boss生成时由 ModEventHandler.onEntityJoinLevel() 调用
-     * 
-     * 🛡️ 防HP爆炸机制：
+     *
+     * 防HP爆炸机制：
      * 1. BOSS_BUFF_APPLIED_TAG 标记确保Buff只应用一次
      *    防止 EntityJoinLevelEvent 在区块重新加载/玩家传送/维度切换时重复触发
      * 2. 存储原始血量/伤害值在 NBT 中，始终从原始值计算
      *    防止与 EnemyScalingHandler 的缩放倍率产生乘法叠加
-     * 
+     *
      * @param boss Boss实体
      */
     public void applyBossBuffs(LivingEntity boss) {
@@ -339,7 +303,7 @@ public class BossDamageCapHandler {
 
         var data = boss.getPersistentData();
 
-        // 🛡️ 防HP爆炸：Boss Buff 已应用过则跳过
+        // 防HP爆炸：Boss Buff 已应用过则跳过
         // EntityJoinLevelEvent 可能在以下场景多次触发同一实体：
         //   - 玩家传送离开后区块卸载，返回后区块重新加载
         //   - 玩家切换维度后实体重新加载
@@ -355,99 +319,150 @@ public class BossDamageCapHandler {
             return;
         }
 
-        // 获取或存储原始基础生命值
-        // 🛡️ 修复倍率双重叠加：原始值判定优先级
-        // 1. BOSS_ORIGINAL_HEALTH_TAG —— 此前记录的值（兼容旧存档）
-        // 2. EnemyScalingHandler.ORIGINAL_HEALTH_TAG —— 自适应缩放记录的真原始值
-        // 3. DefaultAttributes 查询实体类型默认值（前两者都缺失时）
-        // 4. 当前基础值兜底
-        // 此前直接读取当前 baseValue，而 EnemyScalingHandler 可能已先执行并把基础值改为
-        // 缩放后的值，再乘 existingScaleMultiplier 会导致 AN 倍率被应用两次（数值爆炸）
-        double originalHealth;
-        if (data.contains(BOSS_ORIGINAL_HEALTH_TAG)) {
-            originalHealth = data.getDouble(BOSS_ORIGINAL_HEALTH_TAG);
-        } else if (data.contains(EnemyScalingHandler.ORIGINAL_HEALTH_TAG)) {
-            originalHealth = data.getDouble(EnemyScalingHandler.ORIGINAL_HEALTH_TAG);
-            data.putDouble(BOSS_ORIGINAL_HEALTH_TAG, originalHealth);
-        } else {
-            var healthAttr0 = boss.getAttribute(net.minecraft.world.entity.ai.attributes.Attributes.MAX_HEALTH);
-            double fallback = (healthAttr0 != null) ? healthAttr0.getBaseValue() : 20.0;
-            originalHealth = EnemyScalingHandler.getDefaultAttributeBase(boss,
-                net.minecraft.world.entity.ai.attributes.Attributes.MAX_HEALTH, fallback);
-            data.putDouble(BOSS_ORIGINAL_HEALTH_TAG, originalHealth);
-        }
-
-        // 获取或存储原始基础伤害值（判定优先级同上，修复伤害倍率双重叠加）
-        double originalDamage;
-        if (data.contains(BOSS_ORIGINAL_DAMAGE_TAG)) {
-            originalDamage = data.getDouble(BOSS_ORIGINAL_DAMAGE_TAG);
-        } else if (data.contains(EnemyScalingHandler.ORIGINAL_DAMAGE_TAG)) {
-            originalDamage = data.getDouble(EnemyScalingHandler.ORIGINAL_DAMAGE_TAG);
-            data.putDouble(BOSS_ORIGINAL_DAMAGE_TAG, originalDamage);
-        } else {
-            var damageAttr0 = boss.getAttribute(net.minecraft.world.entity.ai.attributes.Attributes.ATTACK_DAMAGE);
-            originalDamage = (damageAttr0 != null) ? damageAttr0.getBaseValue() : 1.0;
-            data.putDouble(BOSS_ORIGINAL_DAMAGE_TAG, originalDamage);
-        }
-
         // 读取 EnemyScalingHandler 已应用的缩放倍率（如果存在）
         // 确保 Boss 属性增幅与自适应缩放正确叠加
         double existingScaleMultiplier = Math.max(1.0, data.getDouble(EnemyScalingHandler.SCALE_MULTIPLIER_TAG));
 
-        // 应用生命值倍率：原始值 * 已存在的缩放倍率 * Boss倍率
-        double healthMultiplier = Config.BOSS_HEALTH_MULTIPLIER.get();
-        double newMaxHealth = originalHealth * existingScaleMultiplier * healthMultiplier;
-        var healthAttr = boss.getAttribute(net.minecraft.world.entity.ai.attributes.Attributes.MAX_HEALTH);
-        if (healthAttr != null) {
-            healthAttr.setBaseValue(newMaxHealth);
-            // 🛡️ 修复血条比例失衡（Champions 等词条模组兼容）：
-            // 使用 getValue()（基础值 + 第三方模组 permanent modifier）设置当前血量。
-            // 此前 setHealth((float) newMaxHealth) 不含 modifier —— Champions 2.10.1.2
-            // 会通过 MULTIPLY_TOTAL modifier（数据包 modifier_setting，0.35×等级）放大
-            // 最大生命值，而血量只有基础值，血条比例 = 1/(1+modifier)，
-            // 末影龙等高等级词条 Boss 的血条会 <10%
-            boss.setHealth((float) healthAttr.getValue());
-        }
+        double originalHealth = resolveOriginalHealth(boss);
+        double originalDamage = resolveOriginalDamage(boss);
 
-        // 应用伤害倍率：原始值 * 已存在的缩放倍率 * Boss倍率
-        double damageMultiplier = Config.BOSS_DAMAGE_MULTIPLIER.get();
-        var damageAttr = boss.getAttribute(net.minecraft.world.entity.ai.attributes.Attributes.ATTACK_DAMAGE);
-        if (damageAttr != null) {
-            double newDamage = originalDamage * existingScaleMultiplier * damageMultiplier;
-            damageAttr.setBaseValue(newDamage);
-        }
+        applyHealthBuff(boss, originalHealth, existingScaleMultiplier);
+        applyDamageBuff(boss, originalDamage, existingScaleMultiplier);
 
         // 标记为已应用，防止后续 EntityJoinLevelEvent 重复触发
         data.putBoolean(BOSS_BUFF_APPLIED_TAG, true);
 
-        // 🛡️ 延迟填血兜底：EntityJoinLevelEvent 在 tick 内触发时，getServer().execute()
-        // 会投递到下一 tick 执行（ReentrantBlockableEventLoop 在 tick 重入期间
-        // scheduleExecutables 恒为 true）。此前兜底逻辑只存在于
-        // EnemyScalingHandler.applyHealthBonus，当其被跳过（附近无玩家/黑名单/缩放超时）
-        // 时血量比例失衡会固化到存档，这里独立兜底，下一 tick 将血量同步到实际最大值
+        scheduleHealthSync(boss);
+
+        if (Config.ENABLE_DEBUG_LOG.get()) {
+            AdaptiveNemesisMod.LOGGER.debug(
+                "Boss {} 已获得属性增幅: 原始血量={}, 原始伤害={}, " +
+                "自适应倍率={}, 最终倍率={}",
+                boss.getName().getString(),
+                String.format("%.2f", originalHealth),
+                String.format("%.2f", originalDamage),
+                String.format("%.2f", existingScaleMultiplier),
+                String.format("%.2f", Config.BOSS_HEALTH_MULTIPLIER.get())
+            );
+        }
+    }
+
+    /**
+     * 获取或记录 Boss 原始基础生命值
+     *
+     * 判定优先级（修复倍率双重叠加）：
+     * 1. BOSS_ORIGINAL_HEALTH_TAG —— 此前记录的值（兼容旧存档）
+     * 2. EnemyScalingHandler.ORIGINAL_HEALTH_TAG —— 自适应缩放记录的真原始值
+     * 3. DefaultAttributes 查询实体类型默认值（前两者都缺失时）
+     * 4. 当前基础值兜底
+     * 此前直接读取当前 baseValue，而 EnemyScalingHandler 可能已先执行并把基础值改为
+     * 缩放后的值，再乘 existingScaleMultiplier 会导致 AN 倍率被应用两次（数值爆炸）
+     *
+     * @param boss Boss实体
+     * @return 原始基础生命值
+     */
+    private double resolveOriginalHealth(LivingEntity boss) {
+        var data = boss.getPersistentData();
+        if (data.contains(BOSS_ORIGINAL_HEALTH_TAG)) {
+            return data.getDouble(BOSS_ORIGINAL_HEALTH_TAG);
+        }
+
+        double originalHealth;
+        if (data.contains(EnemyScalingHandler.ORIGINAL_HEALTH_TAG)) {
+            originalHealth = data.getDouble(EnemyScalingHandler.ORIGINAL_HEALTH_TAG);
+        } else {
+            var healthAttr = boss.getAttribute(Attributes.MAX_HEALTH);
+            double fallback = (healthAttr != null) ? healthAttr.getBaseValue() : 20.0;
+            originalHealth = EnemyScalingHandler.getDefaultAttributeBase(boss, Attributes.MAX_HEALTH, fallback);
+        }
+        data.putDouble(BOSS_ORIGINAL_HEALTH_TAG, originalHealth);
+        return originalHealth;
+    }
+
+    /**
+     * 获取或记录 Boss 原始基础伤害值（判定优先级同原始生命值，修复伤害倍率双重叠加）
+     *
+     * @param boss Boss实体
+     * @return 原始基础伤害值
+     */
+    private double resolveOriginalDamage(LivingEntity boss) {
+        var data = boss.getPersistentData();
+        if (data.contains(BOSS_ORIGINAL_DAMAGE_TAG)) {
+            return data.getDouble(BOSS_ORIGINAL_DAMAGE_TAG);
+        }
+
+        double originalDamage;
+        if (data.contains(EnemyScalingHandler.ORIGINAL_DAMAGE_TAG)) {
+            originalDamage = data.getDouble(EnemyScalingHandler.ORIGINAL_DAMAGE_TAG);
+        } else {
+            var damageAttr = boss.getAttribute(Attributes.ATTACK_DAMAGE);
+            originalDamage = (damageAttr != null) ? damageAttr.getBaseValue() : 1.0;
+        }
+        data.putDouble(BOSS_ORIGINAL_DAMAGE_TAG, originalDamage);
+        return originalDamage;
+    }
+
+    /**
+     * 应用生命值倍率
+     *
+     * 修复血条比例失衡（Champions 等词条模组兼容）：
+     * 使用 getValue()（基础值 + 第三方模组 permanent modifier）设置当前血量。
+     * 此前 setHealth((float) newMaxHealth) 不含 modifier —— Champions 2.10.1.2
+     * 会通过 MULTIPLY_TOTAL modifier（数据包 modifier_setting，0.35×等级）放大
+     * 最大生命值，而血量只有基础值，血条比例 = 1/(1+modifier)，
+     * 末影龙等高等级词条 Boss 的血条会 <10%
+     *
+     * @param boss                    Boss实体
+     * @param originalHealth          原始基础生命值
+     * @param existingScaleMultiplier 已应用的自适应缩放倍率
+     */
+    private void applyHealthBuff(LivingEntity boss, double originalHealth, double existingScaleMultiplier) {
+        double healthMultiplier = Config.BOSS_HEALTH_MULTIPLIER.get();
+        double newMaxHealth = originalHealth * existingScaleMultiplier * healthMultiplier;
+        var healthAttr = boss.getAttribute(Attributes.MAX_HEALTH);
+        if (healthAttr != null) {
+            healthAttr.setBaseValue(newMaxHealth);
+            boss.setHealth((float) healthAttr.getValue());
+        }
+    }
+
+    /**
+     * 应用伤害倍率
+     *
+     * @param boss                    Boss实体
+     * @param originalDamage          原始基础伤害值
+     * @param existingScaleMultiplier 已应用的自适应缩放倍率
+     */
+    private void applyDamageBuff(LivingEntity boss, double originalDamage, double existingScaleMultiplier) {
+        double damageMultiplier = Config.BOSS_DAMAGE_MULTIPLIER.get();
+        AttributeInstance damageAttr = boss.getAttribute(Attributes.ATTACK_DAMAGE);
+        if (damageAttr != null) {
+            double newDamage = originalDamage * existingScaleMultiplier * damageMultiplier;
+            damageAttr.setBaseValue(newDamage);
+        }
+    }
+
+    /**
+     * 延迟填血兜底
+     *
+     * EntityJoinLevelEvent 在 tick 内触发时，getServer().execute()
+     * 会投递到下一 tick 执行（ReentrantBlockableEventLoop 在 tick 重入期间
+     * scheduleExecutables 恒为 true）。此前兜底逻辑只存在于
+     * EnemyScalingHandler.applyHealthBonus，当其被跳过（附近无玩家/黑名单/缩放超时）
+     * 时血量比例失衡会固化到存档，这里独立兜底，下一 tick 将血量同步到实际最大值
+     *
+     * @param boss Boss实体
+     */
+    private void scheduleHealthSync(LivingEntity boss) {
         if (boss.level() instanceof ServerLevel serverLevel) {
             serverLevel.getServer().execute(() -> {
-                if (!boss.isRemoved() && boss.isAlive()) {
-                    var attr = boss.getAttribute(net.minecraft.world.entity.ai.attributes.Attributes.MAX_HEALTH);
+                if (boss.isAlive()) {
+                    var attr = boss.getAttribute(Attributes.MAX_HEALTH);
                     if (attr != null) {
                         boss.setHealth((float) attr.getValue());
                     }
                 }
             });
-        }
-
-        if (Config.ENABLE_DEBUG_LOG.get()) {
-            AdaptiveNemesisMod.LOGGER.debug(
-                "Boss {} 已获得属性增幅: 原始血量={}, 原始伤害={}, " +
-                "自适应倍率={}, Boss倍率(血量={}, 伤害={}), 最终血量={}",
-                boss.getName().getString(),
-                String.format("%.2f", originalHealth),
-                String.format("%.2f", originalDamage),
-                String.format("%.2f", existingScaleMultiplier),
-                String.format("%.2f", healthMultiplier),
-                String.format("%.2f", damageMultiplier),
-                String.format("%.2f", newMaxHealth)
-            );
         }
     }
 }

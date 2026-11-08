@@ -13,8 +13,8 @@ import net.minecraft.world.entity.ai.attributes.DefaultAttributes;
  * 
  * 通过实体类型的默认最大生命值判断是否为Boss。
  * 血量阈值可通过配置文件动态调整，适用于识别高血量模组Boss。
- * 
- * 🛡️ 防误判机制：
+ *
+ * 防误判机制：
  * 使用实体类型注册时的默认血量（通过 DefaultAttributes 获取）而非当前血量进行判断。
  * 这可以防止被其他模组（如 Apotheosis 精英系统）增强到高血量的普通怪物
  * 被误识别为Boss并获得Boss额外加成。
@@ -44,13 +44,13 @@ public class HealthThresholdBossIdentifier implements BossIdentifier {
 
     @Override
     public boolean isBoss(LivingEntity entity) {
-        // 🚫 动物/傀儡类不参与血量阈值 Boss 识别
+        // 动物/傀儡类不参与血量阈值 Boss 识别
         // 防止高血量铁傀儡、高血量动物等被误认为Boss
         if (entity instanceof Animal || entity instanceof AbstractGolem) {
             return false;
         }
 
-        // 🛡️ 使用实体类型的默认血量进行判断，而非当前血量
+        // 使用实体类型的默认血量进行判断，而非当前血量
         // 防止被其他模组（如Apotheosis）增强的普通怪物误判为Boss
         double defaultHealth = getDefaultHealth(entity);
 

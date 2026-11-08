@@ -102,30 +102,66 @@ public class InvasionDataLoader extends SimpleJsonResourceReloadListener {
     @Override
     protected void apply(Map<ResourceLocation, JsonElement> object, ResourceManager resourceManager,
                          ProfilerFiller profiler) {
-        Map<ResourceLocation, InvasionData> loaded = new HashMap<>();
-
-        for (Map.Entry<ResourceLocation, JsonElement> entry : object.entrySet()) {
-            ResourceLocation id = entry.getKey();
-            try {
-                InvasionData data = parseInvasion(id, entry.getValue().getAsJsonObject());
-                if (data != null) {
-                    loaded.put(id, data);
-                    AdaptiveNemesisMod.LOGGER.debug("已加载入侵配置: {}", id);
-                }
-            } catch (Exception e) {
-                AdaptiveNemesisMod.LOGGER.error("解析入侵配置 {} 失败: {}", id, e.getMessage());
-                if (Config.ENABLE_DEBUG_LOG.get()) {
-                    AdaptiveNemesisMod.LOGGER.error("异常堆栈:", e);
-                }
-            }
-        }
+        Map<ResourceLocation, InvasionData> loaded = parseEachSafely(object, this::parseInvasion);
 
         this.invasions = ImmutableMap.copyOf(loaded);
         AdaptiveNemesisMod.LOGGER.info("已加载 {} 个入侵数据包配置", loaded.size());
     }
 
     /**
+     * 逐条解析配置条目，单条失败仅告警跳过，不影响其余条目
+     * 坏 JSON 单文件失败不拖垮整份配置（T-04 覆盖点）
+     *
+     * @param object 待解析的 JSON 条目映射
+     * @param parser 单条解析函数（入参：条目标识、JSON 对象）
+     * @param <K> 条目标识类型
+     * @param <V> 解析结果类型
+     * @return 解析成功的条目映射
+     */
+    static <K, V> Map<K, V> parseEachSafely(Map<K, JsonElement> object,
+                                            java.util.function.BiFunction<K, JsonObject, V> parser) {
+        Map<K, V> loaded = new HashMap<>();
+
+        for (Map.Entry<K, JsonElement> entry : object.entrySet()) {
+            K id = entry.getKey();
+            try {
+                V parsed = parser.apply(id, entry.getValue().getAsJsonObject());
+                if (parsed != null) {
+                    loaded.put(id, parsed);
+                    AdaptiveNemesisMod.LOGGER.debug("已加载入侵配置: {}", id);
+                }
+            } catch (Exception e) {
+                AdaptiveNemesisMod.LOGGER.error("解析入侵配置 {} 失败: {}", id, e.getMessage());
+                logParseStackTrace(id, e);
+            }
+        }
+
+        return loaded;
+    }
+
+    /**
+     * 按调试开关输出单条解析失败的完整堆栈
+     *
+     * 配置未加载时（数据包早期重载、纯 JVM 单元测试环境）读取调试开关会抛出
+     * IllegalStateException——本方法将其隔离在内部并降级为直接输出堆栈，
+     * 保证 parseEachSafely 的单条隔离语义不被 catch 块自身的异常破坏
+     *
+     * @param id 失败条目的标识符
+     * @param e 解析异常
+     */
+    private static void logParseStackTrace(Object id, Exception e) {
+        try {
+            if (Config.ENABLE_DEBUG_LOG.get()) {
+                AdaptiveNemesisMod.LOGGER.error("解析入侵配置 {} 的异常堆栈:", id, e);
+            }
+        } catch (RuntimeException configError) {
+            AdaptiveNemesisMod.LOGGER.error("解析入侵配置 {} 的异常堆栈（调试开关未就绪，跳过检查）:", id, e);
+        }
+    }
+
+    /**
      * 解析单个入侵配置 JSON
+     * 顶层 name 字段暂不支持（F-12：加载时 warn 不再静默忽略）
      *
      * @param id 配置标识符
      * @param json JSON 对象
@@ -133,8 +169,11 @@ public class InvasionDataLoader extends SimpleJsonResourceReloadListener {
      */
     private InvasionData parseInvasion(ResourceLocation id, JsonObject json) {
         String nameKey = json.has("name") ? json.get("name").getAsString() : null;
+        if (nameKey != null) {
+            AdaptiveNemesisMod.LOGGER.warn("入侵配置 {} 的 name 字段暂不支持，已忽略", id);
+        }
         int maxWaves = json.has("max_waves") ? json.get("max_waves").getAsInt() : 6;
-        int spawnDistance = json.has("spawn_distance") ? json.get("spawn_distance").getAsInt() : 60;
+        int spawnDistance = json.has("spawn_distance") ? json.get("spawn_distance").getAsInt() : 70;
 
         List<InvasionData.WaveData> waves = new ArrayList<>();
         if (json.has("waves") && json.get("waves").isJsonArray()) {
@@ -197,7 +236,7 @@ public class InvasionDataLoader extends SimpleJsonResourceReloadListener {
             rewards.setExperience(rewardsJson.get("experience").getAsInt());
         }
 
-        // 药水效果
+        // 药水效果（F-38：缺 id 或未知效果跳过并 warn，不再 NPE）
         if (rewardsJson.has("effects") && rewardsJson.get("effects").isJsonArray()) {
             JsonArray effectArray = rewardsJson.getAsJsonArray("effects");
             for (JsonElement element : effectArray) {
@@ -209,6 +248,8 @@ public class InvasionDataLoader extends SimpleJsonResourceReloadListener {
                     MobEffectInstance effect = InvasionRewardData.parseEffect(effectId, duration, amplifier);
                     if (effect != null) {
                         rewards.addEffect(effect.getEffect().value(), effect.getDuration(), effect.getAmplifier());
+                    } else {
+                        AdaptiveNemesisMod.LOGGER.warn("入侵配置的奖励药水效果缺少有效 id 或未知，已跳过");
                     }
                 }
             }
@@ -250,6 +291,8 @@ public class InvasionDataLoader extends SimpleJsonResourceReloadListener {
 
     /**
      * 解析单个敌人配置
+     * spawn_direction 字段暂不支持（F-12：加载时 warn 不再静默忽略）；
+     * 药水效果缺 id 时跳过并 warn（F-38，不再 NPE）
      *
      * @param json JSON 对象
      * @return 解析后的敌人配置
@@ -278,6 +321,9 @@ public class InvasionDataLoader extends SimpleJsonResourceReloadListener {
         boolean glowing = json.has("glowing") && json.get("glowing").getAsBoolean();
         boolean frostWalker = json.has("frost_walker") && json.get("frost_walker").getAsBoolean();
         String spawnDirection = json.has("spawn_direction") ? json.get("spawn_direction").getAsString() : null;
+        if (spawnDirection != null) {
+            AdaptiveNemesisMod.LOGGER.warn("入侵配置中敌人 {} 的 spawn_direction 字段暂不支持，已忽略", entityId);
+        }
         String customNameKey = json.has("custom_name") ? json.get("custom_name").getAsString() : null;
         double healthMultiplier = json.has("health_multiplier") ? json.get("health_multiplier").getAsDouble() : 1.0;
         double damageMultiplier = json.has("damage_multiplier") ? json.get("damage_multiplier").getAsDouble() : 1.0;
@@ -299,6 +345,8 @@ public class InvasionDataLoader extends SimpleJsonResourceReloadListener {
                     MobEffectInstance effect = InvasionRewardData.parseEffect(effectId, duration, amplifier);
                     if (effect != null) {
                         effects.add(effect);
+                    } else {
+                        AdaptiveNemesisMod.LOGGER.warn("入侵配置中敌人 {} 的药水效果缺少有效 id 或未知，已跳过", entityId);
                     }
                 }
             }

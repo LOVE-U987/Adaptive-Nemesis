@@ -4,6 +4,9 @@ import java.util.HashMap;
 import java.util.Map;
 
 import com.adaptive_nemesis.adaptive_nemesismod.memory.NemesisMemorySystem.CombatStyle;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.ListTag;
+import net.minecraft.nbt.Tag;
 import net.minecraft.network.chat.Component;
 
 /**
@@ -12,10 +15,48 @@ import net.minecraft.network.chat.Component;
  * 存储单个玩家的战斗历史记录和偏好分析
  * 根据玩家行为计算敌人获得的加成
  *
+ * 档案支持 NBT 序列化（writeToNbt / readFromNbt），
+ * 由 {@link NemesisProfileSavedData} 挂载到世界存档实现持久化（F-05）。
+ *
  * @author Adaptive Nemesis Team
- * @version 1.0.0
+ * @version 1.1.0
  */
 public class NemesisProfile {
+
+    // ==================== NBT 序列化键 ====================
+
+    /** 击杀风格计数列表键 */
+    private static final String KEY_KILL_STYLES = "KillStyles";
+
+    /** 使用武器计数列表键 */
+    private static final String KEY_WEAPONS = "Weapons";
+
+    /** 击杀敌人类型计数列表键 */
+    private static final String KEY_KILLED_ENTITIES = "KilledEntities";
+
+    /** 死亡来源计数列表键 */
+    private static final String KEY_DEATH_SOURCES = "DeathSources";
+
+    /** 击杀者类型计数列表键 */
+    private static final String KEY_KILLER_TYPES = "KillerTypes";
+
+    /** 总击杀数键 */
+    private static final String KEY_TOTAL_KILLS = "TotalKills";
+
+    /** 总死亡数键 */
+    private static final String KEY_TOTAL_DEATHS = "TotalDeaths";
+
+    /** 档案创建时间键 */
+    private static final String KEY_CREATION_TIME = "CreationTime";
+
+    /** 计数条目键名（列表元素内） */
+    private static final String KEY_ENTRY_NAME = "Key";
+
+    /** 计数条目值名（列表元素内） */
+    private static final String KEY_ENTRY_COUNT = "Count";
+
+    /** 击杀风格条目风格名（列表元素内） */
+    private static final String KEY_ENTRY_STYLE = "Style";
 
     /**
      * 击杀风格计数
@@ -54,8 +95,9 @@ public class NemesisProfile {
 
     /**
      * 档案创建时间
+     * 非 final：反序列化时需要从 NBT 恢复原创建时间
      */
-    private final long creationTime;
+    private long creationTime;
 
     /**
      * 默认构造函数
@@ -252,11 +294,7 @@ public class NemesisProfile {
      * @return 抗性加成百分比
      */
     public double getMeleeResistanceBonus() {
-        int meleeKills = getKillStyleCount(CombatStyle.MELEE);
-        if (totalKills == 0) return 0.0;
-        double cap = getConfig().getMeleeResistanceCap();
-        double ratio = (double) meleeKills / totalKills;
-        return Math.min(ratio * cap, cap);
+        return getStyleResistanceBonus(CombatStyle.MELEE, getConfig().getMeleeResistanceCap());
     }
 
     /**
@@ -265,11 +303,7 @@ public class NemesisProfile {
      * @return 抗性加成百分比
      */
     public double getRangedResistanceBonus() {
-        int rangedKills = getKillStyleCount(CombatStyle.RANGED);
-        if (totalKills == 0) return 0.0;
-        double cap = getConfig().getRangedResistanceCap();
-        double ratio = (double) rangedKills / totalKills;
-        return Math.min(ratio * cap, cap);
+        return getStyleResistanceBonus(CombatStyle.RANGED, getConfig().getRangedResistanceCap());
     }
 
     /**
@@ -278,10 +312,22 @@ public class NemesisProfile {
      * @return 抗性加成百分比
      */
     public double getMagicResistanceBonus() {
-        int magicKills = getKillStyleCount(CombatStyle.MAGIC);
-        if (totalKills == 0) return 0.0;
-        double cap = getConfig().getMagicResistanceCap();
-        double ratio = (double) magicKills / totalKills;
+        return getStyleResistanceBonus(CombatStyle.MAGIC, getConfig().getMagicResistanceCap());
+    }
+
+    /**
+     * 计算指定战斗风格的抗性加成
+     * 加成与该风格击杀占比成正比，且不超过上限
+     *
+     * @param style 战斗风格
+     * @param cap 抗性加成上限
+     * @return 抗性加成百分比
+     */
+    private double getStyleResistanceBonus(CombatStyle style, double cap) {
+        if (totalKills == 0) {
+            return 0.0;
+        }
+        double ratio = (double) getKillStyleCount(style) / totalKills;
         return Math.min(ratio * cap, cap);
     }
 
@@ -291,10 +337,21 @@ public class NemesisProfile {
      * @return 攻击加成百分比
      */
     public double getAttackBonus() {
-        if (totalDeaths == 0) return 0.0;
-        double cap = getConfig().getAttackBonusCap();
+        return getAttackBonus(getConfig());
+    }
+
+    /**
+     * 获取攻击加成（可注入配置版本，供测试与内部计算使用）
+     *
+     * @param config 宿敌全局配置
+     * @return 攻击加成百分比
+     */
+    double getAttackBonus(NemesisConfigData config) {
+        if (totalDeaths == 0) {
+            return 0.0;
+        }
         // 死亡越多，敌人攻击加成越高（敌人学会了玩家的弱点）
-        return Math.min(totalDeaths * 0.02, cap);
+        return Math.min(totalDeaths * config.getAttackBonusPerDeath(), config.getAttackBonusCap());
     }
 
     /**
@@ -303,13 +360,24 @@ public class NemesisProfile {
      * @return 速度加成百分比
      */
     public double getSpeedBonus() {
-        double cap = getConfig().getSpeedBonusCap();
+        return getSpeedBonus(getConfig());
+    }
+
+    /**
+     * 获取速度加成（可注入配置版本，供测试与内部计算使用）
+     *
+     * @param config 宿敌全局配置
+     * @return 速度加成百分比
+     */
+    double getSpeedBonus(NemesisConfigData config) {
+        double cap = config.getSpeedBonusCap();
         double kda = getKdaRatio();
-        if (kda > 3.0) {
-            // KDA高的玩家，敌人获得速度加成以应对
-            return Math.min((kda - 3.0) * 0.03, cap);
+        double threshold = config.getKdaSpeedThreshold();
+        if (kda <= threshold) {
+            return 0.0;
         }
-        return 0.0;
+        // KDA 高于阈值的玩家，敌人获得速度加成以应对
+        return Math.min((kda - threshold) * config.getSpeedBonusPerKda(), cap);
     }
 
     /**
@@ -318,8 +386,17 @@ public class NemesisProfile {
      * @return 生命加成百分比
      */
     public double getHealthBonus() {
-        double cap = getConfig().getHealthBonusCap();
-        return Math.min(totalKills * 0.01, cap);
+        return getHealthBonus(getConfig());
+    }
+
+    /**
+     * 获取生命加成（可注入配置版本，供测试与内部计算使用）
+     *
+     * @param config 宿敌全局配置
+     * @return 生命加成百分比
+     */
+    double getHealthBonus(NemesisConfigData config) {
+        return Math.min(totalKills * config.getHealthBonusPerKill(), config.getHealthBonusCap());
     }
 
     /**
@@ -340,6 +417,112 @@ public class NemesisProfile {
             .append(Component.translatable("adaptive_nemesis.profile.bonus.speed", String.format("%.0f%%", getSpeedBonus() * 100)))
             .append(", ")
             .append(Component.translatable("adaptive_nemesis.profile.bonus.health", String.format("%.0f%%", getHealthBonus() * 100)));
+    }
+
+    // ==================== NBT 序列化（F-05） ====================
+
+    /**
+     * 将档案数据写入 NBT
+     *
+     * @param tag 目标 NBT 标签（会写入计数列表与统计字段）
+     * @return 写入后的同一 tag 实例（便于链式调用）
+     */
+    public CompoundTag writeToNbt(CompoundTag tag) {
+        tag.put(KEY_KILL_STYLES, writeKillStyles());
+        putCountMap(tag, KEY_WEAPONS, weaponUsageCounts);
+        putCountMap(tag, KEY_KILLED_ENTITIES, killedEntityCounts);
+        putCountMap(tag, KEY_DEATH_SOURCES, deathSourceCounts);
+        putCountMap(tag, KEY_KILLER_TYPES, killerTypeCounts);
+        tag.putInt(KEY_TOTAL_KILLS, totalKills);
+        tag.putInt(KEY_TOTAL_DEATHS, totalDeaths);
+        tag.putLong(KEY_CREATION_TIME, creationTime);
+        return tag;
+    }
+
+    /**
+     * 从 NBT 恢复档案数据
+     * 缺失字段使用默认值；无法识别的战斗风格条目跳过
+     *
+     * @param tag 来源 NBT 标签
+     * @return 恢复后的档案
+     */
+    public static NemesisProfile readFromNbt(CompoundTag tag) {
+        NemesisProfile profile = new NemesisProfile();
+
+        ListTag styleList = tag.getList(KEY_KILL_STYLES, Tag.TAG_COMPOUND);
+        for (int i = 0; i < styleList.size(); i++) {
+            CompoundTag entry = styleList.getCompound(i);
+            try {
+                CombatStyle style = CombatStyle.valueOf(entry.getString(KEY_ENTRY_STYLE));
+                profile.killStyleCounts.put(style, entry.getInt(KEY_ENTRY_COUNT));
+            } catch (IllegalArgumentException e) {
+                // 未知战斗风格条目跳过，不拖垮整份档案
+            }
+        }
+
+        readCountMap(tag, KEY_WEAPONS, profile.weaponUsageCounts);
+        readCountMap(tag, KEY_KILLED_ENTITIES, profile.killedEntityCounts);
+        readCountMap(tag, KEY_DEATH_SOURCES, profile.deathSourceCounts);
+        readCountMap(tag, KEY_KILLER_TYPES, profile.killerTypeCounts);
+
+        profile.totalKills = tag.getInt(KEY_TOTAL_KILLS);
+        profile.totalDeaths = tag.getInt(KEY_TOTAL_DEATHS);
+        if (tag.contains(KEY_CREATION_TIME)) {
+            profile.creationTime = tag.getLong(KEY_CREATION_TIME);
+        }
+        return profile;
+    }
+
+    /**
+     * 序列化击杀风格计数（枚举键名写出）
+     *
+     * @return 风格计数列表（仅包含非零条目）
+     */
+    private ListTag writeKillStyles() {
+        ListTag list = new ListTag();
+        for (Map.Entry<CombatStyle, Integer> entry : killStyleCounts.entrySet()) {
+            if (entry.getValue() == 0) {
+                continue;
+            }
+            CompoundTag item = new CompoundTag();
+            item.putString(KEY_ENTRY_STYLE, entry.getKey().name());
+            item.putInt(KEY_ENTRY_COUNT, entry.getValue());
+            list.add(item);
+        }
+        return list;
+    }
+
+    /**
+     * 序列化字符串键计数 Map
+     *
+     * @param tag 目标 NBT 标签
+     * @param key 列表键名
+     * @param map 计数 Map
+     */
+    private static void putCountMap(CompoundTag tag, String key, Map<String, Integer> map) {
+        ListTag list = new ListTag();
+        for (Map.Entry<String, Integer> entry : map.entrySet()) {
+            CompoundTag item = new CompoundTag();
+            item.putString(KEY_ENTRY_NAME, entry.getKey());
+            item.putInt(KEY_ENTRY_COUNT, entry.getValue());
+            list.add(item);
+        }
+        tag.put(key, list);
+    }
+
+    /**
+     * 从 NBT 恢复字符串键计数 Map
+     *
+     * @param tag 来源 NBT 标签
+     * @param key 列表键名
+     * @param target 恢复目标 Map
+     */
+    private static void readCountMap(CompoundTag tag, String key, Map<String, Integer> target) {
+        ListTag list = tag.getList(key, Tag.TAG_COMPOUND);
+        for (int i = 0; i < list.size(); i++) {
+            CompoundTag item = list.getCompound(i);
+            target.put(item.getString(KEY_ENTRY_NAME), item.getInt(KEY_ENTRY_COUNT));
+        }
     }
 
     /**

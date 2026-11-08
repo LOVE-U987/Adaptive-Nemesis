@@ -9,8 +9,10 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.Mob;
 
+import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -20,22 +22,61 @@ import java.util.concurrent.ConcurrentHashMap;
  * 负责在模组的关键位置触发 KubeJS 事件。
  * 通过反射安全调用 KubeJSInitializer，即使 KubeJS 未安装也不会崩溃。
  *
+ * 调用失败加固（F-51）：
+ * - 方法缓存键包含参数类型签名，避免同名不同参方法互相覆盖；
+ * - 单个事件反射调用连续失败达到上限后，本会话禁用该事件，
+ *   并一次性输出包含完整堆栈的错误日志（不再逐次 warn 刷屏）。
+ *
  * @author Adaptive Nemesis Team
- * @version 1.2.0
+ * @version 1.3.0
  */
 public class KubeJSEventTrigger {
 
     private static final String INITIALIZER_CLASS = "com.adaptive_nemesis.adaptive_nemesismod.kubejs.KubeJSInitializer";
+
+    /**
+     * 单个事件反射调用连续失败次数上限，达到后本会话禁用该事件
+     */
+    private static final int MAX_INVOKE_FAILURES = 3;
+
     private static Boolean initializerAvailable = null;
 
     /**
-     * 反射方法缓存 - 避免每次调用都执行 Class.forName + getMethod
+     * 反射方法缓存 - 避免每次调用都执行 Class.forName + getMethod；
+     * 键为"方法名 + 参数类型签名"（见 {@link #cacheKey}）
      */
     private static final Map<String, Method> METHOD_CACHE = new ConcurrentHashMap<>();
 
     /**
+     * 各事件的反射调用连续失败计数（键同 METHOD_CACHE）
+     */
+    private static final Map<String, Integer> FAILURE_COUNTS = new ConcurrentHashMap<>();
+
+    /**
+     * 本会话已被禁用的事件缓存键集合
+     */
+    private static final Set<String> DISABLED_EVENTS = ConcurrentHashMap.newKeySet();
+
+    /**
+     * 生成方法缓存键：方法名 + 参数类型签名（F-51），
+     * 避免同名不同参的方法在缓存中互相覆盖导致调用错位
+     *
+     * @param methodName 方法名
+     * @param paramTypes 参数类型数组
+     * @return 缓存键，形如 "fireEntityScale#net.minecraft...Mob#double"
+     */
+    private static String cacheKey(String methodName, Class<?>[] paramTypes) {
+        StringBuilder key = new StringBuilder(methodName);
+        for (Class<?> type : paramTypes) {
+            key.append('#').append(type.getName());
+        }
+        return key.toString();
+    }
+
+    /**
      * 通过反射调用 KubeJSInitializer 的静态方法
-     * 使用 METHOD_CACHE 缓存 Method 对象以提升性能
+     * 使用 METHOD_CACHE 缓存 Method 对象以提升性能；
+     * 连续失败达到上限的事件在本会话内被禁用（直接短路返回）
      *
      * @param methodName 方法名
      * @param paramTypes 参数类型数组
@@ -55,18 +96,48 @@ public class KubeJSEventTrigger {
         }
         if (!initializerAvailable) return null;
 
+        String cacheKey = cacheKey(methodName, paramTypes);
+        if (DISABLED_EVENTS.contains(cacheKey)) {
+            return null;
+        }
+
         try {
-            Method method = METHOD_CACHE.get(methodName);
+            Method method = METHOD_CACHE.get(cacheKey);
             if (method == null) {
                 Class<?> clazz = Class.forName(INITIALIZER_CLASS);
                 method = clazz.getMethod(methodName, paramTypes);
-                METHOD_CACHE.put(methodName, method);
+                METHOD_CACHE.put(cacheKey, method);
             }
             return method.invoke(null, args);
         } catch (Exception e) {
-            AdaptiveNemesisMod.LOGGER.warn("反射调用 {} 失败: {}", methodName, e.getMessage());
+            onInvokeFailure(cacheKey, methodName, e);
             return null;
         }
+    }
+
+    /**
+     * 反射调用失败处理（F-51）
+     *
+     * 每次失败累加计数并输出 debug 日志；连续失败达到
+     * {@link #MAX_INVOKE_FAILURES} 后将事件加入本会话禁用集合，
+     * 并一次性输出包含完整堆栈（含目标方法真实异常原因）的 error 日志，
+     * 替代原先每次失败都 warn 的刷屏行为。
+     *
+     * @param cacheKey 事件缓存键
+     * @param methodName 方法名（日志展示用）
+     * @param e 反射调用抛出的异常
+     */
+    private static void onInvokeFailure(String cacheKey, String methodName, Exception e) {
+        int failures = FAILURE_COUNTS.merge(cacheKey, 1, Integer::sum);
+        if (failures < MAX_INVOKE_FAILURES) {
+            AdaptiveNemesisMod.LOGGER.debug("反射调用 {} 失败（第 {} 次）: {}", methodName, failures, e.getMessage());
+            return;
+        }
+        DISABLED_EVENTS.add(cacheKey);
+        // 解包 InvocationTargetException，输出目标方法内部的真实异常堆栈
+        Throwable cause = e instanceof InvocationTargetException ite && ite.getCause() != null ? ite.getCause() : e;
+        AdaptiveNemesisMod.LOGGER.error(
+            "KubeJS 事件 {} 反射调用连续失败 {} 次，本会话禁用该事件", methodName, failures, cause);
     }
 
     /**
@@ -97,31 +168,36 @@ public class KubeJSEventTrigger {
     /**
      * 触发伤害计算事件
      *
+     * 取消标记由 {@link DamageCalculationResult#isCancelled()} 显式承载，
+     * 不再以"返回值等于原始伤害"作为取消约定：脚本把真实伤害金额设为
+     * 与原始伤害相同的值时仍是正常修改，可按全额真实伤害转化。
+     *
      * @param attacker 攻击者
      * @param target 目标
      * @param originalDamage 原始伤害
      * @param calculatedDamage 计算后的伤害
      * @param armorMultiplier 护甲倍率
-     * @return 事件处理后的伤害，如果取消则返回原始伤害
+     * @return 伤害计算事件结果（含取消标记与事件处理后的真实伤害金额）
      */
-    public static float triggerDamageCalculation(LivingEntity attacker, LivingEntity target,
-                                                  float originalDamage, float calculatedDamage,
-                                                  double armorMultiplier) {
+    public static DamageCalculationResult triggerDamageCalculation(LivingEntity attacker, LivingEntity target,
+                                                                    float originalDamage, float calculatedDamage,
+                                                                    double armorMultiplier) {
+        DamageCalculationResult fallback = new DamageCalculationResult(false, calculatedDamage);
         if (!KubeJSLoader.isKubeJSLoaded()) {
-            return calculatedDamage;
+            return fallback;
         }
 
         try {
             Object result = invokeStatic("fireDamageCalculation",
                 new Class<?>[]{LivingEntity.class, LivingEntity.class, float.class, float.class, double.class},
                 new Object[]{attacker, target, originalDamage, calculatedDamage, armorMultiplier});
-            if (result instanceof Float) {
-                return (Float) result;
+            if (result instanceof DamageCalculationResult damageResult) {
+                return damageResult;
             }
         } catch (Exception e) {
             // fall through
         }
-        return calculatedDamage;
+        return fallback;
     }
 
     /**
@@ -313,6 +389,55 @@ public class KubeJSEventTrigger {
             return rewards;
         } catch (Exception e) {
             return rewards;
+        }
+    }
+
+    /**
+     * 伤害计算事件结果
+     *
+     * 以独立的取消标记承载 KubeJS 脚本的取消意图，替代旧实现
+     * "返回值等于原始伤害即视为取消"的隐式约定。脚本把真实伤害
+     * 设为与原始伤害相同的值表示全额真实伤害，不会被误判为取消。
+     */
+    public static final class DamageCalculationResult {
+
+        /**
+         * 是否取消真实伤害转换
+         */
+        private final boolean cancelled;
+
+        /**
+         * 事件处理后的真实伤害金额
+         */
+        private final float damage;
+
+        /**
+         * 构造伤害计算事件结果
+         *
+         * @param cancelled 是否取消真实伤害转换
+         * @param damage 事件处理后的真实伤害金额
+         */
+        public DamageCalculationResult(boolean cancelled, float damage) {
+            this.cancelled = cancelled;
+            this.damage = damage;
+        }
+
+        /**
+         * 检查事件是否被取消
+         *
+         * @return 如果脚本调用了 cancelEvent() 返回 true
+         */
+        public boolean isCancelled() {
+            return cancelled;
+        }
+
+        /**
+         * 获取事件处理后的真实伤害金额
+         *
+         * @return 真实伤害金额（cancelled 为 true 时该值不参与计算）
+         */
+        public float getDamage() {
+            return damage;
         }
     }
 

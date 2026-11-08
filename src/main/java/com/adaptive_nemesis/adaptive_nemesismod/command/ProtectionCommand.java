@@ -138,6 +138,9 @@ public class ProtectionCommand {
         try {
             ServerPlayer target = net.minecraft.commands.arguments.EntityArgument.getPlayer(context, "player");
 
+            // 真实启用保护：走强制保护路径（无过期时间，击杀敌对生物后解除）
+            NewbieProtectionHandler.getInstance().forceEnableProtection(target.getUUID());
+
             source.sendSuccess(() -> Component.translatable(
                 "adaptive_nemesis.command.protection.enabled",
                 target.getName().getString()
@@ -145,6 +148,7 @@ public class ProtectionCommand {
 
             return 1;
         } catch (Exception e) {
+            // 玩家解析失败或档案无法启用时给出失败反馈
             source.sendFailure(Component.translatable("adaptive_nemesis.command.error.player_not_found"));
             return 0;
         }

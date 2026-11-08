@@ -2,7 +2,82 @@
 
 ---
 
+## v1.0.19 (2026-11-08)
+
+### 修复：全项目代码审查问题批量修复（56 项，2026-11-08）
+
+**背景**：2026-11-07 对全项目（96 个 Java 文件，约 22,500 行）完成系统性代码审查，确认高危 8 项、中危约 20 项、低危与规范债约 30 项。最系统性问题是"断线功能"——11 个子系统注释宣称已实现但实际未接入游戏逻辑。本次按审核通过的计划（plan-full-review-fix v1.2）全部修复，计划文件在 audit 通过后删除。
+
+**断线功能修复**（高危）：
+- 新手保护减免接入怪物缩放管线（此前 `isProtected` 只有命令查询在消费，保护从未生效）
+- 真实伤害系统接线 + 无敌帧修复：`markInitialized` 接入配置加载；新增自定义 DamageType `adaptive_nemesis:true_damage`（注册名新增，非变更），bypasses_armor/bypasses_cooldown 双标签数据包；延迟任务改用带原始攻击者归因的 DamageSource（死亡消息与仇恨指向攻击方），入口增加再入排除防止二次转化
+- 宿敌转化防重复守卫：`loadedFromDisk` + `isNemesis` 双保险，区块重载/跨维度不再重复转化导致属性指数叠加
+- 宿敌档案持久化：新建 `NemesisProfileSavedData`（挂 overworld），档案创建即写入、登出序列化+内存移除、登入按需读回；修正"档案已保存"误导日志
+- 世界阶段持久化：`WorldStageSavedData` 空壳改为真实现（stage + 已击败 Boss 集合 + 推进时间戳），三处读写统一 `server.overworld()`，`serverLevelRef` 停服置 null；内容不变不写盘避免无效落盘
+- 装备/附魔缓存恢复 `cachesBuilt` 快速路径（此前每只怪生成都全量扫描注册表）
+- 入侵死亡结算：死亡即按失败结算并发 KubeJS 结束事件、按 `clearMobsOnFailure`（新，默认 true）清理存活入侵怪，不再给死亡玩家发胜利奖励
+- 看门狗生命周期：仅专用服务器在 `ServerStartedEvent` 启动、首次心跳前 armed 不判定、UUID 问题实体键、换档可重启；新增只读状态查询
+- 假命令修复：`/an protection enable` 真实启用、`/an difficulty set` 真实写配置、`/an invasion setdifficulty` 接入自定义难度配置
+
+**行为与数值修复**（中危）：
+- 入侵：目标玩家离线暂停状态机（超时 `offlineAbortTicks` 新配置判失败）、难度倍率下限 0.1 钳制（不再产生 0 血怪）、血条基准改用实体类型默认属性、僵尸村民血量随硬编码表删除、怒气提速死逻辑移除与铁傀儡名单修正
+- 数据包 6 个死字段接线：`spawn_distance`、`invasion_max_waves`、每波 `difficulty_multiplier`、波内 `weight` 加权抽样；`nameKey`/`spawn_direction` 加载时 warn 不再静默忽略
+- 波数/难度阶段表迁入 `InvasionFixConfig`（默认值与原硬编码一致）；入侵通知半径独立配置（默认 32.0）
+- 宿敌：生成计时改随实体 persistentData（重启不再重置）、`nemesisSpawnTimes` 泄漏治理、称号阈值与记忆三系数迁入数据包配置（默认值不变）
+- 缩放：非血量属性 NBT 丢失时回退实体类型默认值（清 NBT 后二次缩放不再叠加）、韧性补上限、核心附魔互斥与适用性过滤（移除剑上效率/护甲深海探索者等）、装备难度公式与属性缩放统一（共享缓动/浮动/上限/空间索引）
+- 杀牛羊村民不再计入"击杀敌人"（`instanceof Enemy` 判定）、非玩家击杀不再推进世界阶段
+- 召唤宿敌：属性加成全部经配置上限钳制、补 `finalizeMobSpawn` 调用（骷髅不再空手落地）、魔数常量化
+- 配置界面：值变更才写内存、确认才落盘、ESC 取消做内存快照回滚（打开界面零写盘）；主菜单点配置改为延迟一帧提示屏
+- 兼容层：Apotheosis 评估按 1.21.1 data components 实际格式重写（旧 NBT 键已不存在，原实现静默失效），全零结果 warn 一次；`ModCompatManager` 配置开关现读不固化；KubeJS 入侵 API 真实接线（`registerBindings(BindingRegistry)` 注册 `AdaptiveNemesis` 绑定对象，脚本可调 `triggerUndeadInvasion`/`isInInvasion`/`getInvasionProgress`），删除从未生效的 `InvasionKubeJsSupport`
+- 击杀记忆键/武器分类改用注册 ID（不再依赖 `toString()` 隐式格式）；KubeJS 反射调用失败熔断（3 次禁用本会话事件，防日志刷屏）
+
+**资源与结构**：
+- 战利品表目录 `loot_tables/` 改名 `loot_table/`（1.21.1 单数，原目录下示例表静默解析不到）
+- `Config.java` 归位至包声明对应目录；`GeneralConfig` 补 `push("general")`（旧配置顶层 `difficultyBaseMultiplier` 需重新设置一次）
+- 删除无引用死资源 `assets/adaptive_nemesis/textture/`（原拼写错误目录）
+- 死代码清理约 15 处；全部注释/日志 Emoji 清除；超 50 行方法全部拆分（含 745 行的配置屏 init）；缩放/空闲阈值等硬编码迁配置（新增 `enchantmentChanceCap`、`idleDecayThresholdSeconds` 等，默认值与原行为一致）
+
+**测试**：新增 JUnit 单测 4 组（世界阶段 NBT round-trip、宿敌档案 NBT、缩放钳制、入侵数据容错），扩展真实伤害测试（初始化门槛/再入排除/钳制），共 172 个用例全绿；`/an test verify` 新增 9 项游戏内自检（真实伤害注册、新手保护倍率演示、宿敌守卫、假命令回读、0 倍率钳制、持久化重启验证入口等）。
+
+**迁移提醒**：从 v1.0.18 升级后，`config/adaptive_nemesis-common.toml` 中顶层 `difficultyBaseMultiplier` 不再被读取（结构统一迁入 `general` 分节），请重新设置一次；入侵通知半径默认值由随生成区域 70 格改为独立 32 格，可在配置中调整。
+
+### 修复：KubeJS 伤害事件取消语义改为显式标记（2026-11-08）
+
+**问题现象**：`adaptive_nemesis.damage_calculation` 事件的取消判定此前依赖"返回伤害值等于原始伤害"，导致脚本将真实伤害设为与原始伤害相同（即全额真实伤害）时被静默忽略；同时真实伤害比例配置到 100% 时（即使未安装 KubeJS 也会走同一返回值路径）同样被误判为取消。
+
+**修复**：`KubeJSEventTrigger` 新增 `DamageCalculationResult`（显式 cancelled 标记 + 伤害值），`fireDamageCalculation` 返回该结果，`TrueDamageHandler` 仅依据显式取消标记跳过转化；数值相等不再影响转化判断。脚本取消真实伤害转换仍使用 `event.cancelEvent()`。
+
+### 已知问题：world_stage_change 事件的取消与倍率修改暂不生效（2026-11-08）
+
+`adaptive_nemesis.world_stage_change` 事件中 `cancelEvent()` 与 `setStageMultiplier()` 当前不影响实际逻辑：事件在阶段推进写盘之后触发，返回的阶段倍率仅用于日志展示，后续缩放链路仍按阶段配置重新计算。计划后续版本将事件返回倍率持久化为阶段覆盖值（或明确取消语义），本轮仅记录不修复。
+
+---
+
 ## v1.0.18 (2026-10-18)
+
+### 修复：铁魔法联动失效，AN 强化怪物无法获得法术加成（2026-11-07）
+
+**问题现象**：安装 Iron's Spells 'n Spellbooks 后，被 AN 强化的怪物完全吃不到法术类加成（法术强度/法力/施法效率/法术抗性全部无效），联动形同虚设。
+
+**根因分析**（两道门槛互相锁死）：
+- `IronsSpellsCompat.applyMobBuffs` 开头检查宿敌标记 `NEMESIS_TAG`，非宿敌直接返回——普通被强化的怪拿不到任何法术加成
+- `NemesisSystem.onEntitySpawn` 仅处理 `instanceof Monster` 的实体，而铁魔法施法怪（`AbstractSpellCastingMob` 系）继承 `PathfinderMob` 而非 `Monster`，永远无法转化为宿敌、永远打不上标记
+- 两者相乘：会施法的怪永远不是宿敌，是宿敌的怪不会施法，法术加成路径对铁魔法生物完全死路
+- 附带数值隐患：铁魔法法术伤害公式为 基础值 x 通用法术强度 x 学派法术强度，旧实现把两个因子乘同一倍率，倍率 2x 实际伤害 4x（平方爆炸）；九大学派抗性用 `(mult-1)*5` 加法，2x 倍率时约 95% 法术减伤接近免疫；通用 `SPELL_RESIST` 完全未使用
+
+**修复方案**：
+- `NemesisSystem`：宿敌转化条件由 `instanceof Monster` 放宽为 `Mob + Enemy`（与敌人缩放处理器 `onEntityJoinLevel` 口径对齐），铁魔法施法怪可按概率转为宿敌；`isBoss` 接入全局 Boss 识别服务（null 安全，未初始化时兜底硬编码名单），死灵之王/火焰领主等模组 Boss 不会被转成宿敌；客户端判断前置
+- `IronsSpellsCompat`：门槛重构为双通道——实现 `IMagicEntity` 的施法怪获得法术强度/法力/施法效率加成（与是否宿敌无关），宿敌获得法术抗性加成，普通怪零改动（保留法师 AoE 不被逐只减免的设计）
+- 数值修复：删除九大学派法术强度乘算（只乘通用 `SPELL_POWER`，消除平方爆炸）；删除九大学派抗性 `(mult-1)*5` 加法，改为通用 `SPELL_RESIST` 温和乘算（属性定义基线 1.0，`softCap` 公式天然渐近封顶：2x 倍率约 75% 减伤，3x 配置默认上限约 87.5%，旧方案 2x 约 95%）
+- `NemesisNameGenerator`：`generateNemesisName`/`determinePrefix` 参数由 `Monster` 放宽为 `Mob`（方法体仅使用 `getType` 级 API）
+- `maxSpellPowerMultiplier`（默认 4.0）/ `maxSpellResistMultiplier`（默认 3.0）封顶配置语义不变，继续生效
+
+**防复发要点**：
+- "谁能成为宿敌"与"谁能被缩放"应使用同一判定口径（`Mob + Enemy` 接口）；用 `Monster` 类判定会系统性排除 `PathfinderMob` 系模组怪
+- 铁魔法伤害/抗性公式为多因子相乘结构，同一倍率不得同时乘多个因子，否则按倍率平方增长
+- 属性乘算加成依赖属性基线非 0（`SPELL_RESIST`/学派抗性定义基线均为 1.0），接入乘算方案前先核实基线
+
+**验证入口**：安装铁魔法后开启 `ENABLE_DEBUG_LOG`，观察自然生成的死灵法师等施法怪缩放时"法术强度: x -> y"日志；`/an nemesis` 召唤路径回归正常；普通僵尸（非宿敌非施法）无任何法术属性变化
 
 ### 功能：入侵敌人涉水自持（冰霜行者路径援助）（2026-10-25）
 

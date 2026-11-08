@@ -68,6 +68,6 @@ public class ModCommands {
                 .then(HelpCommand.register())
                 .then(InvasionCommand.register())
         );
-        AdaptiveNemesisMod.LOGGER.debug("⌨️ 命令系统已注册");
+        AdaptiveNemesisMod.LOGGER.debug("命令系统已注册");
     }
 }

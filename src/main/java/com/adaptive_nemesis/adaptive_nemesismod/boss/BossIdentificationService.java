@@ -82,20 +82,13 @@ public class BossIdentificationService {
 
     /**
      * 检查配置是否已加载完成
-     * 
+     *
+     * 委托给 AdaptiveNemesisMod.isConfigLoaded()，避免反射读取私有字段
+     *
      * @return 如果配置已加载返回 true，否则返回 false
      */
     public static boolean isConfigLoaded() {
-        // 通过检查 AdaptiveNemesisMod 的 configLoaded 标志来判断
-        // 这比检查 Config.MOD_CONFIG 更可靠，因为 MOD_CONFIG 可能在事件处理中为 null
-        try {
-            java.lang.reflect.Field field = AdaptiveNemesisMod.class.getDeclaredField("configLoaded");
-            field.setAccessible(true);
-            return field.getBoolean(null);
-        } catch (Exception e) {
-            // 反射失败时回退到检查 MOD_CONFIG
-            return Config.MOD_CONFIG != null;
-        }
+        return AdaptiveNemesisMod.isConfigLoaded();
     }
 
     /**
@@ -157,27 +150,10 @@ public class BossIdentificationService {
     }
 
     /**
-     * 强制重新初始化（配置热重载时调用）
+     * 强制重新初始化（配置热重载时由主类 ModConfigEvent.Reloading 调用）
      */
     public static synchronized void reinitialize() {
         initialized = false;
         initialize();
-    }
-    
-    /**
-     * 重试初始化（当配置刚被加载时调用）
-     * 
-     * @return 如果初始化成功返回 true，如果配置未加载则返回 false
-     */
-    public static synchronized boolean retryInitialize() {
-        if (initialized) {
-            return true;
-        }
-        
-        if (!isConfigLoaded()) {
-            return false;
-        }
-        
-        return initialize();
     }
 }

@@ -2,6 +2,8 @@ package com.adaptive_nemesis.adaptive_nemesismod.client;
 
 import com.adaptive_nemesis.adaptive_nemesismod.Config;
 
+import net.neoforged.neoforge.common.ModConfigSpec;
+
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.AbstractWidget;
 import net.minecraft.client.gui.components.Button;
@@ -15,6 +17,7 @@ import net.minecraft.util.Mth;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
@@ -58,6 +61,8 @@ public class AdaptiveNemesisConfigScreen extends Screen {
     private float openTime = 0;
     /** 是否正在拖拽滚动条 */
     private boolean isDraggingScrollbar = false;
+    /** 打开界面时被修改配置值的快照（ESC/取消路径回滚用） */
+    private final java.util.Map<ModConfigSpec.ConfigValue<?>, Object> snapshots = new java.util.LinkedHashMap<>();
 
     // 布局常量
     private static final int LIST_TOP = 48;
@@ -124,35 +129,9 @@ public class AdaptiveNemesisConfigScreen extends Screen {
     protected void init() {
         // 检查玩家是否在游戏内
         if (this.minecraft.player == null || this.minecraft.level == null) {
-            // 玩家未进入游戏，显示提示并关闭界面
-            net.minecraft.client.gui.screens.Screen screen = new net.minecraft.client.gui.screens.Screen(Component.translatable("adaptive_nemesis.config.error.no_player.title")) {
-                @Override
-                protected void init() {
-                    super.init();
-                    
-                    // 添加关闭按钮
-                    this.addRenderableWidget(new Button.Builder(
-                        Component.translatable("adaptive_nemesis.config.error.no_player.close"),
-                        button -> {
-                            AdaptiveNemesisConfigScreen.this.minecraft.setScreen(AdaptiveNemesisConfigScreen.this.parent);
-                        }
-                    ).bounds(width / 2 - 100, height / 2 + 40, 200, 20).build());
-                    
-                    // 显示提示信息（使用简单文本渲染）
-                }
-                
-                @Override
-                public void render(net.minecraft.client.gui.GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTicks) {
-                    super.render(guiGraphics, mouseX, mouseY, partialTicks);
-                    
-                    // 居中显示提示信息
-                    String message = Component.translatable("adaptive_nemesis.config.error.no_player.message").getString();
-                    int messageWidth = this.font.width(message);
-                    guiGraphics.drawString(this.font, message, this.width / 2 - messageWidth / 2, this.height / 2 - 20, 
-                        0xFFFFFF, true);
-                }
-            };
-            this.minecraft.setScreen(screen);
+            // 主菜单等无世界场景直接切屏会异常，延迟一帧处理
+            net.minecraft.client.gui.screens.Screen screen = createNoPlayerNoticeScreen();
+            net.minecraft.client.Minecraft.getInstance().tell(() -> this.minecraft.setScreen(screen));
             return;
         }
         
@@ -164,708 +143,1051 @@ public class AdaptiveNemesisConfigScreen extends Screen {
         this.openTime = 0;
         this.isDraggingScrollbar = false;
 
-        int currentY = LIST_TOP;
         int widgetX = this.width - PADDING - WIDGET_WIDTH;
+        int currentY = addAllSections(widgetX);
 
-        // ===== 基础难度 =====
+        this.totalContentHeight = currentY - LIST_TOP;
+
+        // 添加返回按钮
+        this.addRenderableWidget(Button.builder(CommonComponents.GUI_DONE, button -> confirmAndClose())
+            .bounds(this.width / 2 - 100, this.height - 36, 200, 24)
+            .build());
+    }
+
+    /**
+     * 创建无世界场景的提示界面（主菜单打开配置屏时展示）
+     *
+     * 界面文案说明配置修改需进入世界才能生效，仅提供关闭按钮
+     *
+     * @return 提示界面实例
+     */
+    private net.minecraft.client.gui.screens.Screen createNoPlayerNoticeScreen() {
+        return new net.minecraft.client.gui.screens.Screen(
+            Component.translatable("adaptive_nemesis.config.error.no_player.title")) {
+            @Override
+            protected void init() {
+                super.init();
+
+                // 添加关闭按钮
+                this.addRenderableWidget(new Button.Builder(
+                    Component.translatable("adaptive_nemesis.config.error.no_player.close"),
+                    button -> {
+                        AdaptiveNemesisConfigScreen.this.minecraft.setScreen(AdaptiveNemesisConfigScreen.this.parent);
+                    }
+                ).bounds(width / 2 - 100, height / 2 + 40, 200, 20).build());
+            }
+
+            @Override
+            public void render(net.minecraft.client.gui.GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTicks) {
+                super.render(guiGraphics, mouseX, mouseY, partialTicks);
+
+                // 居中显示提示信息（说明需进入世界）
+                String message = Component.translatable("adaptive_nemesis.config.error.no_player.message").getString();
+                int messageWidth = this.font.width(message);
+                guiGraphics.drawString(this.font, message, this.width / 2 - messageWidth / 2, this.height / 2 - 20,
+                    0xFFFFFF, true);
+            }
+        };
+    }
+
+
+    // ==================== 配置分组条目构建 ====================
+
+    /**
+     * 依次构建全部配置分组条目
+     *
+     * @param widgetX 控件 X 坐标
+     * @return 全部条目结束 Y 坐标
+     */
+    private int addAllSections(int widgetX) {
+        int currentY = LIST_TOP;
+
+        currentY = addBasicSection(currentY, widgetX);
+        currentY = addEnemyBonusCapSection(currentY, widgetX);
+        currentY = addTrueDamageSection(currentY, widgetX);
+        currentY = addBossSection(currentY, widgetX);
+        currentY = addNewbieSection(currentY, widgetX);
+        currentY = addRandomSection(currentY, widgetX);
+        currentY = addSmoothingSection(currentY, widgetX);
+        currentY = addAdaptiveFloatSection(currentY, widgetX);
+        currentY = addFloatDecaySection(currentY, widgetX);
+        currentY = addWorldStageSection(currentY, widgetX);
+        currentY = addEnchantmentSection(currentY, widgetX);
+        currentY = addEquipmentSection(currentY, widgetX);
+        currentY = addWeaponDamageCapSection(currentY, widgetX);
+        currentY = addWeightsSection(currentY, widgetX);
+        currentY = addEpicFightSection(currentY, widgetX);
+        currentY = addModCompatSection(currentY, widgetX);
+        currentY = addEntityFilterSection(currentY, widgetX);
+        currentY = addWatchdogSection(currentY, widgetX);
+        currentY = addNemesisSection(currentY, widgetX);
+        currentY = addNemesisNameStyleSection(currentY, widgetX);
+        currentY = addInvasionSection(currentY, widgetX);
+        currentY = addInvasionDifficultySection(currentY, widgetX);
+        currentY = addInvasionNotifySection(currentY, widgetX);
+        currentY = addDebugSection(currentY, widgetX);
+        return currentY;
+    }
+
+    /**
+     * 添加 basic 配置分组条目
+     *
+     * @param currentY 起始绘制 Y 坐标
+     * @param widgetX 控件 X 坐标
+     * @return 结束 Y 坐标
+     */
+    private int addBasicSection(int currentY, int widgetX) {
+        currentY = LIST_TOP;
         currentY = addCategoryEntry(currentY, "adaptive_nemesis.config.category.basic", 0xFFFFAA00);
         currentY = addConfigEntry(currentY, "adaptive_nemesis.config.difficulty_base_multiplier",
             "adaptive_nemesis.config.tooltip.difficulty_base_multiplier",
             createDoubleEditBox(Config.DIFFICULTY_BASE_MULTIPLIER.get(), 0.1, 20.0,
-                value -> { Config.DIFFICULTY_BASE_MULTIPLIER.set(value); markChanged(); }),
+                value -> setConfigValue(Config.DIFFICULTY_BASE_MULTIPLIER, value)),
             widgetX);
         currentY = addConfigEntry(currentY, "adaptive_nemesis.config.area_sync_range",
             "adaptive_nemesis.config.tooltip.area_sync_range",
             createIntEditBox(Config.AREA_SYNC_RANGE.get(), 1, 32,
-                value -> { Config.AREA_SYNC_RANGE.set(value); markChanged(); }),
+                value -> setConfigValue(Config.AREA_SYNC_RANGE, value)),
             widgetX);
         currentY = addConfigEntry(currentY, "adaptive_nemesis.config.enable_enemy_bonus_cap",
             "adaptive_nemesis.config.tooltip.enable_enemy_bonus_cap",
             createBooleanButton(Config.ENABLE_ENEMY_BONUS_CAP.get(),
-                value -> { Config.ENABLE_ENEMY_BONUS_CAP.set(value); markChanged(); }),
+                value -> setConfigValue(Config.ENABLE_ENEMY_BONUS_CAP, value)),
             widgetX);
+        return addEnemyBonusCapSection(currentY, widgetX);
+    }
+
+    /**
+     * 添加敌人加成上限配置分组条目
+     *
+     * @param currentY 起始绘制 Y 坐标
+     * @param widgetX 控件 X 坐标
+     * @return 结束 Y 坐标
+     */
+    private int addEnemyBonusCapSection(int currentY, int widgetX) {
+        currentY = LIST_TOP;
         currentY = addConfigEntry(currentY, "adaptive_nemesis.config.max_health_multiplier",
             "adaptive_nemesis.config.tooltip.max_health_multiplier",
             createDoubleEditBox(Config.MAX_HEALTH_MULTIPLIER.get(), 1.0, 50.0,
-                value -> { Config.MAX_HEALTH_MULTIPLIER.set(value); markChanged(); }),
+                value -> setConfigValue(Config.MAX_HEALTH_MULTIPLIER, value)),
             widgetX);
         currentY = addConfigEntry(currentY, "adaptive_nemesis.config.max_damage_multiplier",
             "adaptive_nemesis.config.tooltip.max_damage_multiplier",
             createDoubleEditBox(Config.MAX_DAMAGE_MULTIPLIER.get(), 1.0, 50.0,
-                value -> { Config.MAX_DAMAGE_MULTIPLIER.set(value); markChanged(); }),
+                value -> setConfigValue(Config.MAX_DAMAGE_MULTIPLIER, value)),
             widgetX);
         currentY = addConfigEntry(currentY, "adaptive_nemesis.config.max_armor_multiplier",
             "adaptive_nemesis.config.tooltip.max_armor_multiplier",
             createDoubleEditBox(Config.MAX_ARMOR_MULTIPLIER.get(), 1.0, 50.0,
-                value -> { Config.MAX_ARMOR_MULTIPLIER.set(value); markChanged(); }),
+                value -> setConfigValue(Config.MAX_ARMOR_MULTIPLIER, value)),
             widgetX);
         currentY = addConfigEntry(currentY, "adaptive_nemesis.config.max_spell_power_multiplier",
             "adaptive_nemesis.config.tooltip.max_spell_power_multiplier",
             createDoubleEditBox(Config.MAX_SPELL_POWER_MULTIPLIER.get(), 1.0, 100.0,
-                value -> { Config.MAX_SPELL_POWER_MULTIPLIER.set(value); markChanged(); }),
+                value -> setConfigValue(Config.MAX_SPELL_POWER_MULTIPLIER, value)),
             widgetX);
         currentY = addConfigEntry(currentY, "adaptive_nemesis.config.max_spell_resist_multiplier",
             "adaptive_nemesis.config.tooltip.max_spell_resist_multiplier",
             createDoubleEditBox(Config.MAX_SPELL_RESIST_MULTIPLIER.get(), 1.0, 100.0,
-                value -> { Config.MAX_SPELL_RESIST_MULTIPLIER.set(value); markChanged(); }),
+                value -> setConfigValue(Config.MAX_SPELL_RESIST_MULTIPLIER, value)),
             widgetX);
         currentY = addConfigEntry(currentY, "adaptive_nemesis.config.max_hit_resist_multiplier",
             "adaptive_nemesis.config.tooltip.max_hit_resist_multiplier",
             createDoubleEditBox(Config.MAX_HIT_RESIST_MULTIPLIER.get(), 1.0, 100.0,
-                value -> { Config.MAX_HIT_RESIST_MULTIPLIER.set(value); markChanged(); }),
+                value -> setConfigValue(Config.MAX_HIT_RESIST_MULTIPLIER, value)),
             widgetX);
         currentY = addConfigEntry(currentY, "adaptive_nemesis.config.max_knockdown_resist_multiplier",
             "adaptive_nemesis.config.tooltip.max_knockdown_resist_multiplier",
             createDoubleEditBox(Config.MAX_KNOCKDOWN_RESIST_MULTIPLIER.get(), 1.0, 100.0,
-                value -> { Config.MAX_KNOCKDOWN_RESIST_MULTIPLIER.set(value); markChanged(); }),
+                value -> setConfigValue(Config.MAX_KNOCKDOWN_RESIST_MULTIPLIER, value)),
             widgetX);
         currentY = addConfigEntry(currentY, "adaptive_nemesis.config.max_stamina_multiplier",
             "adaptive_nemesis.config.tooltip.max_stamina_multiplier",
             createDoubleEditBox(Config.MAX_STAMINA_MULTIPLIER.get(), 1.0, 100.0,
-                value -> { Config.MAX_STAMINA_MULTIPLIER.set(value); markChanged(); }),
+                value -> setConfigValue(Config.MAX_STAMINA_MULTIPLIER, value)),
             widgetX);
 
-        // ===== 真实伤害 =====
+        return currentY;
+    }
+
+    /**
+     * 添加 true_damage 配置分组条目
+     *
+     * @param currentY 起始绘制 Y 坐标
+     * @param widgetX 控件 X 坐标
+     * @return 结束 Y 坐标
+     */
+    private int addTrueDamageSection(int currentY, int widgetX) {
+        currentY = LIST_TOP;
         currentY = addCategoryEntry(currentY, "adaptive_nemesis.config.category.true_damage", 0xFFFF5555);
         currentY = addConfigEntry(currentY, "adaptive_nemesis.config.enable_true_damage",
             "adaptive_nemesis.config.tooltip.enable_true_damage",
             createBooleanButton(Config.ENABLE_TRUE_DAMAGE.get(),
-                value -> { Config.ENABLE_TRUE_DAMAGE.set(value); markChanged(); }),
+                value -> setConfigValue(Config.ENABLE_TRUE_DAMAGE, value)),
             widgetX);
         currentY = addConfigEntry(currentY, "adaptive_nemesis.config.low_armor_threshold",
             "adaptive_nemesis.config.tooltip.low_armor_threshold",
             createIntEditBox(Config.LOW_ARMOR_THRESHOLD.get(), 1, 50,
-                value -> { Config.LOW_ARMOR_THRESHOLD.set(value); markChanged(); }),
+                value -> setConfigValue(Config.LOW_ARMOR_THRESHOLD, value)),
             widgetX);
         currentY = addConfigEntry(currentY, "adaptive_nemesis.config.low_armor_true_damage_percent",
             "adaptive_nemesis.config.tooltip.low_armor_true_damage_percent",
             createDoubleEditBox(Config.LOW_ARMOR_TRUE_DAMAGE_PERCENT.get(), 0.0, 100.0,
-                value -> { Config.LOW_ARMOR_TRUE_DAMAGE_PERCENT.set(value); markChanged(); }),
+                value -> setConfigValue(Config.LOW_ARMOR_TRUE_DAMAGE_PERCENT, value)),
             widgetX);
         currentY = addConfigEntry(currentY, "adaptive_nemesis.config.medium_armor_threshold",
             "adaptive_nemesis.config.tooltip.medium_armor_threshold",
             createIntEditBox(Config.MEDIUM_ARMOR_THRESHOLD.get(), 0, 200,
-                value -> { Config.MEDIUM_ARMOR_THRESHOLD.set(value); markChanged(); }),
+                value -> setConfigValue(Config.MEDIUM_ARMOR_THRESHOLD, value)),
             widgetX);
         currentY = addConfigEntry(currentY, "adaptive_nemesis.config.medium_armor_true_damage_percent",
             "adaptive_nemesis.config.tooltip.medium_armor_true_damage_percent",
             createDoubleEditBox(Config.MEDIUM_ARMOR_TRUE_DAMAGE_PERCENT.get(), 0.0, 100.0,
-                value -> { Config.MEDIUM_ARMOR_TRUE_DAMAGE_PERCENT.set(value); markChanged(); }),
+                value -> setConfigValue(Config.MEDIUM_ARMOR_TRUE_DAMAGE_PERCENT, value)),
             widgetX);
         currentY = addConfigEntry(currentY, "adaptive_nemesis.config.high_armor_threshold",
             "adaptive_nemesis.config.tooltip.high_armor_threshold",
             createIntEditBox(Config.HIGH_ARMOR_THRESHOLD.get(), 0, 500,
-                value -> { Config.HIGH_ARMOR_THRESHOLD.set(value); markChanged(); }),
+                value -> setConfigValue(Config.HIGH_ARMOR_THRESHOLD, value)),
             widgetX);
         currentY = addConfigEntry(currentY, "adaptive_nemesis.config.high_armor_true_damage_percent",
             "adaptive_nemesis.config.tooltip.high_armor_true_damage_percent",
             createDoubleEditBox(Config.HIGH_ARMOR_TRUE_DAMAGE_PERCENT.get(), 0.0, 100.0,
-                value -> { Config.HIGH_ARMOR_TRUE_DAMAGE_PERCENT.set(value); markChanged(); }),
+                value -> setConfigValue(Config.HIGH_ARMOR_TRUE_DAMAGE_PERCENT, value)),
             widgetX);
         currentY = addConfigEntry(currentY, "adaptive_nemesis.config.turtle_true_damage_percent",
             "adaptive_nemesis.config.tooltip.turtle_true_damage_percent",
             createDoubleEditBox(Config.TURTLE_TRUE_DAMAGE_PERCENT.get(), 0.0, 100.0,
-                value -> { Config.TURTLE_TRUE_DAMAGE_PERCENT.set(value); markChanged(); }),
+                value -> setConfigValue(Config.TURTLE_TRUE_DAMAGE_PERCENT, value)),
             widgetX);
 
-        // ===== Boss机制 =====
+        return currentY;
+    }
+
+    /**
+     * 添加 boss 配置分组条目
+     *
+     * @param currentY 起始绘制 Y 坐标
+     * @param widgetX 控件 X 坐标
+     * @return 结束 Y 坐标
+     */
+    private int addBossSection(int currentY, int widgetX) {
+        currentY = LIST_TOP;
         currentY = addCategoryEntry(currentY, "adaptive_nemesis.config.category.boss", 0xFFAA55FF);
         currentY = addConfigEntry(currentY, "adaptive_nemesis.config.enable_boss_damage_cap",
             "adaptive_nemesis.config.tooltip.enable_boss_damage_cap",
             createBooleanButton(Config.ENABLE_BOSS_DAMAGE_CAP.get(),
-                value -> { Config.ENABLE_BOSS_DAMAGE_CAP.set(value); markChanged(); }),
+                value -> setConfigValue(Config.ENABLE_BOSS_DAMAGE_CAP, value)),
             widgetX);
         currentY = addConfigEntry(currentY, "adaptive_nemesis.config.boss_health_multiplier",
             "adaptive_nemesis.config.tooltip.boss_health_multiplier",
             createDoubleEditBox(Config.BOSS_HEALTH_MULTIPLIER.get(), 1.0, 20.0,
-                value -> { Config.BOSS_HEALTH_MULTIPLIER.set(value); markChanged(); }),
+                value -> setConfigValue(Config.BOSS_HEALTH_MULTIPLIER, value)),
             widgetX);
         currentY = addConfigEntry(currentY, "adaptive_nemesis.config.boss_damage_multiplier",
             "adaptive_nemesis.config.tooltip.boss_damage_multiplier",
             createDoubleEditBox(Config.BOSS_DAMAGE_MULTIPLIER.get(), 1.0, 20.0,
-                value -> { Config.BOSS_DAMAGE_MULTIPLIER.set(value); markChanged(); }),
+                value -> setConfigValue(Config.BOSS_DAMAGE_MULTIPLIER, value)),
             widgetX);
         currentY = addConfigEntry(currentY, "adaptive_nemesis.config.boss_damage_cap",
             "adaptive_nemesis.config.tooltip.boss_damage_cap",
             createDoubleEditBox(Config.BOSS_DAMAGE_CAP.get(), 1.0, 10000.0,
-                value -> { Config.BOSS_DAMAGE_CAP.set(value); markChanged(); }),
+                value -> setConfigValue(Config.BOSS_DAMAGE_CAP, value)),
             widgetX);
         currentY = addConfigEntry(currentY, "adaptive_nemesis.config.boss_damage_cap_exclusions",
             "adaptive_nemesis.config.tooltip.boss_damage_cap_exclusions",
             createStringEditBox("adaptive_nemesis.config.boss_damage_cap_exclusions",
                 () -> Config.BOSS_DAMAGE_CAP_EXCLUSIONS.get(),
-                value -> { Config.BOSS_DAMAGE_CAP_EXCLUSIONS.set(value); markChanged(); }),
+                value -> setConfigValue(Config.BOSS_DAMAGE_CAP_EXCLUSIONS, value)),
             widgetX);
         currentY = addConfigEntry(currentY, "adaptive_nemesis.config.boss_identification_keywords",
             "adaptive_nemesis.config.tooltip.boss_identification_keywords",
             createStringEditBox("adaptive_nemesis.config.boss_identification_keywords",
                 () -> Config.BOSS_IDENTIFICATION_KEYWORDS.get(),
-                value -> { Config.BOSS_IDENTIFICATION_KEYWORDS.set(value); markChanged(); }),
+                value -> setConfigValue(Config.BOSS_IDENTIFICATION_KEYWORDS, value)),
             widgetX);
         currentY = addConfigEntry(currentY, "adaptive_nemesis.config.boss_health_threshold",
             "adaptive_nemesis.config.tooltip.boss_health_threshold",
             createDoubleEditBox(Config.BOSS_HEALTH_THRESHOLD.get(), 0.0, 10000.0,
-                value -> { Config.BOSS_HEALTH_THRESHOLD.set(value); markChanged(); }),
+                value -> setConfigValue(Config.BOSS_HEALTH_THRESHOLD, value)),
             widgetX);
 
-        // ===== 新手保护 =====
+        return currentY;
+    }
+
+    /**
+     * 添加 newbie 配置分组条目
+     *
+     * @param currentY 起始绘制 Y 坐标
+     * @param widgetX 控件 X 坐标
+     * @return 结束 Y 坐标
+     */
+    private int addNewbieSection(int currentY, int widgetX) {
+        currentY = LIST_TOP;
         currentY = addCategoryEntry(currentY, "adaptive_nemesis.config.category.newbie", 0xFF55FF55);
         currentY = addConfigEntry(currentY, "adaptive_nemesis.config.enable_newbie_protection",
             "adaptive_nemesis.config.tooltip.enable_newbie_protection",
             createBooleanButton(Config.ENABLE_NEWBIE_PROTECTION.get(),
-                value -> { Config.ENABLE_NEWBIE_PROTECTION.set(value); markChanged(); }),
+                value -> setConfigValue(Config.ENABLE_NEWBIE_PROTECTION, value)),
             widgetX);
         currentY = addConfigEntry(currentY, "adaptive_nemesis.config.newbie_strength_threshold",
             "adaptive_nemesis.config.tooltip.newbie_strength_threshold",
             createDoubleEditBox(Config.NEWBIE_STRENGTH_THRESHOLD.get(), 0.0, 1000.0,
-                value -> { Config.NEWBIE_STRENGTH_THRESHOLD.set(value); markChanged(); }),
+                value -> setConfigValue(Config.NEWBIE_STRENGTH_THRESHOLD, value)),
             widgetX);
         currentY = addConfigEntry(currentY, "adaptive_nemesis.config.newbie_protection_duration",
             "adaptive_nemesis.config.tooltip.newbie_protection_duration",
             createIntEditBox(Config.NEWBIE_PROTECTION_DURATION.get(), 0, 120,
-                value -> { Config.NEWBIE_PROTECTION_DURATION.set(value); markChanged(); }),
+                value -> setConfigValue(Config.NEWBIE_PROTECTION_DURATION, value)),
             widgetX);
         currentY = addConfigEntry(currentY, "adaptive_nemesis.config.newbie_protection_reduction",
             "adaptive_nemesis.config.tooltip.newbie_protection_reduction",
             createDoubleEditBox(Config.NEWBIE_PROTECTION_REDUCTION.get(), 0.0, 1.0,
-                value -> { Config.NEWBIE_PROTECTION_REDUCTION.set(value); markChanged(); }),
+                value -> setConfigValue(Config.NEWBIE_PROTECTION_REDUCTION, value)),
             widgetX);
         currentY = addConfigEntry(currentY, "adaptive_nemesis.config.death_protection_bonus",
             "adaptive_nemesis.config.tooltip.death_protection_bonus",
             createIntEditBox(Config.DEATH_PROTECTION_BONUS.get(), 0, 60,
-                value -> { Config.DEATH_PROTECTION_BONUS.set(value); markChanged(); }),
+                value -> setConfigValue(Config.DEATH_PROTECTION_BONUS, value)),
             widgetX);
         currentY = addConfigEntry(currentY, "adaptive_nemesis.config.death_streak_threshold",
             "adaptive_nemesis.config.tooltip.death_streak_threshold",
             createIntEditBox(Config.DEATH_STREAK_THRESHOLD.get(), 1, 10,
-                value -> { Config.DEATH_STREAK_THRESHOLD.set(value); markChanged(); }),
+                value -> setConfigValue(Config.DEATH_STREAK_THRESHOLD, value)),
             widgetX);
 
-        // ===== 随机分布 =====
+        return currentY;
+    }
+
+    /**
+     * 添加 random 配置分组条目
+     *
+     * @param currentY 起始绘制 Y 坐标
+     * @param widgetX 控件 X 坐标
+     * @return 结束 Y 坐标
+     */
+    private int addRandomSection(int currentY, int widgetX) {
+        currentY = LIST_TOP;
         currentY = addCategoryEntry(currentY, "adaptive_nemesis.config.category.random", 0xFF55AAFF);
         currentY = addConfigEntry(currentY, "adaptive_nemesis.config.enable_random_distribution",
             "adaptive_nemesis.config.tooltip.enable_random_distribution",
             createBooleanButton(Config.ENABLE_RANDOM_DISTRIBUTION.get(),
-                value -> { Config.ENABLE_RANDOM_DISTRIBUTION.set(value); markChanged(); }),
+                value -> setConfigValue(Config.ENABLE_RANDOM_DISTRIBUTION, value)),
             widgetX);
         currentY = addConfigEntry(currentY, "adaptive_nemesis.config.fix_speed_bonus",
             "adaptive_nemesis.config.tooltip.fix_speed_bonus",
             createBooleanButton(Config.FIX_SPEED_BONUS_TO_ZERO.get(),
-                value -> { Config.FIX_SPEED_BONUS_TO_ZERO.set(value); markChanged(); }),
+                value -> setConfigValue(Config.FIX_SPEED_BONUS_TO_ZERO, value)),
             widgetX);
         currentY = addConfigEntry(currentY, "adaptive_nemesis.config.random_min_factor",
             "adaptive_nemesis.config.tooltip.random_min_factor",
             createDoubleEditBox(Config.RANDOM_MIN_FACTOR.get(), 0.1, 1.0,
-                value -> { Config.RANDOM_MIN_FACTOR.set(value); markChanged(); }),
+                value -> setConfigValue(Config.RANDOM_MIN_FACTOR, value)),
             widgetX);
         currentY = addConfigEntry(currentY, "adaptive_nemesis.config.random_max_factor",
             "adaptive_nemesis.config.tooltip.random_max_factor",
             createDoubleEditBox(Config.RANDOM_MAX_FACTOR.get(), 1.0, 2.0,
-                value -> { Config.RANDOM_MAX_FACTOR.set(value); markChanged(); }),
+                value -> setConfigValue(Config.RANDOM_MAX_FACTOR, value)),
             widgetX);
 
-        // ===== 难度缓动 =====
+        return currentY;
+    }
+
+    /**
+     * 添加 smoothing 配置分组条目
+     *
+     * @param currentY 起始绘制 Y 坐标
+     * @param widgetX 控件 X 坐标
+     * @return 结束 Y 坐标
+     */
+    private int addSmoothingSection(int currentY, int widgetX) {
+        currentY = LIST_TOP;
         currentY = addCategoryEntry(currentY, "adaptive_nemesis.config.category.smoothing", 0xFF55CCFF);
         currentY = addConfigEntry(currentY, "adaptive_nemesis.config.enable_difficulty_smoothing",
             "adaptive_nemesis.config.tooltip.enable_difficulty_smoothing",
             createBooleanButton(Config.ENABLE_DIFFICULTY_SMOOTHING.get(),
-                value -> { Config.ENABLE_DIFFICULTY_SMOOTHING.set(value); markChanged(); }),
+                value -> setConfigValue(Config.ENABLE_DIFFICULTY_SMOOTHING, value)),
             widgetX);
         currentY = addConfigEntry(currentY, "adaptive_nemesis.config.difficulty_smoothing_factor",
             "adaptive_nemesis.config.tooltip.difficulty_smoothing_factor",
             createDoubleEditBox(Config.DIFFICULTY_SMOOTHING_FACTOR.get(), 0.01, 0.5,
-                value -> { Config.DIFFICULTY_SMOOTHING_FACTOR.set(value); markChanged(); }),
+                value -> setConfigValue(Config.DIFFICULTY_SMOOTHING_FACTOR, value)),
             widgetX);
         currentY = addConfigEntry(currentY, "adaptive_nemesis.config.difficulty_smoothing_tick_interval",
             "adaptive_nemesis.config.tooltip.difficulty_smoothing_tick_interval",
             createIntEditBox(Config.DIFFICULTY_SMOOTHING_TICK_INTERVAL.get(), 1, 40,
-                value -> { Config.DIFFICULTY_SMOOTHING_TICK_INTERVAL.set(value); markChanged(); }),
+                value -> setConfigValue(Config.DIFFICULTY_SMOOTHING_TICK_INTERVAL, value)),
             widgetX);
 
-        // ===== 智能浮动系统 =====
+        return currentY;
+    }
+
+    /**
+     * 添加 adaptive_float 配置分组条目
+     *
+     * @param currentY 起始绘制 Y 坐标
+     * @param widgetX 控件 X 坐标
+     * @return 结束 Y 坐标
+     */
+    private int addAdaptiveFloatSection(int currentY, int widgetX) {
+        currentY = LIST_TOP;
         currentY = addCategoryEntry(currentY, "adaptive_nemesis.config.category.adaptive_float", 0xFF66CCFF);
         currentY = addConfigEntry(currentY, "adaptive_nemesis.config.float_min",
             "adaptive_nemesis.config.tooltip.float_min",
             createDoubleEditBox(Config.FLOAT_MIN.get(), 0.1, 1.0,
-                value -> { Config.FLOAT_MIN.set(value); markChanged(); }),
+                value -> setConfigValue(Config.FLOAT_MIN, value)),
             widgetX);
         currentY = addConfigEntry(currentY, "adaptive_nemesis.config.float_max",
             "adaptive_nemesis.config.tooltip.float_max",
             createDoubleEditBox(Config.FLOAT_MAX.get(), 1.0, 5.0,
-                value -> { Config.FLOAT_MAX.set(value); markChanged(); }),
+                value -> setConfigValue(Config.FLOAT_MAX, value)),
             widgetX);
         currentY = addConfigEntry(currentY, "adaptive_nemesis.config.kill_streak_multiplier_increase",
             "adaptive_nemesis.config.tooltip.kill_streak_multiplier_increase",
             createDoubleEditBox(Config.KILL_STREAK_MULTIPLIER_INCREASE.get(), 0.0, 1.0,
-                value -> { Config.KILL_STREAK_MULTIPLIER_INCREASE.set(value); markChanged(); }),
+                value -> setConfigValue(Config.KILL_STREAK_MULTIPLIER_INCREASE, value)),
             widgetX);
         currentY = addConfigEntry(currentY, "adaptive_nemesis.config.death_streak_multiplier_decrease",
             "adaptive_nemesis.config.tooltip.death_streak_multiplier_decrease",
             createDoubleEditBox(Config.DEATH_STREAK_MULTIPLIER_DECREASE.get(), 0.0, 1.0,
-                value -> { Config.DEATH_STREAK_MULTIPLIER_DECREASE.set(value); markChanged(); }),
+                value -> setConfigValue(Config.DEATH_STREAK_MULTIPLIER_DECREASE, value)),
             widgetX);
         currentY = addConfigEntry(currentY, "adaptive_nemesis.config.float_reset_time_minutes",
             "adaptive_nemesis.config.tooltip.float_reset_time_minutes",
             createIntEditBox(Config.FLOAT_RESET_TIME_MINUTES.get(), 1, 60,
-                value -> { Config.FLOAT_RESET_TIME_MINUTES.set(value); markChanged(); }),
+                value -> setConfigValue(Config.FLOAT_RESET_TIME_MINUTES, value)),
             widgetX);
+        return addFloatDecaySection(currentY, widgetX);
+    }
+
+    /**
+     * 添加浮动衰减与效率调整配置分组条目
+     *
+     * @param currentY 起始绘制 Y 坐标
+     * @param widgetX 控件 X 坐标
+     * @return 结束 Y 坐标
+     */
+    private int addFloatDecaySection(int currentY, int widgetX) {
+        currentY = LIST_TOP;
         currentY = addConfigEntry(currentY, "adaptive_nemesis.config.enable_idle_decay",
             "adaptive_nemesis.config.tooltip.enable_idle_decay",
             createBooleanButton(Config.ENABLE_IDLE_DECAY.get(),
-                value -> { Config.ENABLE_IDLE_DECAY.set(value); markChanged(); }),
+                value -> setConfigValue(Config.ENABLE_IDLE_DECAY, value)),
             widgetX);
         currentY = addConfigEntry(currentY, "adaptive_nemesis.config.idle_decay_rate",
             "adaptive_nemesis.config.tooltip.idle_decay_rate",
             createDoubleEditBox(Config.IDLE_DECAY_RATE.get(), 0.0, 0.5,
-                value -> { Config.IDLE_DECAY_RATE.set(value); markChanged(); }),
+                value -> setConfigValue(Config.IDLE_DECAY_RATE, value)),
             widgetX);
         currentY = addConfigEntry(currentY, "adaptive_nemesis.config.idle_decay_check_interval",
             "adaptive_nemesis.config.tooltip.idle_decay_check_interval",
             createIntEditBox(Config.IDLE_DECAY_CHECK_INTERVAL.get(), 1, 60,
-                value -> { Config.IDLE_DECAY_CHECK_INTERVAL.set(value); markChanged(); }),
+                value -> setConfigValue(Config.IDLE_DECAY_CHECK_INTERVAL, value)),
             widgetX);
         currentY = addConfigEntry(currentY, "adaptive_nemesis.config.enable_efficiency_adjustment",
             "adaptive_nemesis.config.tooltip.enable_efficiency_adjustment",
             createBooleanButton(Config.ENABLE_EFFICIENCY_ADJUSTMENT.get(),
-                value -> { Config.ENABLE_EFFICIENCY_ADJUSTMENT.set(value); markChanged(); }),
+                value -> setConfigValue(Config.ENABLE_EFFICIENCY_ADJUSTMENT, value)),
             widgetX);
         currentY = addConfigEntry(currentY, "adaptive_nemesis.config.combat_efficiency_threshold",
             "adaptive_nemesis.config.tooltip.combat_efficiency_threshold",
             createDoubleEditBox(Config.COMBAT_EFFICIENCY_THRESHOLD.get(), 0.0, 1.0,
-                value -> { Config.COMBAT_EFFICIENCY_THRESHOLD.set(value); markChanged(); }),
+                value -> setConfigValue(Config.COMBAT_EFFICIENCY_THRESHOLD, value)),
             widgetX);
         currentY = addConfigEntry(currentY, "adaptive_nemesis.config.efficiency_based_decrease",
             "adaptive_nemesis.config.tooltip.efficiency_based_decrease",
             createDoubleEditBox(Config.EFFICIENCY_BASED_DECREASE.get(), 0.0, 0.5,
-                value -> { Config.EFFICIENCY_BASED_DECREASE.set(value); markChanged(); }),
+                value -> setConfigValue(Config.EFFICIENCY_BASED_DECREASE, value)),
             widgetX);
 
-        // ===== 世界阶段 =====
+        return currentY;
+    }
+
+    /**
+     * 添加 world_stage 配置分组条目
+     *
+     * @param currentY 起始绘制 Y 坐标
+     * @param widgetX 控件 X 坐标
+     * @return 结束 Y 坐标
+     */
+    private int addWorldStageSection(int currentY, int widgetX) {
+        currentY = LIST_TOP;
         currentY = addCategoryEntry(currentY, "adaptive_nemesis.config.category.world_stage", 0xFFFF8855);
         currentY = addConfigEntry(currentY, "adaptive_nemesis.config.enable_world_stage",
             "adaptive_nemesis.config.tooltip.enable_world_stage",
             createBooleanButton(Config.ENABLE_WORLD_STAGE.get(),
-                value -> { Config.ENABLE_WORLD_STAGE.set(value); markChanged(); }),
+                value -> setConfigValue(Config.ENABLE_WORLD_STAGE, value)),
             widgetX);
         currentY = addConfigEntry(currentY, "adaptive_nemesis.config.world_stage_multiplier_per_stage",
             "adaptive_nemesis.config.tooltip.world_stage_multiplier_per_stage",
             createDoubleEditBox(Config.WORLD_STAGE_MULTIPLIER_PER_STAGE.get(), 0.0, 5.0,
-                value -> { Config.WORLD_STAGE_MULTIPLIER_PER_STAGE.set(value); markChanged(); }),
+                value -> setConfigValue(Config.WORLD_STAGE_MULTIPLIER_PER_STAGE, value)),
             widgetX);
         currentY = addConfigEntry(currentY, "adaptive_nemesis.config.world_stage_max_stage",
             "adaptive_nemesis.config.tooltip.world_stage_max_stage",
             createIntEditBox(Config.WORLD_STAGE_MAX_STAGE.get(), 1, 100,
-                value -> { Config.WORLD_STAGE_MAX_STAGE.set(value); markChanged(); }),
+                value -> setConfigValue(Config.WORLD_STAGE_MAX_STAGE, value)),
             widgetX);
 
-        // ===== 装备附魔 =====
+        return currentY;
+    }
+
+    /**
+     * 添加 enchantment 配置分组条目
+     *
+     * @param currentY 起始绘制 Y 坐标
+     * @param widgetX 控件 X 坐标
+     * @return 结束 Y 坐标
+     */
+    private int addEnchantmentSection(int currentY, int widgetX) {
+        currentY = LIST_TOP;
         currentY = addCategoryEntry(currentY, "adaptive_nemesis.config.category.enchantment", 0xFF88FF55);
         currentY = addConfigEntry(currentY, "adaptive_nemesis.config.enable_enchantment_scaling",
             "adaptive_nemesis.config.tooltip.enable_enchantment_scaling",
             createBooleanButton(Config.ENABLE_ENCHANTMENT_SCALING.get(),
-                value -> { Config.ENABLE_ENCHANTMENT_SCALING.set(value); markChanged(); }),
+                value -> setConfigValue(Config.ENABLE_ENCHANTMENT_SCALING, value)),
             widgetX);
         currentY = addConfigEntry(currentY, "adaptive_nemesis.config.enchantment_chance_base",
             "adaptive_nemesis.config.tooltip.enchantment_chance_base",
             createDoubleEditBox(Config.ENCHANTMENT_CHANCE_BASE.get(), 0.0, 1.0,
-                value -> { Config.ENCHANTMENT_CHANCE_BASE.set(value); markChanged(); }),
+                value -> setConfigValue(Config.ENCHANTMENT_CHANCE_BASE, value)),
             widgetX);
         currentY = addConfigEntry(currentY, "adaptive_nemesis.config.enchantment_chance_per_difficulty",
             "adaptive_nemesis.config.tooltip.enchantment_chance_per_difficulty",
             createDoubleEditBox(Config.ENCHANTMENT_CHANCE_PER_DIFFICULTY.get(), 0.0, 0.5,
-                value -> { Config.ENCHANTMENT_CHANCE_PER_DIFFICULTY.set(value); markChanged(); }),
+                value -> setConfigValue(Config.ENCHANTMENT_CHANCE_PER_DIFFICULTY, value)),
             widgetX);
         currentY = addConfigEntry(currentY, "adaptive_nemesis.config.enchantment_level_per_difficulty",
             "adaptive_nemesis.config.tooltip.enchantment_level_per_difficulty",
             createDoubleEditBox(Config.ENCHANTMENT_LEVEL_PER_DIFFICULTY.get(), 0.0, 5.0,
-                value -> { Config.ENCHANTMENT_LEVEL_PER_DIFFICULTY.set(value); markChanged(); }),
+                value -> setConfigValue(Config.ENCHANTMENT_LEVEL_PER_DIFFICULTY, value)),
             widgetX);
         currentY = addConfigEntry(currentY, "adaptive_nemesis.config.enchantment_max_level",
             "adaptive_nemesis.config.tooltip.enchantment_max_level",
             createIntEditBox(Config.ENCHANTMENT_MAX_LEVEL.get(), 1, 10,
-                value -> { Config.ENCHANTMENT_MAX_LEVEL.set(value); markChanged(); }),
+                value -> setConfigValue(Config.ENCHANTMENT_MAX_LEVEL, value)),
             widgetX);
 
-        // ===== 装备生成 =====
+        return currentY;
+    }
+
+    /**
+     * 添加 equipment 配置分组条目
+     *
+     * @param currentY 起始绘制 Y 坐标
+     * @param widgetX 控件 X 坐标
+     * @return 结束 Y 坐标
+     */
+    private int addEquipmentSection(int currentY, int widgetX) {
+        currentY = LIST_TOP;
         currentY = addCategoryEntry(currentY, "adaptive_nemesis.config.category.equipment", 0xFF44FFAA);
         currentY = addConfigEntry(currentY, "adaptive_nemesis.config.equipment_base_chance",
             "adaptive_nemesis.config.tooltip.equipment_base_chance",
             createDoubleEditBox(Config.EQUIPMENT_BASE_CHANCE.get(), 0.0, 1.0,
-                value -> { Config.EQUIPMENT_BASE_CHANCE.set(value); markChanged(); }),
+                value -> setConfigValue(Config.EQUIPMENT_BASE_CHANCE, value)),
             widgetX);
         currentY = addConfigEntry(currentY, "adaptive_nemesis.config.equipment_chance_per_difficulty",
             "adaptive_nemesis.config.tooltip.equipment_chance_per_difficulty",
             createDoubleEditBox(Config.EQUIPMENT_CHANCE_PER_DIFFICULTY.get(), 0.0, 1.0,
-                value -> { Config.EQUIPMENT_CHANCE_PER_DIFFICULTY.set(value); markChanged(); }),
+                value -> setConfigValue(Config.EQUIPMENT_CHANCE_PER_DIFFICULTY, value)),
             widgetX);
         currentY = addConfigEntry(currentY, "adaptive_nemesis.config.equipment_tier_upgrade_chance",
             "adaptive_nemesis.config.tooltip.equipment_tier_upgrade_chance",
             createDoubleEditBox(Config.EQUIPMENT_TIER_UPGRADE_CHANCE.get(), 0.0, 1.0,
-                value -> { Config.EQUIPMENT_TIER_UPGRADE_CHANCE.set(value); markChanged(); }),
+                value -> setConfigValue(Config.EQUIPMENT_TIER_UPGRADE_CHANCE, value)),
             widgetX);
         currentY = addConfigEntry(currentY, "adaptive_nemesis.config.equipment_mod_compat_chance",
             "adaptive_nemesis.config.tooltip.equipment_mod_compat_chance",
             createDoubleEditBox(Config.EQUIPMENT_MOD_COMPAT_CHANCE.get(), 0.0, 1.0,
-                value -> { Config.EQUIPMENT_MOD_COMPAT_CHANCE.set(value); markChanged(); }),
+                value -> setConfigValue(Config.EQUIPMENT_MOD_COMPAT_CHANCE, value)),
             widgetX);
         currentY = addConfigEntry(currentY, "adaptive_nemesis.config.disable_equipment_drop",
             "adaptive_nemesis.config.tooltip.disable_equipment_drop",
             createBooleanButton(Config.DISABLE_EQUIPMENT_DROP.get(),
-                value -> { Config.DISABLE_EQUIPMENT_DROP.set(value); markChanged(); }),
+                value -> setConfigValue(Config.DISABLE_EQUIPMENT_DROP, value)),
             widgetX);
         currentY = addConfigEntry(currentY, "adaptive_nemesis.config.disabled_equipment_slots",
             "adaptive_nemesis.config.tooltip.disabled_equipment_slots",
             createStringEditBox("adaptive_nemesis.config.disabled_equipment_slots",
                 () -> Config.DISABLED_EQUIPMENT_SLOTS.get(),
-                value -> { Config.DISABLED_EQUIPMENT_SLOTS.set(value); markChanged(); }),
+                value -> setConfigValue(Config.DISABLED_EQUIPMENT_SLOTS, value)),
             widgetX);
         currentY = addConfigEntry(currentY, "adaptive_nemesis.config.equipment_blacklist",
             "adaptive_nemesis.config.tooltip.equipment_blacklist",
             createStringEditBox("adaptive_nemesis.config.equipment_blacklist",
                 () -> Config.EQUIPMENT_BLACKLIST.get(),
-                value -> { Config.EQUIPMENT_BLACKLIST.set(value); markChanged(); }),
+                value -> setConfigValue(Config.EQUIPMENT_BLACKLIST, value)),
             widgetX);
 
-        // ===== 武器伤害上限 =====
+        return currentY;
+    }
+
+    /**
+     * 添加 weapon_damage_cap 配置分组条目
+     *
+     * @param currentY 起始绘制 Y 坐标
+     * @param widgetX 控件 X 坐标
+     * @return 结束 Y 坐标
+     */
+    private int addWeaponDamageCapSection(int currentY, int widgetX) {
+        currentY = LIST_TOP;
         currentY = addCategoryEntry(currentY, "adaptive_nemesis.config.category.weapon_damage_cap", 0xFF88FF88);
         currentY = addConfigEntry(currentY, "adaptive_nemesis.config.weapon_damage_base_cap",
             "adaptive_nemesis.config.tooltip.weapon_damage_base_cap",
             createDoubleEditBox(Config.WEAPON_DAMAGE_BASE_CAP.get(), 1.0, 100.0,
-                value -> { Config.WEAPON_DAMAGE_BASE_CAP.set(value); markChanged(); }),
+                value -> setConfigValue(Config.WEAPON_DAMAGE_BASE_CAP, value)),
             widgetX);
         currentY = addConfigEntry(currentY, "adaptive_nemesis.config.weapon_damage_cap_per_difficulty",
             "adaptive_nemesis.config.tooltip.weapon_damage_cap_per_difficulty",
             createDoubleEditBox(Config.WEAPON_DAMAGE_CAP_PER_DIFFICULTY.get(), 0.0, 50.0,
-                value -> { Config.WEAPON_DAMAGE_CAP_PER_DIFFICULTY.set(value); markChanged(); }),
+                value -> setConfigValue(Config.WEAPON_DAMAGE_CAP_PER_DIFFICULTY, value)),
             widgetX);
         currentY = addConfigEntry(currentY, "adaptive_nemesis.config.weapon_damage_max_cap",
             "adaptive_nemesis.config.tooltip.weapon_damage_max_cap",
             createDoubleEditBox(Config.WEAPON_DAMAGE_MAX_CAP.get(), 1.0, 500.0,
-                value -> { Config.WEAPON_DAMAGE_MAX_CAP.set(value); markChanged(); }),
+                value -> setConfigValue(Config.WEAPON_DAMAGE_MAX_CAP, value)),
             widgetX);
 
-        // ===== 权重配置 =====
+        return currentY;
+    }
+
+    /**
+     * 添加 weights 配置分组条目
+     *
+     * @param currentY 起始绘制 Y 坐标
+     * @param widgetX 控件 X 坐标
+     * @return 结束 Y 坐标
+     */
+    private int addWeightsSection(int currentY, int widgetX) {
+        currentY = LIST_TOP;
         currentY = addCategoryEntry(currentY, "adaptive_nemesis.config.category.weights", 0xFFFFAA55);
         currentY = addConfigEntry(currentY, "adaptive_nemesis.config.defense_weight",
             "adaptive_nemesis.config.tooltip.defense_weight",
             createDoubleEditBox(Config.DEFENSE_WEIGHT.get(), 0.0, 5.0,
-                value -> { Config.DEFENSE_WEIGHT.set(value); markChanged(); }),
+                value -> setConfigValue(Config.DEFENSE_WEIGHT, value)),
             widgetX);
         currentY = addConfigEntry(currentY, "adaptive_nemesis.config.damage_weight",
             "adaptive_nemesis.config.tooltip.damage_weight",
             createDoubleEditBox(Config.DAMAGE_WEIGHT.get(), 0.0, 5.0,
-                value -> { Config.DAMAGE_WEIGHT.set(value); markChanged(); }),
+                value -> setConfigValue(Config.DAMAGE_WEIGHT, value)),
             widgetX);
         currentY = addConfigEntry(currentY, "adaptive_nemesis.config.apotheosis_weight",
             "adaptive_nemesis.config.tooltip.apotheosis_weight",
             createDoubleEditBox(Config.APOTHEOSIS_WEIGHT.get(), 0.0, 5.0,
-                value -> { Config.APOTHEOSIS_WEIGHT.set(value); markChanged(); }),
+                value -> setConfigValue(Config.APOTHEOSIS_WEIGHT, value)),
             widgetX);
         currentY = addConfigEntry(currentY, "adaptive_nemesis.config.irons_spells_weight",
             "adaptive_nemesis.config.tooltip.irons_spells_weight",
             createDoubleEditBox(Config.IRONS_SPELLS_WEIGHT.get(), 0.0, 5.0,
-                value -> { Config.IRONS_SPELLS_WEIGHT.set(value); markChanged(); }),
+                value -> setConfigValue(Config.IRONS_SPELLS_WEIGHT, value)),
             widgetX);
         currentY = addConfigEntry(currentY, "adaptive_nemesis.config.epic_fight_weight",
             "adaptive_nemesis.config.tooltip.epic_fight_weight",
             createDoubleEditBox(Config.EPIC_FIGHT_WEIGHT.get(), 0.0, 5.0,
-                value -> { Config.EPIC_FIGHT_WEIGHT.set(value); markChanged(); }),
+                value -> setConfigValue(Config.EPIC_FIGHT_WEIGHT, value)),
             widgetX);
 
-        // ===== 史诗战斗缩放 =====
+        return currentY;
+    }
+
+    /**
+     * 添加 epic_fight 配置分组条目
+     *
+     * @param currentY 起始绘制 Y 坐标
+     * @param widgetX 控件 X 坐标
+     * @return 结束 Y 坐标
+     */
+    private int addEpicFightSection(int currentY, int widgetX) {
+        currentY = LIST_TOP;
         currentY = addCategoryEntry(currentY, "adaptive_nemesis.config.category.epic_fight", 0xFFFF6644);
         currentY = addConfigEntry(currentY, "adaptive_nemesis.config.weight_min_bonus",
             "adaptive_nemesis.config.tooltip.weight_min_bonus",
             createDoubleEditBox(Config.WEIGHT_MIN_BONUS.get(), 0.0, 100.0,
-                value -> { Config.WEIGHT_MIN_BONUS.set(value); markChanged(); }),
+                value -> setConfigValue(Config.WEIGHT_MIN_BONUS, value)),
             widgetX);
         currentY = addConfigEntry(currentY, "adaptive_nemesis.config.weight_per_multiplier",
             "adaptive_nemesis.config.tooltip.weight_per_multiplier",
             createDoubleEditBox(Config.WEIGHT_PER_MULTIPLIER.get(), 0.0, 200.0,
-                value -> { Config.WEIGHT_PER_MULTIPLIER.set(value); markChanged(); }),
+                value -> setConfigValue(Config.WEIGHT_PER_MULTIPLIER, value)),
             widgetX);
 
-        // ===== 模组兼容性 =====
+        return currentY;
+    }
+
+    /**
+     * 添加 mod_compat 配置分组条目
+     *
+     * @param currentY 起始绘制 Y 坐标
+     * @param widgetX 控件 X 坐标
+     * @return 结束 Y 坐标
+     */
+    private int addModCompatSection(int currentY, int widgetX) {
+        currentY = LIST_TOP;
         currentY = addCategoryEntry(currentY, "adaptive_nemesis.config.category.mod_compat", 0xFF44BBFF);
         currentY = addConfigEntry(currentY, "adaptive_nemesis.config.mod_compat_l2hostility",
             "adaptive_nemesis.config.tooltip.mod_compat_l2hostility",
             createBooleanButton(Config.MOD_COMPAT_L2HOSTILITY_ENABLED.get(),
-                value -> { Config.MOD_COMPAT_L2HOSTILITY_ENABLED.set(value); markChanged(); }),
+                value -> setConfigValue(Config.MOD_COMPAT_L2HOSTILITY_ENABLED, value)),
             widgetX);
         currentY = addConfigEntry(currentY, "adaptive_nemesis.config.mod_compat_epic_fight",
             "adaptive_nemesis.config.tooltip.mod_compat_epic_fight",
             createBooleanButton(Config.MOD_COMPAT_EPIC_FIGHT_ENABLED.get(),
-                value -> { Config.MOD_COMPAT_EPIC_FIGHT_ENABLED.set(value); markChanged(); }),
+                value -> setConfigValue(Config.MOD_COMPAT_EPIC_FIGHT_ENABLED, value)),
             widgetX);
         currentY = addConfigEntry(currentY, "adaptive_nemesis.config.mod_compat_irons_spells",
             "adaptive_nemesis.config.tooltip.mod_compat_irons_spells",
             createBooleanButton(Config.MOD_COMPAT_IRONS_SPELLS_ENABLED.get(),
-                value -> { Config.MOD_COMPAT_IRONS_SPELLS_ENABLED.set(value); markChanged(); }),
+                value -> setConfigValue(Config.MOD_COMPAT_IRONS_SPELLS_ENABLED, value)),
             widgetX);
         currentY = addConfigEntry(currentY, "adaptive_nemesis.config.mod_compat_apotheosis",
             "adaptive_nemesis.config.tooltip.mod_compat_apotheosis",
             createBooleanButton(Config.MOD_COMPAT_APOTHEOSIS_ENABLED.get(),
-                value -> { Config.MOD_COMPAT_APOTHEOSIS_ENABLED.set(value); markChanged(); }),
+                value -> setConfigValue(Config.MOD_COMPAT_APOTHEOSIS_ENABLED, value)),
             widgetX);
 
-        // ===== 实体过滤配置 =====
+        return currentY;
+    }
+
+    /**
+     * 添加 entity_filter 配置分组条目
+     *
+     * @param currentY 起始绘制 Y 坐标
+     * @param widgetX 控件 X 坐标
+     * @return 结束 Y 坐标
+     */
+    private int addEntityFilterSection(int currentY, int widgetX) {
+        currentY = LIST_TOP;
         currentY = addCategoryEntry(currentY, "adaptive_nemesis.config.category.entity_filter", 0xFFFF8800);
         currentY = addConfigEntry(currentY, "adaptive_nemesis.config.enable_entity_filter",
             "adaptive_nemesis.config.tooltip.enable_entity_filter",
             createBooleanButton(Config.ENABLE_ENTITY_FILTER.get(),
-                value -> { Config.ENABLE_ENTITY_FILTER.set(value); markChanged(); }),
+                value -> setConfigValue(Config.ENABLE_ENTITY_FILTER, value)),
             widgetX);
         currentY = addConfigEntry(currentY, "adaptive_nemesis.config.entity_blacklist",
             "adaptive_nemesis.config.tooltip.entity_blacklist",
             createStringEditBox("adaptive_nemesis.config.entity_blacklist",
                 () -> Config.ENTITY_BLACKLIST.get(),
-                value -> { Config.ENTITY_BLACKLIST.set(value); markChanged(); }),
+                value -> setConfigValue(Config.ENTITY_BLACKLIST, value)),
             widgetX);
 
-        // ===== 看门狗配置 =====
+        return currentY;
+    }
+
+    /**
+     * 添加 watchdog 配置分组条目
+     *
+     * @param currentY 起始绘制 Y 坐标
+     * @param widgetX 控件 X 坐标
+     * @return 结束 Y 坐标
+     */
+    private int addWatchdogSection(int currentY, int widgetX) {
+        currentY = LIST_TOP;
         currentY = addCategoryEntry(currentY, "adaptive_nemesis.config.category.watchdog", 0xFFAA00AA);
         currentY = addConfigEntry(currentY, "adaptive_nemesis.config.enable_watchdog",
             "adaptive_nemesis.config.tooltip.enable_watchdog",
             createBooleanButton(Config.WATCHDOG.ENABLE_WATCHDOG.get(),
-                value -> { Config.WATCHDOG.ENABLE_WATCHDOG.set(value); markChanged(); }),
+                value -> setConfigValue(Config.WATCHDOG.ENABLE_WATCHDOG, value)),
             widgetX);
         currentY = addConfigEntry(currentY, "adaptive_nemesis.config.watchdog_check_interval",
             "adaptive_nemesis.config.tooltip.watchdog_check_interval",
             createIntEditBox(Config.WATCHDOG.WATCHDOG_CHECK_INTERVAL.get(), 1, 30,
-                value -> { Config.WATCHDOG.WATCHDOG_CHECK_INTERVAL.set(value); markChanged(); }),
+                value -> setConfigValue(Config.WATCHDOG.WATCHDOG_CHECK_INTERVAL, value)),
             widgetX);
         currentY = addConfigEntry(currentY, "adaptive_nemesis.config.watchdog_warn_threshold",
             "adaptive_nemesis.config.tooltip.watchdog_warn_threshold",
             createIntEditBox(Config.WATCHDOG.WATCHDOG_WARN_THRESHOLD.get(), 10, 120,
-                value -> { Config.WATCHDOG.WATCHDOG_WARN_THRESHOLD.set(value); markChanged(); }),
+                value -> setConfigValue(Config.WATCHDOG.WATCHDOG_WARN_THRESHOLD, value)),
             widgetX);
         currentY = addConfigEntry(currentY, "adaptive_nemesis.config.watchdog_critical_threshold",
             "adaptive_nemesis.config.tooltip.watchdog_critical_threshold",
             createIntEditBox(Config.WATCHDOG.WATCHDOG_CRITICAL_THRESHOLD.get(), 30, 300,
-                value -> { Config.WATCHDOG.WATCHDOG_CRITICAL_THRESHOLD.set(value); markChanged(); }),
+                value -> setConfigValue(Config.WATCHDOG.WATCHDOG_CRITICAL_THRESHOLD, value)),
             widgetX);
 
-        // ===== 宿敌配置 =====
+        return currentY;
+    }
+
+    /**
+     * 添加 nemesis 配置分组条目
+     *
+     * @param currentY 起始绘制 Y 坐标
+     * @param widgetX 控件 X 坐标
+     * @return 结束 Y 坐标
+     */
+    private int addNemesisSection(int currentY, int widgetX) {
+        currentY = LIST_TOP;
         currentY = addCategoryEntry(currentY, "adaptive_nemesis.config.category.nemesis", 0xFF00AAFF);
         currentY = addConfigEntry(currentY, "adaptive_nemesis.config.enable_nemesis_spawn",
             "adaptive_nemesis.config.tooltip.enable_nemesis_spawn",
             createBooleanButton(Config.NEMESIS.ENABLE_NEMESIS_SPAWN.get(),
-                value -> { Config.NEMESIS.ENABLE_NEMESIS_SPAWN.set(value); markChanged(); }),
+                value -> setConfigValue(Config.NEMESIS.ENABLE_NEMESIS_SPAWN, value)),
             widgetX);
         currentY = addConfigEntry(currentY, "adaptive_nemesis.config.nemesis_spawn_chance",
             "adaptive_nemesis.config.tooltip.nemesis_spawn_chance",
             createDoubleEditBox(Config.NEMESIS.NEMESIS_SPAWN_CHANCE.get(), 0.0, 1.0,
-                value -> { Config.NEMESIS.NEMESIS_SPAWN_CHANCE.set(value); markChanged(); }),
+                value -> setConfigValue(Config.NEMESIS.NEMESIS_SPAWN_CHANCE, value)),
             widgetX);
         currentY = addConfigEntry(currentY, "adaptive_nemesis.config.nemesis_base_multiplier",
             "adaptive_nemesis.config.tooltip.nemesis_base_multiplier",
             createDoubleEditBox(Config.NEMESIS.NEMESIS_BASE_MULTIPLIER.get(), 1.0, 10.0,
-                value -> { Config.NEMESIS.NEMESIS_BASE_MULTIPLIER.set(value); markChanged(); }),
+                value -> setConfigValue(Config.NEMESIS.NEMESIS_BASE_MULTIPLIER, value)),
             widgetX);
         currentY = addConfigEntry(currentY, "adaptive_nemesis.config.nemesis_min_multiplier",
             "adaptive_nemesis.config.tooltip.nemesis_min_multiplier",
             createDoubleEditBox(Config.NEMESIS.NEMESIS_MIN_MULTIPLIER.get(), 1.0, 10.0,
-                value -> { Config.NEMESIS.NEMESIS_MIN_MULTIPLIER.set(value); markChanged(); }),
+                value -> setConfigValue(Config.NEMESIS.NEMESIS_MIN_MULTIPLIER, value)),
             widgetX);
         currentY = addConfigEntry(currentY, "adaptive_nemesis.config.nemesis_max_multiplier",
             "adaptive_nemesis.config.tooltip.nemesis_max_multiplier",
             createDoubleEditBox(Config.NEMESIS.NEMESIS_MAX_MULTIPLIER.get(), 1.0, 20.0,
-                value -> { Config.NEMESIS.NEMESIS_MAX_MULTIPLIER.set(value); markChanged(); }),
+                value -> setConfigValue(Config.NEMESIS.NEMESIS_MAX_MULTIPLIER, value)),
             widgetX);
         currentY = addConfigEntry(currentY, "adaptive_nemesis.config.show_nemesis_name",
             "adaptive_nemesis.config.tooltip.show_nemesis_name",
             createBooleanButton(Config.NEMESIS.SHOW_NEMESIS_NAME.get(),
-                value -> { Config.NEMESIS.SHOW_NEMESIS_NAME.set(value); markChanged(); }),
+                value -> setConfigValue(Config.NEMESIS.SHOW_NEMESIS_NAME, value)),
             widgetX);
         currentY = addConfigEntry(currentY, "adaptive_nemesis.config.nemesis_name_always_visible",
             "adaptive_nemesis.config.tooltip.nemesis_name_always_visible",
             createBooleanButton(Config.NEMESIS.NEMESIS_NAME_ALWAYS_VISIBLE.get(),
-                value -> { Config.NEMESIS.NEMESIS_NAME_ALWAYS_VISIBLE.set(value); markChanged(); }),
+                value -> setConfigValue(Config.NEMESIS.NEMESIS_NAME_ALWAYS_VISIBLE, value)),
             widgetX);
+        return addNemesisNameStyleSection(currentY, widgetX);
+    }
+
+    /**
+     * 添加宿敌称号词缀与样式配置分组条目
+     *
+     * @param currentY 起始绘制 Y 坐标
+     * @param widgetX 控件 X 坐标
+     * @return 结束 Y 坐标
+     */
+    private int addNemesisNameStyleSection(int currentY, int widgetX) {
+        currentY = LIST_TOP;
         currentY = addConfigEntry(currentY, "adaptive_nemesis.config.melee_nemesis_prefixes",
             "adaptive_nemesis.config.tooltip.melee_nemesis_prefixes",
             createStringEditBox("adaptive_nemesis.config.melee_nemesis_prefixes",
                 () -> Config.NEMESIS.MELEE_NEMESIS_PREFIXES.get(),
-                value -> { Config.NEMESIS.MELEE_NEMESIS_PREFIXES.set(value); markChanged(); }),
+                value -> setConfigValue(Config.NEMESIS.MELEE_NEMESIS_PREFIXES, value)),
             widgetX);
         currentY = addConfigEntry(currentY, "adaptive_nemesis.config.ranged_nemesis_prefixes",
             "adaptive_nemesis.config.tooltip.ranged_nemesis_prefixes",
             createStringEditBox("adaptive_nemesis.config.ranged_nemesis_prefixes",
                 () -> Config.NEMESIS.RANGED_NEMESIS_PREFIXES.get(),
-                value -> { Config.NEMESIS.RANGED_NEMESIS_PREFIXES.set(value); markChanged(); }),
+                value -> setConfigValue(Config.NEMESIS.RANGED_NEMESIS_PREFIXES, value)),
             widgetX);
         currentY = addConfigEntry(currentY, "adaptive_nemesis.config.magic_nemesis_prefixes",
             "adaptive_nemesis.config.tooltip.magic_nemesis_prefixes",
             createStringEditBox("adaptive_nemesis.config.magic_nemesis_prefixes",
                 () -> Config.NEMESIS.MAGIC_NEMESIS_PREFIXES.get(),
-                value -> { Config.NEMESIS.MAGIC_NEMESIS_PREFIXES.set(value); markChanged(); }),
+                value -> setConfigValue(Config.NEMESIS.MAGIC_NEMESIS_PREFIXES, value)),
             widgetX);
         currentY = addConfigEntry(currentY, "adaptive_nemesis.config.nemesis_suffixes",
             "adaptive_nemesis.config.tooltip.nemesis_suffixes",
             createStringEditBox("adaptive_nemesis.config.nemesis_suffixes",
                 () -> Config.NEMESIS.NEMESIS_SUFFIXES.get(),
-                value -> { Config.NEMESIS.NEMESIS_SUFFIXES.set(value); markChanged(); }),
+                value -> setConfigValue(Config.NEMESIS.NEMESIS_SUFFIXES, value)),
             widgetX);
         currentY = addConfigEntry(currentY, "adaptive_nemesis.config.nemesis_name_color",
             "adaptive_nemesis.config.tooltip.nemesis_name_color",
             createStringEditBox("adaptive_nemesis.config.nemesis_name_color",
                 () -> Config.NEMESIS.NEMESIS_NAME_COLOR.get(),
-                value -> { Config.NEMESIS.NEMESIS_NAME_COLOR.set(value); markChanged(); }),
+                value -> setConfigValue(Config.NEMESIS.NEMESIS_NAME_COLOR, value)),
             widgetX);
         currentY = addConfigEntry(currentY, "adaptive_nemesis.config.nemesis_require_attack_damage",
             "adaptive_nemesis.config.tooltip.nemesis_require_attack_damage",
             createBooleanButton(Config.NEMESIS.NEMESIS_REQUIRE_ATTACK_DAMAGE.get(),
-                value -> { Config.NEMESIS.NEMESIS_REQUIRE_ATTACK_DAMAGE.set(value); markChanged(); }),
+                value -> setConfigValue(Config.NEMESIS.NEMESIS_REQUIRE_ATTACK_DAMAGE, value)),
             widgetX);
 
-        // ===== 入侵事件配置 =====
+        return currentY;
+    }
+
+    /**
+     * 添加 invasion 配置分组条目
+     *
+     * @param currentY 起始绘制 Y 坐标
+     * @param widgetX 控件 X 坐标
+     * @return 结束 Y 坐标
+     */
+    private int addInvasionSection(int currentY, int widgetX) {
+        currentY = LIST_TOP;
         currentY = addCategoryEntry(currentY, "adaptive_nemesis.config.category.invasion", 0xFFFF00AA);
         currentY = addConfigEntry(currentY, "adaptive_nemesis.config.enable_invasion",
             "adaptive_nemesis.config.tooltip.enable_invasion",
             createBooleanButton(Config.INVASION.ENABLE_INVASION.get(),
-                value -> { Config.INVASION.ENABLE_INVASION.set(value); markChanged(); }),
+                value -> setConfigValue(Config.INVASION.ENABLE_INVASION, value)),
             widgetX);
         currentY = addConfigEntry(currentY, "adaptive_nemesis.config.invasion_trigger_chance",
             "adaptive_nemesis.config.tooltip.invasion_trigger_chance",
             createDoubleEditBox(Config.INVASION.INVASION_TRIGGER_CHANCE.get(), 0.0, 1.0,
-                value -> { Config.INVASION.INVASION_TRIGGER_CHANCE.set(value); markChanged(); }),
+                value -> setConfigValue(Config.INVASION.INVASION_TRIGGER_CHANCE, value)),
             widgetX);
         currentY = addConfigEntry(currentY, "adaptive_nemesis.config.base_wave_count",
             "adaptive_nemesis.config.tooltip.base_wave_count",
             createIntEditBox(Config.INVASION.BASE_WAVE_COUNT.get(), 1, 10,
-                value -> { Config.INVASION.BASE_WAVE_COUNT.set(value); markChanged(); }),
+                value -> setConfigValue(Config.INVASION.BASE_WAVE_COUNT, value)),
             widgetX);
         currentY = addConfigEntry(currentY, "adaptive_nemesis.config.max_wave_count",
             "adaptive_nemesis.config.tooltip.max_wave_count",
             createIntEditBox(Config.INVASION.MAX_WAVE_COUNT.get(), 1, 20,
-                value -> { Config.INVASION.MAX_WAVE_COUNT.set(value); markChanged(); }),
+                value -> setConfigValue(Config.INVASION.MAX_WAVE_COUNT, value)),
             widgetX);
         currentY = addConfigEntry(currentY, "adaptive_nemesis.config.max_enemies_per_wave",
             "adaptive_nemesis.config.tooltip.max_enemies_per_wave",
             createIntEditBox(Config.INVASION.MAX_ENEMIES_PER_WAVE.get(), 1, 50,
-                value -> { Config.INVASION.MAX_ENEMIES_PER_WAVE.set(value); markChanged(); }),
+                value -> setConfigValue(Config.INVASION.MAX_ENEMIES_PER_WAVE, value)),
             widgetX);
         currentY = addConfigEntry(currentY, "adaptive_nemesis.config.spawn_distance",
             "adaptive_nemesis.config.tooltip.spawn_distance",
             createIntEditBox(Config.INVASION.SPAWN_DISTANCE.get(), 10, 100,
-                value -> { Config.INVASION.SPAWN_DISTANCE.set(value); markChanged(); }),
+                value -> setConfigValue(Config.INVASION.SPAWN_DISTANCE, value)),
             widgetX);
         currentY = addConfigEntry(currentY, "adaptive_nemesis.config.enable_frost_walker_on_water",
             "adaptive_nemesis.config.tooltip.enable_frost_walker_on_water",
             createBooleanButton(Config.INVASION.ENABLE_FROST_WALKER_ON_WATER.get(),
-                value -> { Config.INVASION.ENABLE_FROST_WALKER_ON_WATER.set(value); markChanged(); }),
+                value -> setConfigValue(Config.INVASION.ENABLE_FROST_WALKER_ON_WATER, value)),
             widgetX);
         currentY = addConfigEntry(currentY, "adaptive_nemesis.config.enable_glowing_effect",
             "adaptive_nemesis.config.tooltip.enable_glowing_effect",
             createBooleanButton(Config.INVASION.ENABLE_GLOWING_EFFECT.get(),
-                value -> { Config.INVASION.ENABLE_GLOWING_EFFECT.set(value); markChanged(); }),
+                value -> setConfigValue(Config.INVASION.ENABLE_GLOWING_EFFECT, value)),
             widgetX);
+        return addInvasionDifficultySection(currentY, widgetX);
+    }
+
+    /**
+     * 添加入侵自定义难度与计时配置分组条目
+     *
+     * @param currentY 起始绘制 Y 坐标
+     * @param widgetX 控件 X 坐标
+     * @return 结束 Y 坐标
+     */
+    private int addInvasionDifficultySection(int currentY, int widgetX) {
+        currentY = LIST_TOP;
         currentY = addConfigEntry(currentY, "adaptive_nemesis.config.difficulty_decrease_on_victory",
             "adaptive_nemesis.config.tooltip.difficulty_decrease_on_victory",
             createDoubleEditBox(Config.INVASION.DIFFICULTY_DECREASE_ON_VICTORY.get(), 0.0, 0.5,
-                value -> { Config.INVASION.DIFFICULTY_DECREASE_ON_VICTORY.set(value); markChanged(); }),
+                value -> setConfigValue(Config.INVASION.DIFFICULTY_DECREASE_ON_VICTORY, value)),
             widgetX);
         currentY = addConfigEntry(currentY, "adaptive_nemesis.config.loot_rarity_bonus",
             "adaptive_nemesis.config.tooltip.loot_rarity_bonus",
             createDoubleEditBox(Config.INVASION.LOOT_RARITY_BONUS.get(), 0.0, 1.0,
-                value -> { Config.INVASION.LOOT_RARITY_BONUS.set(value); markChanged(); }),
+                value -> setConfigValue(Config.INVASION.LOOT_RARITY_BONUS, value)),
             widgetX);
         currentY = addConfigEntry(currentY, "adaptive_nemesis.config.enable_custom_difficulty",
             "adaptive_nemesis.config.tooltip.enable_custom_difficulty",
             createBooleanButton(Config.INVASION.ENABLE_CUSTOM_DIFFICULTY.get(),
-                value -> { Config.INVASION.ENABLE_CUSTOM_DIFFICULTY.set(value); markChanged(); }),
+                value -> setConfigValue(Config.INVASION.ENABLE_CUSTOM_DIFFICULTY, value)),
             widgetX);
         currentY = addConfigEntry(currentY, "adaptive_nemesis.config.custom_difficulty_multiplier",
             "adaptive_nemesis.config.tooltip.custom_difficulty_multiplier",
             createDoubleEditBox(Config.INVASION.CUSTOM_DIFFICULTY_MULTIPLIER.get(), 0.1, 10.0,
-                value -> { Config.INVASION.CUSTOM_DIFFICULTY_MULTIPLIER.set(value); markChanged(); }),
+                value -> setConfigValue(Config.INVASION.CUSTOM_DIFFICULTY_MULTIPLIER, value)),
             widgetX);
         currentY = addConfigEntry(currentY, "adaptive_nemesis.config.initial_cooldown_minutes",
             "adaptive_nemesis.config.tooltip.initial_cooldown_minutes",
             createIntEditBox(Config.INVASION.INITIAL_COOLDOWN_MINUTES.get(), 1, 60,
-                value -> { Config.INVASION.INITIAL_COOLDOWN_MINUTES.set(value); markChanged(); }),
+                value -> setConfigValue(Config.INVASION.INITIAL_COOLDOWN_MINUTES, value)),
             widgetX);
         currentY = addConfigEntry(currentY, "adaptive_nemesis.config.warning_seconds_before_invasion",
             "adaptive_nemesis.config.tooltip.warning_seconds_before_invasion",
             createIntEditBox(Config.INVASION.WARNING_SECONDS_BEFORE_INVASION.get(), 1, 60,
-                value -> { Config.INVASION.WARNING_SECONDS_BEFORE_INVASION.set(value); markChanged(); }),
+                value -> setConfigValue(Config.INVASION.WARNING_SECONDS_BEFORE_INVASION, value)),
             widgetX);
         currentY = addConfigEntry(currentY, "adaptive_nemesis.config.loot_rarity_bonus_duration",
             "adaptive_nemesis.config.tooltip.loot_rarity_bonus_duration",
             createIntEditBox(Config.INVASION.LOOT_RARITY_BONUS_DURATION.get(), 1, 120,
-                value -> { Config.INVASION.LOOT_RARITY_BONUS_DURATION.set(value); markChanged(); }),
+                value -> setConfigValue(Config.INVASION.LOOT_RARITY_BONUS_DURATION, value)),
             widgetX);
         currentY = addConfigEntry(currentY, "adaptive_nemesis.config.invasion_cooldown_minutes",
             "adaptive_nemesis.config.tooltip.invasion_cooldown_minutes",
             createIntEditBox(Config.INVASION.INVASION_COOLDOWN_MINUTES.get(), 1, 120,
-                value -> { Config.INVASION.INVASION_COOLDOWN_MINUTES.set(value); markChanged(); }),
+                value -> setConfigValue(Config.INVASION.INVASION_COOLDOWN_MINUTES, value)),
             widgetX);
+        return addInvasionNotifySection(currentY, widgetX);
+    }
+
+    /**
+     * 添加入侵通知与战利品配置分组条目
+     *
+     * @param currentY 起始绘制 Y 坐标
+     * @param widgetX 控件 X 坐标
+     * @return 结束 Y 坐标
+     */
+    private int addInvasionNotifySection(int currentY, int widgetX) {
+        currentY = LIST_TOP;
         currentY = addConfigEntry(currentY, "adaptive_nemesis.config.enable_player_notification",
             "adaptive_nemesis.config.tooltip.enable_player_notification",
             createBooleanButton(Config.INVASION.ENABLE_PLAYER_NOTIFICATION.get(),
-                value -> { Config.INVASION.ENABLE_PLAYER_NOTIFICATION.set(value); markChanged(); }),
+                value -> setConfigValue(Config.INVASION.ENABLE_PLAYER_NOTIFICATION, value)),
             widgetX);
         currentY = addConfigEntry(currentY, "adaptive_nemesis.config.show_wave_progress",
             "adaptive_nemesis.config.tooltip.show_wave_progress",
             createBooleanButton(Config.INVASION.SHOW_WAVE_PROGRESS.get(),
-                value -> { Config.INVASION.SHOW_WAVE_PROGRESS.set(value); markChanged(); }),
+                value -> setConfigValue(Config.INVASION.SHOW_WAVE_PROGRESS, value)),
             widgetX);
         currentY = addConfigEntry(currentY, "adaptive_nemesis.config.enable_invasion_loot",
             "adaptive_nemesis.config.tooltip.enable_invasion_loot",
             createBooleanButton(Config.INVASION.ENABLE_INVASION_LOOT.get(),
-                value -> { Config.INVASION.ENABLE_INVASION_LOOT.set(value); markChanged(); }),
+                value -> setConfigValue(Config.INVASION.ENABLE_INVASION_LOOT, value)),
             widgetX);
         currentY = addConfigEntry(currentY, "adaptive_nemesis.config.base_loot_count",
             "adaptive_nemesis.config.tooltip.base_loot_count",
             createIntEditBox(Config.INVASION.BASE_LOOT_COUNT.get(), 1, 10,
-                value -> { Config.INVASION.BASE_LOOT_COUNT.set(value); markChanged(); }),
+                value -> setConfigValue(Config.INVASION.BASE_LOOT_COUNT, value)),
             widgetX);
         currentY = addConfigEntry(currentY, "adaptive_nemesis.config.enable_kubejs_support",
             "adaptive_nemesis.config.tooltip.enable_kubejs_support",
             createBooleanButton(Config.INVASION.ENABLE_KUBEJS_SUPPORT.get(),
-                value -> { Config.INVASION.ENABLE_KUBEJS_SUPPORT.set(value); markChanged(); }),
+                value -> setConfigValue(Config.INVASION.ENABLE_KUBEJS_SUPPORT, value)),
             widgetX);
         currentY = addConfigEntry(currentY, "adaptive_nemesis.config.enable_data_pack_support",
             "adaptive_nemesis.config.tooltip.enable_data_pack_support",
             createBooleanButton(Config.INVASION.ENABLE_DATA_PACK_SUPPORT.get(),
-                value -> { Config.INVASION.ENABLE_DATA_PACK_SUPPORT.set(value); markChanged(); }),
+                value -> setConfigValue(Config.INVASION.ENABLE_DATA_PACK_SUPPORT, value)),
             widgetX);
 
-        // ===== 调试选项 =====
+        return currentY;
+    }
+
+    /**
+     * 添加 debug 配置分组条目
+     *
+     * @param currentY 起始绘制 Y 坐标
+     * @param widgetX 控件 X 坐标
+     * @return 结束 Y 坐标
+     */
+    private int addDebugSection(int currentY, int widgetX) {
+        currentY = LIST_TOP;
         currentY = addCategoryEntry(currentY, "adaptive_nemesis.config.category.debug", 0xFFAAAAAA);
         currentY = addConfigEntry(currentY, "adaptive_nemesis.config.enable_debug_log",
             "adaptive_nemesis.config.tooltip.enable_debug_log",
             createBooleanButton(Config.ENABLE_DEBUG_LOG.get(),
-                value -> { Config.ENABLE_DEBUG_LOG.set(value); markChanged(); }),
+                value -> setConfigValue(Config.ENABLE_DEBUG_LOG, value)),
             widgetX);
         currentY = addConfigEntry(currentY, "adaptive_nemesis.config.enable_verbose_debug",
             "adaptive_nemesis.config.tooltip.enable_verbose_debug",
             createBooleanButton(Config.ENABLE_VERBOSE_DEBUG.get(),
-                value -> { Config.ENABLE_VERBOSE_DEBUG.set(value); markChanged(); }),
+                value -> setConfigValue(Config.ENABLE_VERBOSE_DEBUG, value)),
             widgetX);
         currentY = addConfigEntry(currentY, "adaptive_nemesis.config.debug_log_to_file",
             "adaptive_nemesis.config.tooltip.debug_log_to_file",
             createBooleanButton(Config.DEBUG_LOG_TO_FILE.get(),
-                value -> { Config.DEBUG_LOG_TO_FILE.set(value); markChanged(); }),
+                value -> setConfigValue(Config.DEBUG_LOG_TO_FILE, value)),
             widgetX);
         currentY = addConfigEntry(currentY, "adaptive_nemesis.config.debug_log_file_path",
             "adaptive_nemesis.config.tooltip.debug_log_file_path",
             createStringEditBox("adaptive_nemesis.config.debug_log_file_path",
                 () -> Config.DEBUG_LOG_FILE_PATH.get(),
-                value -> { Config.DEBUG_LOG_FILE_PATH.set(value); markChanged(); }),
+                value -> setConfigValue(Config.DEBUG_LOG_FILE_PATH, value)),
             widgetX);
         currentY = addConfigEntry(currentY, "adaptive_nemesis.config.log_output_level",
             "adaptive_nemesis.config.tooltip.log_output_level",
             createLogLevelButton(Config.LOG_OUTPUT_LEVEL.get(),
-                value -> { Config.LOG_OUTPUT_LEVEL.set(value); markChanged(); }),
+                value -> setConfigValue(Config.LOG_OUTPUT_LEVEL, value)),
             widgetX);
-
-        this.totalContentHeight = currentY - LIST_TOP;
-
-        // 添加返回按钮
-        this.addRenderableWidget(Button.builder(CommonComponents.GUI_DONE, button -> this.onClose())
-            .bounds(this.width / 2 - 100, this.height - 36, 200, 24)
-            .build());
+        return currentY;
     }
 
     /** 添加分类条目 */
@@ -893,13 +1215,6 @@ public class AdaptiveNemesisConfigScreen extends Screen {
         this.configWidgets.add(widget);
         this.configEntries.add(entry);
         return y + ROW_HEIGHT;
-    }
-
-    /** 标记配置已修改 */
-    private void markChanged() {
-        this.configChanged = true;
-        // 每次修改立即保存到文件
-        Config.saveToFile();
     }
 
     /** 创建布尔值切换按钮 */
@@ -1009,42 +1324,72 @@ public class AdaptiveNemesisConfigScreen extends Screen {
         float animationProgress = Math.min(1.0f, openTime / OPEN_ANIMATION_DURATION);
         float easeOut = 1.0f - (1.0f - animationProgress) * (1.0f - animationProgress);
 
-        // 1. 渲染纯色背景（禁用模糊）
+        renderHeaderBar(guiGraphics, easeOut);
+        renderMainPanel(guiGraphics, easeOut);
+        renderFooterBar(guiGraphics);
+        float smoothScroll = renderContent(guiGraphics, mouseX, mouseY, partialTick);
+        renderScrollbar(guiGraphics, mouseX, mouseY, smoothScroll);
+        renderDoneButton(guiGraphics, mouseX, mouseY, partialTick);
+    }
+
+    /**
+     * 渲染纯色背景与顶部装饰条（带动画）
+     *
+     * @param guiGraphics 绘图上下文
+     * @param easeOut 入场动画进度
+     */
+    private void renderHeaderBar(GuiGraphics guiGraphics, float easeOut) {
+        // 渲染纯色背景（禁用模糊）
         guiGraphics.fill(0, 0, this.width, this.height, BG_COLOR);
 
-        // 2. 渲染顶部装饰条（带动画）
+        // 渲染顶部装饰条（带动画）
         int headerHeight = (int) (LIST_TOP * easeOut);
-        if (headerHeight > 0) {
-            // 顶部渐变条
-            guiGraphics.fill(0, 0, this.width, 2, BORDER_LIGHT);
-            guiGraphics.fill(0, 2, this.width, 3, BORDER_COLOR);
-            // 标题区域背景
-            guiGraphics.fill(0, 3, this.width, headerHeight - 2, 0xFF1C1C1C);
-
-            // 标题文字（带淡入动画）
-            int titleAlpha = (int) (255 * easeOut);
-            int titleColor = (titleAlpha << 24) | (TEXT_HIGHLIGHT & 0xFFFFFF);
-            int subtitleColor = (titleAlpha << 24) | (TEXT_SECONDARY & 0xFFFFFF);
-
-            guiGraphics.drawCenteredString(this.font, this.title, this.width / 2, 18, titleColor);
-            guiGraphics.drawCenteredString(this.font,
-                Component.translatable("adaptive_nemesis.config.subtitle"), this.width / 2, 34, subtitleColor);
+        if (headerHeight <= 0) {
+            return;
         }
+        // 顶部渐变条
+        guiGraphics.fill(0, 0, this.width, 2, BORDER_LIGHT);
+        guiGraphics.fill(0, 2, this.width, 3, BORDER_COLOR);
+        // 标题区域背景
+        guiGraphics.fill(0, 3, this.width, headerHeight - 2, 0xFF1C1C1C);
 
-        // 3. 渲染主面板背景（带入场动画）
+        // 标题文字（带淡入动画）
+        int titleAlpha = (int) (255 * easeOut);
+        int titleColor = (titleAlpha << 24) | (TEXT_HIGHLIGHT & 0xFFFFFF);
+        int subtitleColor = (titleAlpha << 24) | (TEXT_SECONDARY & 0xFFFFFF);
+
+        guiGraphics.drawCenteredString(this.font, this.title, this.width / 2, 18, titleColor);
+        guiGraphics.drawCenteredString(this.font,
+            Component.translatable("adaptive_nemesis.config.subtitle"), this.width / 2, 34, subtitleColor);
+    }
+
+    /**
+     * 渲染主面板背景（带入场动画）
+     *
+     * @param guiGraphics 绘图上下文
+     * @param easeOut 入场动画进度
+     */
+    private void renderMainPanel(GuiGraphics guiGraphics, float easeOut) {
         int panelTop = LIST_TOP;
         int panelBottom = this.height - LIST_BOTTOM;
         int panelWidth = (int) ((this.width - PADDING * 2) * easeOut);
         int panelX = (this.width - panelWidth) / 2;
 
-        if (panelWidth > 0) {
-            // 面板边框
-            guiGraphics.fill(panelX - 2, panelTop - 2, panelX + panelWidth + 2, panelBottom + 2, BORDER_COLOR);
-            // 面板背景
-            guiGraphics.fill(panelX, panelTop, panelX + panelWidth, panelBottom, PANEL_COLOR);
+        if (panelWidth <= 0) {
+            return;
         }
+        // 面板边框
+        guiGraphics.fill(panelX - 2, panelTop - 2, panelX + panelWidth + 2, panelBottom + 2, BORDER_COLOR);
+        // 面板背景
+        guiGraphics.fill(panelX, panelTop, panelX + panelWidth, panelBottom, PANEL_COLOR);
+    }
 
-        // 4. 渲染底部信息栏
+    /**
+     * 渲染底部信息栏与保存提示
+     *
+     * @param guiGraphics 绘图上下文
+     */
+    private void renderFooterBar(GuiGraphics guiGraphics) {
         int footerY = this.height - LIST_BOTTOM + 6;
         guiGraphics.fill(0, footerY, this.width, this.height, 0xFF1C1C1C);
         guiGraphics.fill(0, footerY - 1, this.width, footerY, BORDER_COLOR);
@@ -1061,11 +1406,21 @@ public class AdaptiveNemesisConfigScreen extends Screen {
                 Component.translatable("adaptive_nemesis.config.scroll_hint"),
                 this.width / 2, footerY + 10, TEXT_SECONDARY);
         }
+    }
 
-        // 5. 启用裁剪区域（关键！避免控件超出边界）
+    /**
+     * 在裁剪区域内渲染配置条目与控件
+     *
+     * @param guiGraphics 绘图上下文
+     * @param mouseX 鼠标 X 坐标
+     * @param mouseY 鼠标 Y 坐标
+     * @param partialTick 帧插值
+     * @return 帧间插值后的平滑滚动值
+     */
+    private float renderContent(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
+        // 启用裁剪区域（避免控件超出边界）
         guiGraphics.enableScissor(PADDING, LIST_TOP, this.width - PADDING, this.height - LIST_BOTTOM);
 
-        // 6. 渲染配置内容（使用平滑滚动位置）
         // 标准帧间插值：在上一 tick 与当前 tick 的滚动位置之间按 partialTick 线性插值，
         // 使滚动在任意帧率下都平滑，避免 20fps 逐 tick 跳变导致的文字闪烁
         float smoothScroll = Mth.lerp(partialTick, lastScroll, currentScroll);
@@ -1084,20 +1439,27 @@ public class AdaptiveNemesisConfigScreen extends Screen {
             }
         }
 
-        // 7. 在裁剪区域内手动渲染所有控件（关键！避免超出边界）
+        // 在裁剪区域内手动渲染所有控件（避免超出边界）
         for (AbstractWidget widget : configWidgets) {
             if (widget.visible) {
                 widget.render(guiGraphics, mouseX, mouseY, partialTick);
             }
         }
 
-        // 8. 禁用裁剪区域
+        // 禁用裁剪区域
         guiGraphics.disableScissor();
+        return smoothScroll;
+    }
 
-        // 9. 渲染滚动条（使用插值后的滚动值，保持与内容同步）
-        renderScrollbar(guiGraphics, mouseX, mouseY, smoothScroll);
-
-        // 10. 渲染"完成"按钮（在裁剪区域外）
+    /**
+     * 渲染"完成"按钮（在裁剪区域外，保证可点击）
+     *
+     * @param guiGraphics 绘图上下文
+     * @param mouseX 鼠标 X 坐标
+     * @param mouseY 鼠标 Y 坐标
+     * @param partialTick 帧插值
+     */
+    private void renderDoneButton(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
         for (var renderable : this.renderables) {
             if (renderable instanceof Button button) {
                 button.render(guiGraphics, mouseX, mouseY, partialTick);
@@ -1260,6 +1622,50 @@ public class AdaptiveNemesisConfigScreen extends Screen {
 
     @Override
     public void onClose() {
+        // ESC/取消路径：回滚本次修改的内存值，不落盘
+        rollbackSnapshots();
         this.minecraft.setScreen(this.parent);
+    }
+
+    /**
+     * 确认路径（完成按钮）：落盘本次修改后返回上级界面
+     */
+    private void confirmAndClose() {
+        if (this.configChanged) {
+            Config.saveToFile();
+        }
+        this.snapshots.clear();
+        this.minecraft.setScreen(this.parent);
+    }
+
+    /**
+     * 将本次界面中已写入内存的配置值恢复为打开界面时的快照值
+     *
+     * 保证 ESC/取消路径下内存配置与配置文件一致，
+     * 避免后续任意 saveToFile 将被丢弃的修改写入文件
+     */
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private void rollbackSnapshots() {
+        for (Map.Entry<ModConfigSpec.ConfigValue<?>, Object> entry : snapshots.entrySet()) {
+            ((ModConfigSpec.ConfigValue) entry.getKey()).set(entry.getValue());
+        }
+        this.snapshots.clear();
+        this.configChanged = false;
+    }
+
+    /**
+     * 仅在值与当前配置不同才写入内存，并记录打开界面时的快照
+     *
+     * @param spec 配置值
+     * @param newValue 界面提交的新值
+     * @param <T> 配置值类型
+     */
+    private <T> void setConfigValue(ModConfigSpec.ConfigValue<T> spec, T newValue) {
+        if (java.util.Objects.equals(spec.get(), newValue)) {
+            return;
+        }
+        this.snapshots.putIfAbsent(spec, spec.get());
+        spec.set(newValue);
+        this.configChanged = true;
     }
 }

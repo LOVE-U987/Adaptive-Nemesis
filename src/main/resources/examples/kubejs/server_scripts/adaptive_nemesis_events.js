@@ -32,6 +32,8 @@ adaptive_nemesis.damage_calculation(event => {
     if (event.getCalculatedDamage() > 50) {
         event.setCalculatedDamage(50);
     }
+    // 将真实伤害设为与原始伤害相同表示全额真实伤害，属于正常修改，不会被当作取消；
+    // 取消真实伤害转换请显式调用 event.cancelEvent()
 });
 
 // ================================================

@@ -22,6 +22,11 @@ public class DifficultySmoothingConfig {
     */
     public final ModConfigSpec.IntValue DIFFICULTY_SMOOTHING_TICK_INTERVAL;
 
+    /**
+     * 构造难度缓动配置
+     *
+     * @param builder 配置构建器，由 Config 聚合类统一传入
+     */
     public DifficultySmoothingConfig(ModConfigSpec.Builder builder) {
         builder.push("difficultySmoothing");
         ENABLE_DIFFICULTY_SMOOTHING = builder.comment("是否启用难度缓动 - 让怪物强度平滑变化，不会瞬间对齐玩家强度").comment("Enable difficulty smoothing - let monster strength change smoothly instead of instantly matching player strength").define("enableDifficultySmoothing", true);

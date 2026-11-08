@@ -42,6 +42,11 @@ public class BossConfig {
      */
     public final ModConfigSpec.DoubleValue BOSS_HEALTH_THRESHOLD;
 
+    /**
+     * 构造Boss 限伤与强化配置
+     *
+     * @param builder 配置构建器，由 Config 聚合类统一传入
+     */
     public BossConfig(ModConfigSpec.Builder builder) {
         builder.push("boss");
         ENABLE_BOSS_DAMAGE_CAP = builder

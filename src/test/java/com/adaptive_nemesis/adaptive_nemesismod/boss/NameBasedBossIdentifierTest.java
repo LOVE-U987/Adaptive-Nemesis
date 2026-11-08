@@ -46,10 +46,12 @@ class NameBasedBossIdentifierTest {
 
     @ParameterizedTest(name = "「{0}」→ {1}")
     @CsvSource({
+        // 原版三大 Boss 走硬编码分支，与关键词排序无关
         "minecraft:ender_dragon, ender_dragon",
         "minecraft:wither,       wither",
         "minecraft:warden,       warden",
-        "cataclysm:ignis,        ignis"
+        // 关键词按长度降序（最长优先）：cataclysm(9) 先于 ignis(5) 命中
+        "cataclysm:ignis,        cataclysm"
     })
     @DisplayName("Boss 类型推断")
     void testInferBossType(String entityKey, String expected) {

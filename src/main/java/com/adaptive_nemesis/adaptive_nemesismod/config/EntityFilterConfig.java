@@ -18,6 +18,11 @@ public class EntityFilterConfig {
      */
     public final ModConfigSpec.ConfigValue<String> ENTITY_BLACKLIST;
 
+    /**
+     * 构造实体过滤配置
+     *
+     * @param builder 配置构建器，由 Config 聚合类统一传入
+     */
     public EntityFilterConfig(ModConfigSpec.Builder builder) {
         builder.push("entityFilter");
         ENABLE_ENTITY_FILTER = builder

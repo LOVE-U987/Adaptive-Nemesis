@@ -11,7 +11,6 @@ import com.adaptive_nemesis.adaptive_nemesismod.data.WorldStageDataLoader;
 import com.adaptive_nemesis.adaptive_nemesismod.data.WorldStageSavedData;
 import com.adaptive_nemesis.adaptive_nemesismod.kubejs.KubeJSEventTrigger;
 
-import net.minecraft.nbt.CompoundTag;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.damagesource.DamageSource;
@@ -75,6 +74,27 @@ public class WorldStageManager {
      */
     public int getWorldStage() {
         return stageData.stage;
+    }
+
+    /**
+     * 获取最近一次世界阶段推进的时间戳（毫秒，用于持久化）
+     *
+     * @return 时间戳（毫秒），从未推进过时为 0
+     */
+    public long getLastStageAdvanceTime() {
+        return stageData.lastStageAdvanceTime;
+    }
+
+    /**
+     * 从 SavedData 回灌内存态（F-06）
+     * 服务器启动完成时由 WorldStageSavedData.load 调用，重启后阶段与击败记录保留
+     *
+     * @param data 已加载的世界阶段 SavedData
+     */
+    public void restoreFrom(WorldStageSavedData data) {
+        stageData.stage = data.getStage();
+        stageData.lastStageAdvanceTime = data.getLastStageAdvanceTime();
+        defeatedBosses = new HashSet<>(data.getDefeatedBosses());
     }
 
     /**
@@ -188,6 +208,9 @@ public class WorldStageManager {
 
     /**
      * Boss 死亡事件 - 检测并提升世界阶段
+     *
+     * 仅统计玩家造成的击杀：攻击者不是玩家（如环境伤害、其他生物击杀）时
+     * 直接忽略，与"只有玩家击杀才计数"的注释语义保持一致。
      */
     @SubscribeEvent
     public void onLivingDeath(LivingDeathEvent event) {
@@ -200,11 +223,10 @@ public class WorldStageManager {
             return;
         }
 
-        // 只有玩家击杀才计数
+        // 只有玩家击杀才计数，非玩家击杀（含无归因来源）直接返回
         DamageSource source = event.getSource();
-        ServerPlayer player = null;
-        if (source != null && source.getEntity() instanceof ServerPlayer sourcePlayer) {
-            player = sourcePlayer;
+        if (source == null || !(source.getEntity() instanceof ServerPlayer player)) {
+            return;
         }
 
         String bossType = identifyBossType(entity);
@@ -228,7 +250,8 @@ public class WorldStageManager {
      * @param player 触发玩家，可能为 null
      */
     private void onBossKilled(String bossType, boolean isRealKill, ServerPlayer player) {
-        defeatedBosses.add(bossType);
+        // F-06：击败记录变更（含阶段已达上限后新 Boss 入账）同样触发写回
+        boolean newRecord = defeatedBosses.add(bossType);
         int bossCount = getDefeatedBossCount();
 
         int newStage = Math.min(bossCount, Config.WORLD_STAGE_MAX_STAGE.get());
@@ -253,22 +276,26 @@ public class WorldStageManager {
                 logPrefix, oldStage, newStage, bossCount,
                 String.format("%.2f", stageMultiplier)
             );
+        }
 
-            // 阶段提升时立即保存数据
+        // 击败记录为新增时写回 SavedData（覆盖阶段提升与仅新增记录两种场景）
+        if (newRecord) {
             saveIfPossible();
         }
     }
 
     /**
-     * 尝试自动保存数据
+     * 尝试将内存态写回 SavedData（F-06）
+     * 统一经 server.overworld() 的 SavedData 落盘，不再依赖触发击杀所在的维度
      */
     private void saveIfPossible() {
-        if (serverLevelRef != null) {
-            try {
-                WorldStageSavedData.save(serverLevelRef);
-            } catch (Exception e) {
-                AdaptiveNemesisMod.LOGGER.warn("自动保存世界阶段数据失败", e);
-            }
+        if (serverLevelRef == null) {
+            return;
+        }
+        try {
+            WorldStageSavedData.save(serverLevelRef.getServer());
+        } catch (Exception e) {
+            AdaptiveNemesisMod.LOGGER.warn("自动保存世界阶段数据失败", e);
         }
     }
 
@@ -292,44 +319,6 @@ public class WorldStageManager {
         stageData = new WorldStageData();
         defeatedBosses.clear();
         saveIfPossible();
-    }
-
-    /**
-     * 保存数据到NBT（供持久化使用）
-     */
-    public CompoundTag save() {
-        CompoundTag tag = new CompoundTag();
-        tag.putInt("stage", stageData.stage);
-        tag.putLong("lastStageAdvanceTime", stageData.lastStageAdvanceTime);
-        tag.putInt("defeatedBossCount", defeatedBosses.size());
-
-        int index = 0;
-        for (String boss : defeatedBosses) {
-            tag.putString("defeatedBoss_" + index, boss);
-            index++;
-        }
-        return tag;
-    }
-
-    /**
-     * 从NBT加载数据
-     */
-    public void load(CompoundTag tag) {
-        int loadedStage = tag.getInt("stage");
-        long loadedTime = tag.getLong("lastStageAdvanceTime");
-        int loadedBossCount = tag.getInt("defeatedBossCount");
-
-        HashSet<String> loadedBosses = new HashSet<>();
-        for (int i = 0; i < loadedBossCount; i++) {
-            String bossKey = "defeatedBoss_" + i;
-            if (tag.contains(bossKey)) {
-                loadedBosses.add(tag.getString(bossKey));
-            }
-        }
-
-        stageData.stage = loadedStage;
-        stageData.lastStageAdvanceTime = loadedTime;
-        defeatedBosses = loadedBosses;
     }
 
     /**

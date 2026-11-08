@@ -169,6 +169,9 @@ public class DamageCalculationEventJS implements KubeEvent {
 
     /**
      * 取消真实伤害转换
+     *
+     * 这是唯一的取消方式：把 calculatedDamage 设为与 originalDamage
+     * 相同的值是合法操作（表示全额真实伤害），不会被当作取消。
      */
     public void cancelEvent() {
         this.cancelled = true;

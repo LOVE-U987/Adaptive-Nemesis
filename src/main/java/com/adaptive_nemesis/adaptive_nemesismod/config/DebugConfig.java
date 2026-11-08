@@ -32,6 +32,11 @@ public class DebugConfig {
      */
     public final ModConfigSpec.ConfigValue<String> LOG_OUTPUT_LEVEL;
 
+    /**
+     * 构造调试日志配置
+     *
+     * @param builder 配置构建器，由 Config 聚合类统一传入
+     */
     public DebugConfig(ModConfigSpec.Builder builder) {
         builder.push("debug");
         ENABLE_DEBUG_LOG = builder

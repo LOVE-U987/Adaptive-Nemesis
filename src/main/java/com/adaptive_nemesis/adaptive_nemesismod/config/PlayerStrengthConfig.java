@@ -32,6 +32,11 @@ public class PlayerStrengthConfig {
     */
     public final ModConfigSpec.DoubleValue EPIC_FIGHT_WEIGHT;
 
+    /**
+     * 构造玩家强度权重配置
+     *
+     * @param builder 配置构建器，由 Config 聚合类统一传入
+     */
     public PlayerStrengthConfig(ModConfigSpec.Builder builder) {
         builder.push("playerStrengthWeights");
         DEFENSE_WEIGHT = builder.comment("防御能力（护甲值、血量上限）评估权重").defineInRange("defenseWeight", 1.0, 0.0, 5.0);

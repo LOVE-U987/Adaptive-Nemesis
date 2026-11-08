@@ -22,6 +22,11 @@ public class WeaponDamageCapConfig {
     */
     public final ModConfigSpec.DoubleValue WEAPON_DAMAGE_MAX_CAP;
 
+    /**
+     * 构造武器伤害上限配置
+     *
+     * @param builder 配置构建器，由 Config 聚合类统一传入
+     */
     public WeaponDamageCapConfig(ModConfigSpec.Builder builder) {
         builder.push("weaponDamageCap");
         WEAPON_DAMAGE_BASE_CAP = builder.comment("武器伤害基础上限 (默认12.0 = 6颗心) - 最低难度时的武器伤害上限").comment("Base weapon damage cap (default 12.0 = 6 hearts) - at minimum difficulty").defineInRange("weaponDamageBaseCap", 12.0, 1.0, 100.0);
