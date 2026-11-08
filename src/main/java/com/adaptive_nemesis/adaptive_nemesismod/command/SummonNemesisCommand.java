@@ -16,12 +16,14 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.util.RandomSource;
 import net.minecraft.world.entity.EntityType;
-import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.Mob;
+import net.minecraft.world.entity.MobSpawnType;
+import net.minecraft.world.entity.ai.attributes.AttributeInstance;
 import net.minecraft.world.entity.ai.attributes.Attributes;
-import net.minecraft.world.entity.monster.Zombie;
-import net.minecraft.world.level.Level;
+
+import net.neoforged.neoforge.event.EventHooks;
 
 /**
  * 宿敌召唤命令
@@ -29,8 +31,12 @@ import net.minecraft.world.level.Level;
  * 命令: /an nemesis [zombie|skeleton|creeper|spider|witch]
  * 功能: 召唤一个针对玩家战斗风格的宿敌
  *
+ * 加成约束：所有倍率类加成经 {@code ENABLE_ENEMY_BONUS_CAP} 与对应
+ * {@code MAX_*_MULTIPLIER} 配置钳制，防止命令召唤绕过全局加成上限；
+ * 实体创建后走 {@code finalizeSpawn}（COMMAND 类型）补齐原版生成流程
+ *
  * @author Adaptive Nemesis Team
- * @version 1.0.0
+ * @version 1.1.0
  */
 public class SummonNemesisCommand {
 
@@ -40,6 +46,61 @@ public class SummonNemesisCommand {
     private static final String[] NEMESIS_TYPES = {
         "zombie", "skeleton", "creeper", "spider", "witch", "random"
     };
+
+    /**
+     * 随机选择时的候选类型数
+     */
+    private static final String[] RANDOM_CANDIDATES = {
+        "zombie", "skeleton", "creeper", "spider", "witch"
+    };
+
+    // ==================== 档案加成基础倍率与权重 ====================
+
+    /** 有档案时血量基础倍率 */
+    private static final double PROFILE_HEALTH_BASE = 3.0;
+    /** 档案血量加成系数权重 */
+    private static final double PROFILE_HEALTH_BONUS_WEIGHT = 5.0;
+    /** 有档案时攻击基础倍率 */
+    private static final double PROFILE_ATTACK_BASE = 2.5;
+    /** 档案攻击加成系数权重 */
+    private static final double PROFILE_ATTACK_BONUS_WEIGHT = 3.0;
+    /** 有档案时速度基础倍率 */
+    private static final double PROFILE_SPEED_BASE = 1.2;
+    /** 有档案时护甲固定加成 */
+    private static final double PROFILE_ARMOR_BONUS = 8.0;
+    /** 有档案时护甲韧性固定加成 */
+    private static final double PROFILE_TOUGHNESS_BONUS = 4.0;
+    /** 有档案时攻速倍率 */
+    private static final double PROFILE_ATTACK_SPEED_MULTIPLIER = 1.8;
+    /** 有档案时击退抗性 */
+    private static final double PROFILE_KNOCKBACK_RESISTANCE = 0.6;
+
+    /** 近战风格护甲加成权重 */
+    private static final double MELEE_ARMOR_BONUS_WEIGHT = 30.0;
+    /** 近战风格韧性加成权重 */
+    private static final double MELEE_TOUGHNESS_BONUS_WEIGHT = 15.0;
+    /** 远程风格速度加成权重 */
+    private static final double RANGED_SPEED_BONUS_WEIGHT = 2.0;
+    /** 法师风格血量加成权重 */
+    private static final double MAGIC_HEALTH_BONUS_WEIGHT = 2.0;
+
+    // ==================== 基础加成（无档案） ====================
+
+    /** 无档案时血量基础倍率 */
+    private static final double BASIC_HEALTH_MULTIPLIER = 5.0;
+    /** 无档案时攻击基础倍率 */
+    private static final double BASIC_ATTACK_MULTIPLIER = 3.0;
+    /** 无档案时护甲固定加成 */
+    private static final double BASIC_ARMOR_BONUS = 10.0;
+    /** 无档案时护甲韧性固定加成 */
+    private static final double BASIC_TOUGHNESS_BONUS = 5.0;
+    /** 无档案时攻速倍率 */
+    private static final double BASIC_ATTACK_SPEED_MULTIPLIER = 2.0;
+    /** 无档案时击退抗性 */
+    private static final double BASIC_KNOCKBACK_RESISTANCE = 0.8;
+
+    /** 宿敌生成在玩家前方几格 */
+    private static final double SPAWN_DISTANCE_AHEAD = 3.0;
 
     /**
      * 命令建议提供者
@@ -103,8 +164,8 @@ public class SummonNemesisCommand {
         ServerLevel level = player.serverLevel();
         BlockPos pos = player.blockPosition();
 
-        // 确定实体类型
-        EntityType<? extends Mob> entityType = getEntityType(type);
+        // 确定实体类型（level.random 为公共 RandomSource 字段）
+        EntityType<? extends Mob> entityType = getEntityType(type, level.random);
         if (entityType == null) {
             source.sendFailure(Component.translatable("adaptive_nemesis.command.summon.unknown_type", type));
             return 0;
@@ -117,22 +178,14 @@ public class SummonNemesisCommand {
             return 0;
         }
 
-        // 设置位置（玩家前方）
-        double offsetX = player.getLookAngle().x * 3;
-        double offsetZ = player.getLookAngle().z * 3;
-        nemesis.setPos(pos.getX() + offsetX, pos.getY(), pos.getZ() + offsetZ);
-
-        // 应用宿敌加成
-        applyNemesisBuffs(nemesis, player);
-
-        // 添加到世界
+        placeNemesis(player, pos, nemesis);
+        applyNemesisBuffs(nemesis, player, level.random);
         level.addFreshEntity(nemesis);
 
-        // 发送通知
-        String nemesisName = getNemesisName(entityType);
+        // 发送通知与命令反馈（名称以 Component 传递，保留客户端本地化）
+        Component nemesisName = getNemesisName(entityType);
         sendNemesisNotification(player, nemesisName);
 
-        // 发送命令反馈
         source.sendSuccess(() -> Component.translatable(
             "adaptive_nemesis.command.summon.arrived", nemesisName
         ), true);
@@ -140,10 +193,32 @@ public class SummonNemesisCommand {
         AdaptiveNemesisMod.LOGGER.debug(
             "玩家 {} 召唤了宿敌: {}",
             player.getName().getString(),
-            nemesisName
+            nemesisName.getString()
         );
 
         return 1;
+    }
+
+    /**
+     * 设置宿敌位置并执行原版生成收尾流程
+     *
+     * @param player 发起召唤的玩家
+     * @param pos 玩家所在位置
+     * @param nemesis 宿敌实体
+     */
+    private static void placeNemesis(ServerPlayer player, BlockPos pos, Mob nemesis) {
+        double offsetX = player.getLookAngle().x * SPAWN_DISTANCE_AHEAD;
+        double offsetZ = player.getLookAngle().z * SPAWN_DISTANCE_AHEAD;
+        nemesis.setPos(pos.getX() + offsetX, pos.getY(), pos.getZ() + offsetZ);
+
+        // 走 NeoForge 收尾入口：触发 FinalizeSpawnEvent 并调用 finalizeSpawn(COMMAND)
+        EventHooks.finalizeMobSpawn(
+            nemesis,
+            player.serverLevel(),
+            player.serverLevel().getCurrentDifficultyAt(pos),
+            MobSpawnType.COMMAND,
+            null
+        );
     }
 
     /**
@@ -151,179 +226,263 @@ public class SummonNemesisCommand {
      *
      * @param nemesis 宿敌实体
      * @param player 目标玩家
+     * @param random 世界随机源，用于随机分布
      */
-    private static void applyNemesisBuffs(Mob nemesis, ServerPlayer player) {
+    private static void applyNemesisBuffs(Mob nemesis, ServerPlayer player, RandomSource random) {
         NemesisProfile profile = NemesisMemorySystem.getInstance().getProfile(player.getUUID());
 
         if (profile == null) {
             // 如果没有档案，使用基础加成
-            applyBasicBuffs(nemesis);
+            applyBasicBuffs(nemesis, random);
             return;
         }
 
-        // 应用宿敌档案中的加成 - 大幅提升基础倍率
-        double healthBonus = profile.getHealthBonus();
-        double attackBonus = profile.getAttackBonus();
-        double speedBonus = profile.getSpeedBonus();
+        applyProfileCoreBuffs(nemesis, profile, random);
+        applyProfileStyleBuffs(nemesis, profile);
+        applyNemesisIdentity(nemesis);
+    }
 
-        // 血量加成 - 基础3倍 + 档案加成
-        var healthAttr = nemesis.getAttribute(Attributes.MAX_HEALTH);
-        if (healthAttr != null) {
-            double newHealth = healthAttr.getBaseValue() * (3.0 + healthBonus * 5.0);
-            
-            // 应用随机分布
-            if (Config.ENABLE_RANDOM_DISTRIBUTION.get()) {
-                double minFactor = Config.RANDOM_MIN_FACTOR.get();
-                double maxFactor = Config.RANDOM_MAX_FACTOR.get();
-                newHealth = newHealth * (minFactor + (maxFactor - minFactor) * Math.random());
-            }
-            
-            healthAttr.setBaseValue(newHealth);
-            nemesis.setHealth((float) newHealth);
-        }
+    /**
+     * 应用档案核心加成（血量/攻击/速度/防御/攻速/击退抗性）
+     *
+     * @param nemesis 宿敌实体
+     * @param profile 玩家宿敌档案
+     * @param random 世界随机源，用于随机分布
+     */
+    private static void applyProfileCoreBuffs(Mob nemesis, NemesisProfile profile, RandomSource random) {
+        // 血量加成：基础3倍 + 档案加成，经配置上限钳制
+        double healthMultiplier = PROFILE_HEALTH_BASE + profile.getHealthBonus() * PROFILE_HEALTH_BONUS_WEIGHT;
+        healthMultiplier = clampByCap(healthMultiplier, Config.MAX_HEALTH_MULTIPLIER.get());
+        applyHealthWithDistribution(nemesis, healthMultiplier, random);
 
-        // 攻击加成 - 基础2.5倍 + 档案加成
-        var damageAttr = nemesis.getAttribute(Attributes.ATTACK_DAMAGE);
+        // 攻击加成：基础2.5倍 + 档案加成，经配置上限钳制
+        AttributeInstance damageAttr = nemesis.getAttribute(Attributes.ATTACK_DAMAGE);
         if (damageAttr != null) {
-            damageAttr.setBaseValue(damageAttr.getBaseValue() * (2.5 + attackBonus * 3.0));
+            double attackMultiplier = PROFILE_ATTACK_BASE + profile.getAttackBonus() * PROFILE_ATTACK_BONUS_WEIGHT;
+            attackMultiplier = clampByCap(attackMultiplier, Config.MAX_DAMAGE_MULTIPLIER.get());
+            damageAttr.setBaseValue(damageAttr.getBaseValue() * attackMultiplier);
         }
 
-        // 速度加成 - 基础1.2倍 + 档案加成
-        var speedAttr = nemesis.getAttribute(Attributes.MOVEMENT_SPEED);
+        // 速度加成：基础1.2倍 + 档案加成
+        AttributeInstance speedAttr = nemesis.getAttribute(Attributes.MOVEMENT_SPEED);
         if (speedAttr != null) {
-            speedAttr.setBaseValue(speedAttr.getBaseValue() * (1.2 + speedBonus));
+            speedAttr.setBaseValue(speedAttr.getBaseValue() * (PROFILE_SPEED_BASE + profile.getSpeedBonus()));
         }
 
-        // 基础属性加成 - 所有宿敌都获得
-        // 增加护甲
-        var armorAttr = nemesis.getAttribute(Attributes.ARMOR);
-        if (armorAttr != null) {
-            armorAttr.setBaseValue(armorAttr.getBaseValue() + 8.0);
-        }
-
-        // 增加护甲韧性
-        var toughnessAttr = nemesis.getAttribute(Attributes.ARMOR_TOUGHNESS);
-        if (toughnessAttr != null) {
-            toughnessAttr.setBaseValue(toughnessAttr.getBaseValue() + 4.0);
-        }
+        applyFlatDefenseBuffs(nemesis, PROFILE_ARMOR_BONUS, PROFILE_TOUGHNESS_BONUS);
 
         // 增加攻击速度
-        var attackSpeedAttr = nemesis.getAttribute(Attributes.ATTACK_SPEED);
+        AttributeInstance attackSpeedAttr = nemesis.getAttribute(Attributes.ATTACK_SPEED);
         if (attackSpeedAttr != null) {
-            attackSpeedAttr.setBaseValue(attackSpeedAttr.getBaseValue() * 1.8);
+            attackSpeedAttr.setBaseValue(attackSpeedAttr.getBaseValue() * PROFILE_ATTACK_SPEED_MULTIPLIER);
         }
 
         // 增加击退抗性
-        var knockbackAttr = nemesis.getAttribute(Attributes.KNOCKBACK_RESISTANCE);
+        AttributeInstance knockbackAttr = nemesis.getAttribute(Attributes.KNOCKBACK_RESISTANCE);
         if (knockbackAttr != null) {
-            knockbackAttr.setBaseValue(0.6);
+            knockbackAttr.setBaseValue(PROFILE_KNOCKBACK_RESISTANCE);
         }
+    }
 
-        // 根据玩家战斗风格添加特殊抗性
+    /**
+     * 根据玩家战斗风格应用特殊抗性加成
+     *
+     * @param nemesis 宿敌实体
+     * @param profile 玩家宿敌档案
+     */
+    private static void applyProfileStyleBuffs(Mob nemesis, NemesisProfile profile) {
         switch (profile.getDominantStyle()) {
-            case MELEE -> {
-                // 近战玩家 -> 宿敌获得大量近战抗性（护甲+韧性）
-                if (armorAttr != null) {
-                    armorAttr.setBaseValue(armorAttr.getBaseValue() + profile.getMeleeResistanceBonus() * 30);
-                }
-                if (toughnessAttr != null) {
-                    toughnessAttr.setBaseValue(toughnessAttr.getBaseValue() + profile.getMeleeResistanceBonus() * 15);
-                }
-            }
-            case RANGED -> {
-                // 远程玩家 -> 宿敌获得极高速度（更容易接近）+ 击退抗性
-                if (speedAttr != null) {
-                    speedAttr.setBaseValue(speedAttr.getBaseValue() * (1.0 + profile.getRangedResistanceBonus() * 2.0));
-                }
-                if (knockbackAttr != null) {
-                    knockbackAttr.setBaseValue(1.0); // 完全免疫击退
-                }
-            }
-            case MAGIC -> {
-                // 法师玩家 -> 宿敌获得巨额血量 + 生命恢复
-                if (healthAttr != null) {
-                    healthAttr.setBaseValue(healthAttr.getBaseValue() * (1.0 + profile.getMagicResistanceBonus() * 2.0));
-                }
-            }
+            case MELEE -> applyMeleeStyleBuffs(nemesis, profile);
+            case RANGED -> applyRangedStyleBuffs(nemesis, profile);
+            case MAGIC -> applyMagicStyleBuffs(nemesis, profile);
         }
+    }
 
-        // 设置自定义名称（使用 Component 拼接，保留客户端本地化）
-        nemesis.setCustomName(Component.translatable("adaptive_nemesis.command.summon.name_prefix")
-            .append(nemesis.getName().copy()));
-        nemesis.setCustomNameVisible(true);
+    /**
+     * 近战玩家风格：宿敌获得大量近战抗性（护甲+韧性）
+     *
+     * @param nemesis 宿敌实体
+     * @param profile 玩家宿敌档案
+     */
+    private static void applyMeleeStyleBuffs(Mob nemesis, NemesisProfile profile) {
+        AttributeInstance armorAttr = nemesis.getAttribute(Attributes.ARMOR);
+        if (armorAttr != null) {
+            double bonus = profile.getMeleeResistanceBonus() * MELEE_ARMOR_BONUS_WEIGHT;
+            armorAttr.setBaseValue(clampAdditiveByCap(armorAttr.getBaseValue(), bonus,
+                Config.MAX_ARMOR_MULTIPLIER.get()));
+        }
+        AttributeInstance toughnessAttr = nemesis.getAttribute(Attributes.ARMOR_TOUGHNESS);
+        if (toughnessAttr != null) {
+            toughnessAttr.setBaseValue(toughnessAttr.getBaseValue()
+                + profile.getMeleeResistanceBonus() * MELEE_TOUGHNESS_BONUS_WEIGHT);
+        }
+    }
 
-        // 打上宿敌标记，供铁魔法等兼容层识别（仅宿敌应用法术抗性/强度加成）
-        nemesis.getPersistentData().putBoolean(NemesisSystem.NEMESIS_TAG, true);
+    /**
+     * 远程玩家风格：宿敌获得极高速度（更容易接近）+ 完全免疫击退
+     *
+     * @param nemesis 宿敌实体
+     * @param profile 玩家宿敌档案
+     */
+    private static void applyRangedStyleBuffs(Mob nemesis, NemesisProfile profile) {
+        AttributeInstance speedAttr = nemesis.getAttribute(Attributes.MOVEMENT_SPEED);
+        if (speedAttr != null) {
+            speedAttr.setBaseValue(speedAttr.getBaseValue()
+                * (1.0 + profile.getRangedResistanceBonus() * RANGED_SPEED_BONUS_WEIGHT));
+        }
+        AttributeInstance knockbackAttr = nemesis.getAttribute(Attributes.KNOCKBACK_RESISTANCE);
+        if (knockbackAttr != null) {
+            knockbackAttr.setBaseValue(1.0); // 完全免疫击退
+        }
+    }
+
+    /**
+     * 法师玩家风格：宿敌获得巨额血量
+     *
+     * @param nemesis 宿敌实体
+     * @param profile 玩家宿敌档案
+     */
+    private static void applyMagicStyleBuffs(Mob nemesis, NemesisProfile profile) {
+        AttributeInstance healthAttr = nemesis.getAttribute(Attributes.MAX_HEALTH);
+        if (healthAttr != null) {
+            double multiplier = 1.0 + profile.getMagicResistanceBonus() * MAGIC_HEALTH_BONUS_WEIGHT;
+            multiplier = clampByCap(multiplier, Config.MAX_HEALTH_MULTIPLIER.get());
+            healthAttr.setBaseValue(healthAttr.getBaseValue() * multiplier);
+        }
     }
 
     /**
      * 应用基础加成（无档案时）
      *
      * @param nemesis 宿敌实体
+     * @param random 世界随机源，用于随机分布
      */
-    private static void applyBasicBuffs(Mob nemesis) {
-        var healthAttr = nemesis.getAttribute(Attributes.MAX_HEALTH);
-        double newHealth = 0;
-        if (healthAttr != null) {
-            // 大幅提升血量 - 基础5倍，加上随机波动
-            newHealth = healthAttr.getBaseValue() * 5.0;
+    private static void applyBasicBuffs(Mob nemesis, RandomSource random) {
+        // 大幅提升血量 - 基础5倍，加上随机波动，经配置上限钳制
+        applyHealthWithDistribution(nemesis,
+            clampByCap(BASIC_HEALTH_MULTIPLIER, Config.MAX_HEALTH_MULTIPLIER.get()), random);
 
-            // 应用随机分布
-            if (Config.ENABLE_RANDOM_DISTRIBUTION.get()) {
-                double minFactor = Config.RANDOM_MIN_FACTOR.get();
-                double maxFactor = Config.RANDOM_MAX_FACTOR.get();
-                newHealth = newHealth * (minFactor + (maxFactor - minFactor) * Math.random());
-            }
-
-            healthAttr.setBaseValue(newHealth);
-            nemesis.setHealth((float) newHealth);
-        }
-
-        // 大幅提升攻击力 - 3倍基础攻击
-        var damageAttr = nemesis.getAttribute(Attributes.ATTACK_DAMAGE);
+        // 大幅提升攻击力 - 3倍基础攻击，经配置上限钳制
+        AttributeInstance damageAttr = nemesis.getAttribute(Attributes.ATTACK_DAMAGE);
         if (damageAttr != null) {
-            damageAttr.setBaseValue(damageAttr.getBaseValue() * 3.0);
+            double attackMultiplier = clampByCap(BASIC_ATTACK_MULTIPLIER, Config.MAX_DAMAGE_MULTIPLIER.get());
+            damageAttr.setBaseValue(damageAttr.getBaseValue() * attackMultiplier);
         }
 
-        // 增加护甲 - 让宿敌更耐打
-        var armorAttr = nemesis.getAttribute(Attributes.ARMOR);
-        if (armorAttr != null) {
-            armorAttr.setBaseValue(armorAttr.getBaseValue() + 10.0);
-        }
-
-        // 增加护甲韧性
-        var toughnessAttr = nemesis.getAttribute(Attributes.ARMOR_TOUGHNESS);
-        if (toughnessAttr != null) {
-            toughnessAttr.setBaseValue(toughnessAttr.getBaseValue() + 5.0);
-        }
+        applyFlatDefenseBuffs(nemesis, BASIC_ARMOR_BONUS, BASIC_TOUGHNESS_BONUS);
 
         // 增加攻击速度 - 让宿敌攻击更频繁
-        var attackSpeedAttr = nemesis.getAttribute(Attributes.ATTACK_SPEED);
+        AttributeInstance attackSpeedAttr = nemesis.getAttribute(Attributes.ATTACK_SPEED);
         if (attackSpeedAttr != null) {
-            attackSpeedAttr.setBaseValue(attackSpeedAttr.getBaseValue() * 2.0);
+            attackSpeedAttr.setBaseValue(attackSpeedAttr.getBaseValue() * BASIC_ATTACK_SPEED_MULTIPLIER);
         }
 
         // 增加击退抗性 - 防止被无限击退
-        var knockbackAttr = nemesis.getAttribute(Attributes.KNOCKBACK_RESISTANCE);
+        AttributeInstance knockbackAttr = nemesis.getAttribute(Attributes.KNOCKBACK_RESISTANCE);
         if (knockbackAttr != null) {
-            knockbackAttr.setBaseValue(0.8);
+            knockbackAttr.setBaseValue(BASIC_KNOCKBACK_RESISTANCE);
         }
 
+        applyNemesisIdentity(nemesis);
+    }
+
+    /**
+     * 应用护甲与护甲韧性固定加成（档案与基础路径共用）
+     *
+     * 护甲加成经 ENABLE_ENEMY_BONUS_CAP 与 MAX_ARMOR_MULTIPLIER 钳制
+     *
+     * @param nemesis 宿敌实体
+     * @param armorBonus 护甲固定加成
+     * @param toughnessBonus 护甲韧性固定加成
+     */
+    private static void applyFlatDefenseBuffs(Mob nemesis, double armorBonus, double toughnessBonus) {
+        AttributeInstance armorAttr = nemesis.getAttribute(Attributes.ARMOR);
+        if (armorAttr != null) {
+            armorAttr.setBaseValue(clampAdditiveByCap(armorAttr.getBaseValue(), armorBonus,
+                Config.MAX_ARMOR_MULTIPLIER.get()));
+        }
+        AttributeInstance toughnessAttr = nemesis.getAttribute(Attributes.ARMOR_TOUGHNESS);
+        if (toughnessAttr != null) {
+            toughnessAttr.setBaseValue(toughnessAttr.getBaseValue() + toughnessBonus);
+        }
+    }
+
+    /**
+     * 按随机分布应用血量加成并同步当前血量
+     *
+     * @param nemesis 宿敌实体
+     * @param multiplier 血量倍率（已钳制）
+     * @param random 世界随机源
+     */
+    private static void applyHealthWithDistribution(Mob nemesis, double multiplier, RandomSource random) {
+        AttributeInstance healthAttr = nemesis.getAttribute(Attributes.MAX_HEALTH);
+        if (healthAttr == null) {
+            return;
+        }
+        double newHealth = healthAttr.getBaseValue() * multiplier;
+
+        // 应用随机分布
+        if (Config.ENABLE_RANDOM_DISTRIBUTION.get()) {
+            double minFactor = Config.RANDOM_MIN_FACTOR.get();
+            double maxFactor = Config.RANDOM_MAX_FACTOR.get();
+            newHealth = newHealth * (minFactor + (maxFactor - minFactor) * random.nextDouble());
+        }
+
+        healthAttr.setBaseValue(newHealth);
+        nemesis.setHealth((float) newHealth);
+    }
+
+    /**
+     * 设置宿敌自定义名称并打上宿敌标记（档案与基础路径共用）
+     *
+     * @param nemesis 宿敌实体
+     */
+    private static void applyNemesisIdentity(Mob nemesis) {
+        // 设置自定义名称（使用 Component 拼接，保留客户端本地化）
         nemesis.setCustomName(Component.translatable("adaptive_nemesis.command.summon.name_prefix")
             .append(nemesis.getName().copy()));
         nemesis.setCustomNameVisible(true);
 
-        // 打上宿敌标记，供铁魔法等兼容层识别（仅宿敌应用法术抗性/强度加成）
+        // 打上宿敌标记，供铁魔法等兼容层识别（宿敌应用法术抗性加成，施法怪另获法术强度加成）
         nemesis.getPersistentData().putBoolean(NemesisSystem.NEMESIS_TAG, true);
+    }
+
+    /**
+     * 倍率类加成按配置上限钳制
+     *
+     * @param multiplier 待钳制的倍率
+     * @param capValue 配置的上限值
+     * @return 未开启上限时原样返回，否则返回不超过上限的倍率
+     */
+    private static double clampByCap(double multiplier, double capValue) {
+        if (!Config.ENABLE_ENEMY_BONUS_CAP.get()) {
+            return multiplier;
+        }
+        return Math.min(multiplier, capValue);
+    }
+
+    /**
+     * 固定值加成按配置上限钳制
+     *
+     * @param baseValue 属性基础值
+     * @param bonus 待附加的固定加成
+     * @param capMultiplier 配置的上限倍率（相对基础值）
+     * @return 未开启上限时返回 baseValue + bonus，否则不超过 baseValue * capMultiplier
+     */
+    private static double clampAdditiveByCap(double baseValue, double bonus, double capMultiplier) {
+        if (!Config.ENABLE_ENEMY_BONUS_CAP.get()) {
+            return baseValue + bonus;
+        }
+        return Math.min(baseValue + bonus, baseValue * capMultiplier);
     }
 
     /**
      * 发送宿敌通知
      *
      * @param player 目标玩家
-     * @param nemesisName 宿敌名称
+     * @param nemesisName 宿敌名称组件（保留客户端本地化）
      */
-    private static void sendNemesisNotification(ServerPlayer player, String nemesisName) {
+    private static void sendNemesisNotification(ServerPlayer player, Component nemesisName) {
         // 发送标题
         player.connection.send(new net.minecraft.network.protocol.game.ClientboundSetTitleTextPacket(
             Component.translatable("adaptive_nemesis.command.summon.title_arrived")
@@ -354,15 +513,13 @@ public class SummonNemesisCommand {
      * 获取实体类型
      *
      * @param type 类型字符串
+     * @param random 世界随机源，用于随机选择
      * @return 实体类型
      */
     @SuppressWarnings("unchecked")
-    private static EntityType<? extends Mob> getEntityType(String type) {
+    private static EntityType<? extends Mob> getEntityType(String type, RandomSource random) {
         if (type.equals("random")) {
-            // 随机选择
-            java.util.Random random = new java.util.Random();
-            String[] types = {"zombie", "skeleton", "creeper", "spider", "witch"};
-            type = types[random.nextInt(types.length)];
+            type = RANDOM_CANDIDATES[random.nextInt(RANDOM_CANDIDATES.length)];
         }
 
         return switch (type) {
@@ -376,17 +533,17 @@ public class SummonNemesisCommand {
     }
 
     /**
-     * 获取宿敌名称
+     * 获取宿敌名称（返回组件以保留客户端本地化）
      *
      * @param entityType 实体类型
-     * @return 宿敌名称
+     * @return 宿敌名称组件
      */
-    private static String getNemesisName(EntityType<? extends Mob> entityType) {
-        if (entityType == EntityType.ZOMBIE) return Component.translatable("adaptive_nemesis.command.summon.name_zombie").getString();
-        if (entityType == EntityType.SKELETON) return Component.translatable("adaptive_nemesis.command.summon.name_skeleton").getString();
-        if (entityType == EntityType.CREEPER) return Component.translatable("adaptive_nemesis.command.summon.name_creeper").getString();
-        if (entityType == EntityType.SPIDER) return Component.translatable("adaptive_nemesis.command.summon.name_spider").getString();
-        if (entityType == EntityType.WITCH) return Component.translatable("adaptive_nemesis.command.summon.name_witch").getString();
-        return Component.translatable("adaptive_nemesis.command.summon.name_unknown").getString();
+    private static Component getNemesisName(EntityType<? extends Mob> entityType) {
+        if (entityType == EntityType.ZOMBIE) return Component.translatable("adaptive_nemesis.command.summon.name_zombie");
+        if (entityType == EntityType.SKELETON) return Component.translatable("adaptive_nemesis.command.summon.name_skeleton");
+        if (entityType == EntityType.CREEPER) return Component.translatable("adaptive_nemesis.command.summon.name_creeper");
+        if (entityType == EntityType.SPIDER) return Component.translatable("adaptive_nemesis.command.summon.name_spider");
+        if (entityType == EntityType.WITCH) return Component.translatable("adaptive_nemesis.command.summon.name_witch");
+        return Component.translatable("adaptive_nemesis.command.summon.name_unknown");
     }
 }

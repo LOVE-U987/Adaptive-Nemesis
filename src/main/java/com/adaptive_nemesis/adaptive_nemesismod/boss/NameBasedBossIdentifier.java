@@ -10,11 +10,11 @@ import java.util.Set;
 
 /**
  * 基于实体名称的Boss识别策略
- * 
+ *
  * 通过实体注册ID或名称中的关键词识别模组添加的Boss。
  * 关键词列表可通过配置文件动态调整，支持模组兼容性扩展。
- * 
- * 🛡️ 防误判机制：
+ *
+ * 防误判机制：
  * 部分普通怪物（如凋零骷髅 wither_skeleton）的实体注册名中可能包含 Boss 关键词（如"wither"），
  * 通过排除实体列表过滤这些假阳性，防止它们获得Boss额外加成。
  * 
@@ -51,7 +51,7 @@ public class NameBasedBossIdentifier implements BossIdentifier {
 
     @Override
     public boolean isBoss(LivingEntity entity) {
-        // 🚫 检查是否在排除列表中
+        // 检查是否在排除列表中
         // 防止实体名称中包含 Boss 关键词但不是真正 Boss 的普通怪物被误判
         if (isExcluded(entity)) {
             return false;
@@ -61,7 +61,7 @@ public class NameBasedBossIdentifier implements BossIdentifier {
 
     @Override
     public String getBossType(LivingEntity entity) {
-        // 🚫 排除列表中的实体不进行 Boss 类型推断
+        // 排除列表中的实体不进行 Boss 类型推断
         if (isExcluded(entity)) {
             return null;
         }
@@ -124,9 +124,11 @@ public class NameBasedBossIdentifier implements BossIdentifier {
         }
 
         if (keywords != null) {
-            // 按关键词长度升序匹配，优先返回更具体的名称（如 ignis）而非模组/通用名（如 cataclysm, boss）
+            // 按关键词长度降序匹配（最长优先），优先返回更具体的关键词
+            // （如 wither_boss）而非通用短词（如 boss），
+            // 使 Boss 类型标识尽量保留模组命名的细节信息
             return keywords.stream()
-                .sorted(java.util.Comparator.comparingInt(String::length))
+                .sorted(java.util.Comparator.comparingInt(String::length).reversed())
                 .filter(lower::contains)
                 .findFirst()
                 .orElse(null);

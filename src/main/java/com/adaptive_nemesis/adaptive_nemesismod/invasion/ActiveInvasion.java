@@ -65,6 +65,12 @@ public class ActiveInvasion {
     /** 是否玩家离线 */
     private boolean playerOffline;
 
+    /** 结算事件是否已触发（防止死亡、超时等多条路径重复触发 KubeJS 结束事件与奖励结算） */
+    private boolean endEventFired;
+
+    /** 目标玩家连续离线的 tick 数（F-11：离线期间状态机冻结，累计超时后由系统判失败） */
+    private int offlineTicks;
+
     // ======================== 状态机字段 ========================
 
     /** 当前状态 */
@@ -207,6 +213,8 @@ public class ActiveInvasion {
 
     /**
      * Tick更新
+     * 玩家离线时状态机完全冻结（计时、刷怪、血条均不推进，F-11），
+     * 仅累计离线 tick 数，超过阈值后由 InvasionSystem 判定失败。
      */
     public void tick() {
         if (completed) {
@@ -216,15 +224,13 @@ public class ActiveInvasion {
         Player player = getPlayer();
 
         if (player == null) {
-            if (!playerOffline) {
-                playerOffline = true;
-            }
+            playerOffline = true;
+            offlineTicks++;
             return;
         }
 
-        if (playerOffline) {
-            playerOffline = false;
-        }
+        playerOffline = false;
+        offlineTicks = 0;
 
         if (player.isDeadOrDying()) {
             defeated = true;
@@ -245,18 +251,8 @@ public class ActiveInvasion {
     }
 
     /**
-     * 是否应该生成下一波次
-     * 在WAVE_ONGOING状态且所有怪物已被击杀时返回true
-     * 
-     * @return 是否生成下一波
-     */
-    public boolean shouldStartNextWave() {
-        return phase.state == Phase.State.UNDEAD_DEFEATED && !isLastWave();
-    }
-
-    /**
      * 是否已完成所有波次
-     * 
+     *
      * @return 是否最后一波
      */
     public boolean isLastWave() {
@@ -275,20 +271,8 @@ public class ActiveInvasion {
     }
 
     /**
-     * 添加敌人到追踪列表
-     * 
-     * @param enemy 敌人实体
-     */
-    public void addEnemy(LivingEntity enemy) {
-        // 兼容旧接口：将实体添加到mobsLeft
-        MobInfo mobInfo = new MobInfo(enemy.getType(), enemy.blockPosition(), false);
-        mobInfo.uuid = enemy.getUUID();
-        mobsLeft.add(mobInfo);
-    }
-
-    /**
      * 判断实体是否为入侵敌人
-     * 
+     *
      * @param entity 实体
      * @return 是否为入侵敌人
      */
@@ -298,19 +282,11 @@ public class ActiveInvasion {
 
     /**
      * 敌人死亡处理
-     * 
+     *
      * @param enemy 死亡的敌人
      */
     public void onEnemyDeath(LivingEntity enemy) {
         mobsLeft.removeIf(m -> m.uuid != null && m.uuid.equals(enemy.getUUID()));
-    }
-
-    /**
-     * 简化版敌人死亡处理
-     */
-    public void onEnemyDeath() {
-        // 简化版：移除第一个未指定UUID的敌人
-        mobsLeft.removeIf(m -> m.uuid == null);
     }
 
     /**
@@ -502,7 +478,8 @@ public class ActiveInvasion {
     /**
      * 计算指定方向上的生成偏移
      * 从选定方向的区域边缘（半径-15格）生成，并沿垂直轴随机散布
-     * 
+     * 随机源使用所在世界的 level.random（F-49：避免每次调用新建 Random 实例）
+     *
      * @param areaRadius 区域半径
      * @return 偏移向量（相对centerPos）
      */
@@ -510,12 +487,11 @@ public class ActiveInvasion {
         int spawnRadius = areaRadius - 15;
         int dx = direction.z != 0 ? 24 : 8;  // Z轴方向时沿X轴散布
         int dz = direction.x != 0 ? 24 : 8;  // X轴方向时沿Z轴散布
-        java.util.Random random = new java.util.Random();
 
         return new net.minecraft.world.phys.Vec3(
-            direction.x * spawnRadius + (random.nextDouble() * 2.0 - 1.0) * dx,
+            direction.x * spawnRadius + (level.random.nextDouble() * 2.0 - 1.0) * dx,
             0,
-            direction.z * spawnRadius + (random.nextDouble() * 2.0 - 1.0) * dz
+            direction.z * spawnRadius + (level.random.nextDouble() * 2.0 - 1.0) * dz
         );
     }
 
@@ -562,20 +538,11 @@ public class ActiveInvasion {
 
     /**
      * 是否还有待生成的怪物
-     * 
+     *
      * @return 是否有
      */
     public boolean hasMobsToSpawn() {
         return mobsLeft.stream().anyMatch(m -> m.uuid == null);
-    }
-
-    /**
-     * 获取生成计时器当前值
-     * 
-     * @return 计时器tick数
-     */
-    public int getSpawnTickCounter() {
-        return spawnTickCounter;
     }
 
     /**
@@ -680,7 +647,7 @@ public class ActiveInvasion {
 
     /**
      * 是否完成
-     * 
+     *
      * @return 是否完成
      */
     public boolean isCompleted() {
@@ -689,7 +656,7 @@ public class ActiveInvasion {
 
     /**
      * 设置完成状态
-     * 
+     *
      * @param completed 是否完成
      */
     public void setCompleted(boolean completed) {
@@ -697,17 +664,25 @@ public class ActiveInvasion {
     }
 
     /**
-     * 是否胜利
-     * 
-     * @return 是否胜利
+     * 结算事件是否已触发
+     * 用于防止死亡、超时等多条完成路径重复触发 KubeJS 结束事件（F-08）
+     *
+     * @return 是否已触发
      */
-    public boolean isVictory() {
-        return phase.state == Phase.State.FINISHED && !defeated;
+    public boolean isEndEventFired() {
+        return endEventFired;
+    }
+
+    /**
+     * 标记结算事件已触发
+     */
+    public void markEndEventFired() {
+        this.endEventFired = true;
     }
 
     /**
      * 是否失败
-     * 
+     *
      * @return 是否失败
      */
     public boolean isDefeated() {
@@ -716,7 +691,7 @@ public class ActiveInvasion {
 
     /**
      * 设置失败状态
-     * 
+     *
      * @param defeated 是否失败
      */
     public void setDefeated(boolean defeated) {
@@ -725,7 +700,7 @@ public class ActiveInvasion {
 
     /**
      * 是否玩家离线
-     * 
+     *
      * @return 是否离线
      */
     public boolean isPlayerOffline() {
@@ -733,14 +708,12 @@ public class ActiveInvasion {
     }
 
     /**
-     * 获取当前波次进度文本
-     * 
-     * @return 进度字符串
+     * 获取目标玩家连续离线的 tick 数（F-11）
+     *
+     * @return 离线 tick 数，玩家在线时为 0
      */
-    public String getWaveProgress() {
-        return String.format("%d/%d",
-            mobsLeft.stream().filter(m -> m.uuid == null).count(),
-            mobsLeft.size());
+    public int getOfflineTicks() {
+        return offlineTicks;
     }
 
     /**
@@ -851,6 +824,10 @@ public class ActiveInvasion {
         public double healthMultiplier = 1.0;
         /** 攻击倍率 */
         public double damageMultiplier = 1.0;
+        /** 所在波次的难度倍率（数据包 WaveData.difficulty_multiplier，与全局倍率相乘，F-12） */
+        public double waveMultiplier = 1.0;
+        /** 波内加权随机选择的权重（数据包 EnemyData.weight，F-12） */
+        public int weight = 1;
 
         /**
          * 构造函数
@@ -884,22 +861,12 @@ public class ActiveInvasion {
 
         /**
          * 获取当前血量
-         * 
+         *
          * @param level 服务端世界
          * @return 当前血量
          */
         public float getHealth(ServerLevel level) {
             return toEntity(level) instanceof LivingEntity living ? living.getHealth() : 0.0f;
-        }
-
-        /**
-         * 获取最大血量
-         * 
-         * @param level 服务端世界
-         * @return 最大血量
-         */
-        public float getMaxHealth(ServerLevel level) {
-            return toEntity(level) instanceof LivingEntity living ? living.getMaxHealth() : 0.0f;
         }
     }
 }

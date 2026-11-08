@@ -3,10 +3,13 @@ package com.adaptive_nemesis.adaptive_nemesismod.compat;
 import com.adaptive_nemesis.adaptive_nemesismod.Config;
 import com.adaptive_nemesis.adaptive_nemesismod.AdaptiveNemesisMod;
 import com.adaptive_nemesis.adaptive_nemesismod.nemesis.NemesisSystem;
+import com.adaptive_nemesis.adaptive_nemesismod.util.SafeMath;
 
+import io.redspace.ironsspellbooks.api.entity.IMagicEntity;
 import io.redspace.ironsspellbooks.api.magic.MagicData;
 import io.redspace.ironsspellbooks.api.registry.AttributeRegistry;
 import io.redspace.ironsspellbooks.item.SpellBook;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.ai.attributes.AttributeInstance;
@@ -19,7 +22,8 @@ import net.minecraft.world.item.ItemStack;
  * - 获取玩家法力值
  * - 获取玩家法术强度
  * - 评估玩家法术装备
- * - 为怪物添加铁魔法属性加成
+ * - 为怪物添加铁魔法属性加成（双通道：施法怪获得法术强度/法力/施法效率，
+ *   宿敌获得通用法术抗性，普通怪不加成）
  *
  * @author Adaptive Nemesis Team
  * @version 1.0.0
@@ -46,19 +50,6 @@ public class IronsSpellsCompat {
             return;
         }
         attr.setBaseValue(value);
-    }
-
-    /**
-     * 安全获取双精度浮点数 - 防止 NaN/Infinity 传播
-     *
-     * @param value 待检查的值
-     * @return 如果值有效则返回原值，否则返回 0.0
-     */
-    private static double safeDouble(double value) {
-        if (Double.isNaN(value) || Double.isInfinite(value)) {
-            return 0.0;
-        }
-        return value;
     }
 
     /**
@@ -126,8 +117,10 @@ public class IronsSpellsCompat {
             value += 10.0;
         }
 
-        // 检查物品ID是否包含法术相关关键词
-        String itemId = stack.getItem().toString().toLowerCase();
+        // 基于注册表 ID 的子串匹配（F-50）：Item.toString() 的返回格式无契约保证，
+        // 注册 ID（如 "irons_spellbooks:ring_of_arcane"）才是稳定标识；
+        // 命名空间前缀对下方关键词子串匹配无影响，故不做命名空间剥离
+        String itemId = BuiltInRegistries.ITEM.getKey(stack.getItem()).toString().toLowerCase();
         if (itemId.contains("ring") || itemId.contains("amulet") || itemId.contains("talisman")) {
             value += 3.0;
         }
@@ -141,10 +134,13 @@ public class IronsSpellsCompat {
     /**
      * 为怪物应用铁魔法属性加成
      *
-     * 仅对宿敌（打有 NEMESIS_TAG 标记）生效：
-     * 普通怪物不再获得法术抗性/法术强度/法力等法术类加成，
+     * 双通道判定：
+     * - 施法怪通道：实现 IMagicEntity 的实体（铁魔法 AbstractSpellCastingMob 系等）
+     *   获得法术强度/法力/施法效率加成，与是否宿敌无关；
+     * - 宿敌通道：打有 NEMESIS_TAG 标记的实体获得法术抗性加成。
+     * 两者皆非的普通怪物不应用任何法术类加成，
      * 避免法师玩家的多段、召唤类法术在打群怪时被逐只减免。
-     * 同时法术强度与法术抗性的加成倍率分别受
+     * 法术强度与法术抗性的加成倍率分别受
      * maxSpellPowerMultiplier / maxSpellResistMultiplier 配置上限约束。
      *
      * @param mob 目标怪物
@@ -152,83 +148,32 @@ public class IronsSpellsCompat {
      */
     public void applyMobBuffs(Mob mob, double multiplier) {
         try {
-            // 非宿敌怪不应用铁魔法法术类加成
-            if (!mob.getPersistentData().getBoolean(NemesisSystem.NEMESIS_TAG)) {
+            boolean isSpellcaster = mob instanceof IMagicEntity;
+            boolean isNemesis = mob.getPersistentData().getBoolean(NemesisSystem.NEMESIS_TAG);
+
+            // 普通怪（非施法且非宿敌）不应用铁魔法法术类加成
+            if (!isSpellcaster && !isNemesis) {
                 return;
             }
 
-            // 确保倍率不低于 1.0，防止随机因子导致属性降低
-            double effectiveMultiplier = safeDouble(Math.max(1.0, multiplier));
+            // 倍率语境统一使用 SafeMath（F-47）：NaN/Infinity 回退 1.0（中性倍率），
+            // 旧实现回退 0.0 会把加成整体清零
+            double effectiveMultiplier = SafeMath.safeDouble(Math.max(1.0, multiplier));
 
             // 法术强度/施法资源加成倍率受 maxSpellPowerMultiplier 上限约束
             double powerCapped = Math.min(effectiveMultiplier, Config.MAX_SPELL_POWER_MULTIPLIER.get());
             // 法术抗性加成倍率受 maxSpellResistMultiplier 上限约束
             double resistCapped = Math.min(effectiveMultiplier, Config.MAX_SPELL_RESIST_MULTIPLIER.get());
 
-            // 1. 增加法术强度 (Spell Power) - 如果有法术攻击
-            // NeoForge 1.21.1: DeferredHolder可以直接作为Holder<Attribute>传入
-            AttributeInstance spellPowerAttr = mob.getAttribute(AttributeRegistry.SPELL_POWER);
-            if (spellPowerAttr != null) {
-                double originalPower = spellPowerAttr.getBaseValue();
-                double newPower = Math.max(originalPower, originalPower * powerCapped);
-                safeSetAttribute(spellPowerAttr, newPower, originalPower);
-
-                if (Config.ENABLE_DEBUG_LOG.get()) {
-                    AdaptiveNemesisMod.LOGGER.debug(
-                        "怪物 {} 法术强度: {} -> {}",
-                        mob.getName().getString(),
-                        String.format("%.2f", originalPower),
-                        String.format("%.2f", newPower)
-                    );
-                }
+            // 施法怪通道：法术强度/法力/施法效率（旧公式保持不动）
+            if (isSpellcaster) {
+                applyCasterBuffs(mob, effectiveMultiplier, powerCapped);
             }
 
-            // 2. 增加法力值 (Max Mana)
-            AttributeInstance maxManaAttr = mob.getAttribute(AttributeRegistry.MAX_MANA);
-            if (maxManaAttr != null) {
-                double originalMana = maxManaAttr.getBaseValue();
-                double newMana = Math.max(originalMana, originalMana * powerCapped);
-                safeSetAttribute(maxManaAttr, newMana, originalMana);
-
-                if (Config.ENABLE_DEBUG_LOG.get()) {
-                    AdaptiveNemesisMod.LOGGER.debug(
-                        "怪物 {} 法力值: {} -> {}",
-                        mob.getName().getString(),
-                        String.format("%.2f", originalMana),
-                        String.format("%.2f", newMana)
-                    );
-                }
+            // 宿敌通道：通用法术抗性（温和乘算，倍率受 maxSpellResistMultiplier 上限约束）
+            if (isNemesis) {
+                applySpellResistance(mob, resistCapped);
             }
-
-            // 3. 增加法力恢复 (Mana Regen)
-            AttributeInstance manaRegenAttr = mob.getAttribute(AttributeRegistry.MANA_REGEN);
-            if (manaRegenAttr != null) {
-                double originalRegen = manaRegenAttr.getBaseValue();
-                double newRegen = Math.max(originalRegen, originalRegen * (1.0 + (effectiveMultiplier - 1.0) * 0.5));
-                safeSetAttribute(manaRegenAttr, newRegen, originalRegen);
-            }
-
-            // 4. 增加冷却缩减 (Cooldown Reduction)
-            AttributeInstance cooldownAttr = mob.getAttribute(AttributeRegistry.COOLDOWN_REDUCTION);
-            if (cooldownAttr != null) {
-                double originalCooldown = cooldownAttr.getBaseValue();
-                double newCooldown = Math.max(originalCooldown, originalCooldown * (1.0 + (effectiveMultiplier - 1.0) * 0.3));
-                safeSetAttribute(cooldownAttr, newCooldown, originalCooldown);
-            }
-
-            // 5. 增加施法时间缩减 (Cast Time Reduction)
-            AttributeInstance castTimeAttr = mob.getAttribute(AttributeRegistry.CAST_TIME_REDUCTION);
-            if (castTimeAttr != null) {
-                double originalCastTime = castTimeAttr.getBaseValue();
-                double newCastTime = Math.max(originalCastTime, originalCastTime * (1.0 + (effectiveMultiplier - 1.0) * 0.3));
-                safeSetAttribute(castTimeAttr, newCastTime, originalCastTime);
-            }
-
-            // 6. 增加各系魔法抗性（倍率受 maxSpellResistMultiplier 上限约束）
-            applyMagicResistance(mob, resistCapped);
-
-            // 7. 增加各系法术强度（倍率受 maxSpellPowerMultiplier 上限约束）
-            applySpellPower(mob, powerCapped);
 
         } catch (Exception e) {
             AdaptiveNemesisMod.LOGGER.error("应用铁魔法属性加成失败: {}", e.getMessage());
@@ -236,7 +181,110 @@ public class IronsSpellsCompat {
     }
 
     /**
-     * 应用魔法抗性加成
+     * 应用施法怪专属加成（编排：输出资源 + 施法效率两组）
+     *
+     * 仅对实现 IMagicEntity 的施法怪生效。法术伤害公式为
+     * 基础值 x 通用法术强度 x 学派法术强度，本通道只乘通用
+     * SPELL_POWER，不再触碰九大学派强度，避免两因子同乘导致
+     * 实际伤害按倍率平方增长。
+     *
+     * @param mob 目标怪物
+     * @param effectiveMultiplier 已做下限保护的强化倍率（供施法效率温和公式使用）
+     * @param powerCapped 受 maxSpellPowerMultiplier 封顶的法术强度倍率
+     */
+    private void applyCasterBuffs(Mob mob, double effectiveMultiplier, double powerCapped) {
+        // 1. 法术输出资源：通用法术强度 + 法力上限
+        applyCasterPowerBuffs(mob, powerCapped);
+
+        // 2. 施法效率：法力恢复 / 冷却缩减 / 施法时间缩减（既有温和公式）
+        applyCasterEfficiencyBuffs(mob, effectiveMultiplier);
+    }
+
+    /**
+     * 应用施法怪的输出资源加成（通用法术强度 + 法力上限）
+     *
+     * @param mob 目标怪物
+     * @param powerCapped 受 maxSpellPowerMultiplier 封顶的法术强度倍率
+     */
+    private void applyCasterPowerBuffs(Mob mob, double powerCapped) {
+        // 增加通用法术强度 (Spell Power)
+        // NeoForge 1.21.1: DeferredHolder可以直接作为Holder<Attribute>传入
+        AttributeInstance spellPowerAttr = mob.getAttribute(AttributeRegistry.SPELL_POWER);
+        if (spellPowerAttr != null) {
+            double originalPower = spellPowerAttr.getBaseValue();
+            double newPower = Math.max(originalPower, originalPower * powerCapped);
+            safeSetAttribute(spellPowerAttr, newPower, originalPower);
+
+            if (Config.ENABLE_DEBUG_LOG.get()) {
+                AdaptiveNemesisMod.LOGGER.debug(
+                    "怪物 {} 法术强度: {} -> {}",
+                    mob.getName().getString(),
+                    String.format("%.2f", originalPower),
+                    String.format("%.2f", newPower)
+                );
+            }
+        }
+
+        // 增加法力值 (Max Mana)
+        AttributeInstance maxManaAttr = mob.getAttribute(AttributeRegistry.MAX_MANA);
+        if (maxManaAttr != null) {
+            double originalMana = maxManaAttr.getBaseValue();
+            double newMana = Math.max(originalMana, originalMana * powerCapped);
+            safeSetAttribute(maxManaAttr, newMana, originalMana);
+
+            if (Config.ENABLE_DEBUG_LOG.get()) {
+                AdaptiveNemesisMod.LOGGER.debug(
+                    "怪物 {} 法力值: {} -> {}",
+                    mob.getName().getString(),
+                    String.format("%.2f", originalMana),
+                    String.format("%.2f", newMana)
+                );
+            }
+        }
+    }
+
+    /**
+     * 应用施法怪的施法效率加成（法力恢复/冷却缩减/施法时间缩减）
+     *
+     * 三项均沿用既有温和公式（(mult-1)*0.5 / (mult-1)*0.3），不扩大改动面。
+     *
+     * @param mob 目标怪物
+     * @param effectiveMultiplier 已做下限保护的强化倍率
+     */
+    private void applyCasterEfficiencyBuffs(Mob mob, double effectiveMultiplier) {
+        // 增加法力恢复 (Mana Regen)
+        AttributeInstance manaRegenAttr = mob.getAttribute(AttributeRegistry.MANA_REGEN);
+        if (manaRegenAttr != null) {
+            double originalRegen = manaRegenAttr.getBaseValue();
+            double newRegen = Math.max(originalRegen, originalRegen * (1.0 + (effectiveMultiplier - 1.0) * 0.5));
+            safeSetAttribute(manaRegenAttr, newRegen, originalRegen);
+        }
+
+        // 增加冷却缩减 (Cooldown Reduction)
+        AttributeInstance cooldownAttr = mob.getAttribute(AttributeRegistry.COOLDOWN_REDUCTION);
+        if (cooldownAttr != null) {
+            double originalCooldown = cooldownAttr.getBaseValue();
+            double newCooldown = Math.max(originalCooldown, originalCooldown * (1.0 + (effectiveMultiplier - 1.0) * 0.3));
+            safeSetAttribute(cooldownAttr, newCooldown, originalCooldown);
+        }
+
+        // 增加施法时间缩减 (Cast Time Reduction)
+        AttributeInstance castTimeAttr = mob.getAttribute(AttributeRegistry.CAST_TIME_REDUCTION);
+        if (castTimeAttr != null) {
+            double originalCastTime = castTimeAttr.getBaseValue();
+            double newCastTime = Math.max(originalCastTime, originalCastTime * (1.0 + (effectiveMultiplier - 1.0) * 0.3));
+            safeSetAttribute(castTimeAttr, newCastTime, originalCastTime);
+        }
+    }
+
+    /**
+     * 应用通用法术抗性加成（宿敌通道）
+     *
+     * 铁魔法法术减伤公式为 2 - softCap(学派抗性 x 通用抗性)，
+     * 本方法只乘通用 SPELL_RESIST（属性定义基线 1.0），
+     * 不再触碰九大学派抗性：学派抗性的种族特性
+     * （如特定怪物自身的高火抗）完全交还铁魔法自身语义；
+     * 乘算倍率经 softCap 公式天然渐近封顶，不会接近免疫。
      *
      * 注意：调用方（applyMobBuffs）传入的 multiplier 已受
      * maxSpellResistMultiplier 配置封顶，此处直接使用即可。
@@ -244,156 +292,29 @@ public class IronsSpellsCompat {
      * @param mob 目标怪物
      * @param multiplier 已封顶的强化倍率
      */
-    private void applyMagicResistance(Mob mob, double multiplier) {
+    private void applySpellResistance(Mob mob, double multiplier) {
         try {
-            double safeMult = safeDouble(multiplier);
+            // 倍率语境统一使用 SafeMath（F-47）
+            double safeMult = SafeMath.safeDouble(multiplier);
 
-            // 火焰抗性
-            AttributeInstance fireResist = mob.getAttribute(AttributeRegistry.FIRE_MAGIC_RESIST);
-            if (fireResist != null) {
-                double original = fireResist.getBaseValue();
-                safeSetAttribute(fireResist, Math.max(original, original + (safeMult - 1.0) * 5.0), original);
-            }
+            AttributeInstance resistAttr = mob.getAttribute(AttributeRegistry.SPELL_RESIST);
+            if (resistAttr != null) {
+                double original = resistAttr.getBaseValue();
+                double newResist = Math.max(original, original * safeMult);
+                safeSetAttribute(resistAttr, newResist, original);
 
-            // 冰霜抗性
-            AttributeInstance iceResist = mob.getAttribute(AttributeRegistry.ICE_MAGIC_RESIST);
-            if (iceResist != null) {
-                double original = iceResist.getBaseValue();
-                safeSetAttribute(iceResist, Math.max(original, original + (safeMult - 1.0) * 5.0), original);
-            }
-
-            // 闪电抗性
-            AttributeInstance lightningResist = mob.getAttribute(AttributeRegistry.LIGHTNING_MAGIC_RESIST);
-            if (lightningResist != null) {
-                double original = lightningResist.getBaseValue();
-                safeSetAttribute(lightningResist, Math.max(original, original + (safeMult - 1.0) * 5.0), original);
-            }
-
-            // 神圣抗性
-            AttributeInstance holyResist = mob.getAttribute(AttributeRegistry.HOLY_MAGIC_RESIST);
-            if (holyResist != null) {
-                double original = holyResist.getBaseValue();
-                safeSetAttribute(holyResist, Math.max(original, original + (safeMult - 1.0) * 5.0), original);
-            }
-
-            // 末影抗性
-            AttributeInstance enderResist = mob.getAttribute(AttributeRegistry.ENDER_MAGIC_RESIST);
-            if (enderResist != null) {
-                double original = enderResist.getBaseValue();
-                safeSetAttribute(enderResist, Math.max(original, original + (safeMult - 1.0) * 5.0), original);
-            }
-
-            // 血魔法抗性
-            AttributeInstance bloodResist = mob.getAttribute(AttributeRegistry.BLOOD_MAGIC_RESIST);
-            if (bloodResist != null) {
-                double original = bloodResist.getBaseValue();
-                safeSetAttribute(bloodResist, Math.max(original, original + (safeMult - 1.0) * 5.0), original);
-            }
-
-            // 召唤抗性
-            AttributeInstance evocationResist = mob.getAttribute(AttributeRegistry.EVOCATION_MAGIC_RESIST);
-            if (evocationResist != null) {
-                double original = evocationResist.getBaseValue();
-                safeSetAttribute(evocationResist, Math.max(original, original + (safeMult - 1.0) * 5.0), original);
-            }
-
-            // 自然抗性
-            AttributeInstance natureResist = mob.getAttribute(AttributeRegistry.NATURE_MAGIC_RESIST);
-            if (natureResist != null) {
-                double original = natureResist.getBaseValue();
-                safeSetAttribute(natureResist, Math.max(original, original + (safeMult - 1.0) * 5.0), original);
-            }
-
-            // 远古抗性
-            AttributeInstance eldritchResist = mob.getAttribute(AttributeRegistry.ELDRITCH_MAGIC_RESIST);
-            if (eldritchResist != null) {
-                double original = eldritchResist.getBaseValue();
-                safeSetAttribute(eldritchResist, Math.max(original, original + (safeMult - 1.0) * 5.0), original);
+                if (Config.ENABLE_DEBUG_LOG.get()) {
+                    AdaptiveNemesisMod.LOGGER.debug(
+                        "怪物 {} 法术抗性: {} -> {}",
+                        mob.getName().getString(),
+                        String.format("%.2f", original),
+                        String.format("%.2f", newResist)
+                    );
+                }
             }
 
         } catch (Exception e) {
-            AdaptiveNemesisMod.LOGGER.error("应用魔法抗性加成失败: {}", e.getMessage());
-        }
-    }
-
-    /**
-     * 应用各系法术强度加成
-     *
-     * 注意：调用方（applyMobBuffs）传入的 multiplier 已受
-     * maxSpellPowerMultiplier 配置封顶，此处直接使用即可。
-     *
-     * @param mob 目标怪物
-     * @param multiplier 已封顶的强化倍率
-     */
-    private void applySpellPower(Mob mob, double multiplier) {
-        try {
-            double safeMult = safeDouble(multiplier);
-
-            // 火焰法术强度
-            AttributeInstance firePower = mob.getAttribute(AttributeRegistry.FIRE_SPELL_POWER);
-            if (firePower != null) {
-                double original = firePower.getBaseValue();
-                safeSetAttribute(firePower, Math.max(original, original * safeMult), original);
-            }
-
-            // 冰霜法术强度
-            AttributeInstance icePower = mob.getAttribute(AttributeRegistry.ICE_SPELL_POWER);
-            if (icePower != null) {
-                double original = icePower.getBaseValue();
-                safeSetAttribute(icePower, Math.max(original, original * safeMult), original);
-            }
-
-            // 闪电法术强度
-            AttributeInstance lightningPower = mob.getAttribute(AttributeRegistry.LIGHTNING_SPELL_POWER);
-            if (lightningPower != null) {
-                double original = lightningPower.getBaseValue();
-                safeSetAttribute(lightningPower, Math.max(original, original * safeMult), original);
-            }
-
-            // 神圣法术强度
-            AttributeInstance holyPower = mob.getAttribute(AttributeRegistry.HOLY_SPELL_POWER);
-            if (holyPower != null) {
-                double original = holyPower.getBaseValue();
-                safeSetAttribute(holyPower, Math.max(original, original * safeMult), original);
-            }
-
-            // 末影法术强度
-            AttributeInstance enderPower = mob.getAttribute(AttributeRegistry.ENDER_SPELL_POWER);
-            if (enderPower != null) {
-                double original = enderPower.getBaseValue();
-                safeSetAttribute(enderPower, Math.max(original, original * safeMult), original);
-            }
-
-            // 血魔法法术强度
-            AttributeInstance bloodPower = mob.getAttribute(AttributeRegistry.BLOOD_SPELL_POWER);
-            if (bloodPower != null) {
-                double original = bloodPower.getBaseValue();
-                safeSetAttribute(bloodPower, Math.max(original, original * safeMult), original);
-            }
-
-            // 召唤法术强度
-            AttributeInstance evocationPower = mob.getAttribute(AttributeRegistry.EVOCATION_SPELL_POWER);
-            if (evocationPower != null) {
-                double original = evocationPower.getBaseValue();
-                safeSetAttribute(evocationPower, Math.max(original, original * safeMult), original);
-            }
-
-            // 自然法术强度
-            AttributeInstance naturePower = mob.getAttribute(AttributeRegistry.NATURE_SPELL_POWER);
-            if (naturePower != null) {
-                double original = naturePower.getBaseValue();
-                safeSetAttribute(naturePower, Math.max(original, original * safeMult), original);
-            }
-
-            // 远古法术强度
-            AttributeInstance eldritchPower = mob.getAttribute(AttributeRegistry.ELDRITCH_SPELL_POWER);
-            if (eldritchPower != null) {
-                double original = eldritchPower.getBaseValue();
-                safeSetAttribute(eldritchPower, Math.max(original, original * safeMult), original);
-            }
-
-        } catch (Exception e) {
-            AdaptiveNemesisMod.LOGGER.error("应用法术强度加成失败: {}", e.getMessage());
+            AdaptiveNemesisMod.LOGGER.error("应用法术抗性加成失败: {}", e.getMessage());
         }
     }
 

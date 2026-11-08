@@ -1,13 +1,9 @@
 package com.adaptive_nemesis.adaptive_nemesismod.enemy;
 
-import java.util.HashMap;
-import java.util.Map;
 import java.util.UUID;
 
-import com.adaptive_nemesis.adaptive_nemesismod.AdaptiveNemesisMod;
 import com.adaptive_nemesis.adaptive_nemesismod.Config;
 
-import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.util.Mth;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.neoforge.event.tick.ServerTickEvent;
@@ -20,9 +16,11 @@ import net.neoforged.neoforge.event.tick.ServerTickEvent;
  * - 防止玩家通过临时切换装备控制难度
  * - 使用平滑缓动函数，让难度变化更自然
  *
- * 支持两种模式：
- * - 全局模式（默认）：所有玩家共享缓动
- * - 按玩家模式：每个玩家有独立的缓动（推荐）
+ * 仅支持全局模式：所有玩家共享同一份缓动状态。
+ * 历史上的"按玩家独立缓动"模式从未被任何调用方接线
+ * （唯一消费方始终是 {@link #getEasedMultiplier(double)} 全局路径），
+ * 已在死代码清理中移除；{@link #clearPlayerState(UUID)} 保留空实现，
+ * 以兼容 event/ModEventHandler 登出清理段的既有调用。
  *
  * @author Adaptive Nemesis Team
  * @version 1.1.0
@@ -32,14 +30,9 @@ public class DifficultyTracker {
     private static DifficultyTracker INSTANCE;
 
     /**
-     * 全局缓动状态（兼容旧版本）
+     * 全局缓动状态（全服共享）
      */
     private final DifficultyState globalState = new DifficultyState();
-
-    /**
-     * 玩家级别的缓动状态（UUID -> DifficultyState）
-     */
-    private final Map<UUID, DifficultyState> playerStates = new HashMap<>();
 
     /**
      * Tick计数器
@@ -73,25 +66,6 @@ public class DifficultyTracker {
     }
 
     /**
-     * 获取特定玩家的缓动倍率
-     *
-     * @param player 玩家
-     * @param targetMultiplier 目标倍率
-     * @return 缓动后的倍率
-     */
-    public double getEasedMultiplierForPlayer(ServerPlayer player, double targetMultiplier) {
-        if (!Config.ENABLE_DIFFICULTY_SMOOTHING.get()) {
-            return targetMultiplier;
-        }
-
-        UUID playerId = player.getUUID();
-        DifficultyState state = playerStates.computeIfAbsent(playerId, k -> new DifficultyState());
-
-        state.target = targetMultiplier;
-        return state.current;
-    }
-
-    /**
      * 获取当前缓动倍率（全局模式，兼容旧代码）
      */
     public double getCurrentMultiplier() {
@@ -106,10 +80,16 @@ public class DifficultyTracker {
     }
 
     /**
-     * 清除玩家状态（玩家退出时调用）
+     * 清除玩家缓动状态（玩家退出时调用）
+     *
+     * 按玩家缓动模式已随死代码清理移除，全局模式不持有按玩家状态，
+     * 本方法退化为空实现。保留它是为了兼容 ModEventHandler 登出清理段的
+     * 既有调用，待该调用点移除后本方法可一并删除。
+     *
+     * @param playerId 玩家UUID
      */
     public void clearPlayerState(UUID playerId) {
-        playerStates.remove(playerId);
+        // 全局模式下无按玩家状态可清理，空实现
     }
 
     /**
@@ -131,11 +111,6 @@ public class DifficultyTracker {
 
         // 更新全局状态
         updateState(globalState);
-
-        // 更新所有玩家状态
-        for (DifficultyState state : playerStates.values()) {
-            updateState(state);
-        }
     }
 
     /**
@@ -192,7 +167,6 @@ public class DifficultyTracker {
     public void resetAll() {
         globalState.current = 1.0;
         globalState.target = 1.0;
-        playerStates.clear();
     }
 
     /**

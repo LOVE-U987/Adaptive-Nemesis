@@ -10,6 +10,7 @@ import dev.latvian.mods.kubejs.event.EventGroup;
 import dev.latvian.mods.kubejs.event.EventGroupRegistry;
 import dev.latvian.mods.kubejs.event.EventHandler;
 import dev.latvian.mods.kubejs.plugin.KubeJSPlugin;
+import dev.latvian.mods.kubejs.script.BindingRegistry;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.Mob;
@@ -81,6 +82,24 @@ public class KubeJSInitializer implements KubeJSPlugin {
     }
 
     /**
+     * 注册脚本全局绑定对象（F-31）
+     *
+     * 已解包 libs/kubejs-neoforge-2101.7.2-build.363.jar 确认 API 签名：
+     * {@code KubeJSPlugin.registerBindings(BindingRegistry)}，
+     * 绑定注册调用为 {@code BindingRegistry.add(String name, Object obj)}。
+     * 注册后脚本中以 {@code AdaptiveNemesis} 访问入侵触发/查询 API
+     * （见 {@link AdaptiveNemesisBinding}），替代原先不可达的
+     * InvasionKubeJsSupport 死类。
+     *
+     * @param bindings KubeJS 绑定注册器
+     */
+    @Override
+    public void registerBindings(BindingRegistry bindings) {
+        bindings.add("AdaptiveNemesis", new AdaptiveNemesisBinding());
+        AdaptiveNemesisMod.LOGGER.info("已注册 Adaptive Nemesis KubeJS 绑定对象 AdaptiveNemesis");
+    }
+
+    /**
      * 触发实体强化事件
      *
      * @param entity 被强化的实体
@@ -104,28 +123,31 @@ public class KubeJSInitializer implements KubeJSPlugin {
     /**
      * 触发伤害计算事件
      *
+     * 取消意图通过返回结果中的 cancelled 标记显式传递，
+     * 不再用"返回原始伤害"表示取消，脚本可自由地把真实伤害
+     * 设为与原始伤害相同的值（全额真实伤害）。
+     *
      * @param attacker 攻击者
      * @param target 目标
      * @param originalDamage 原始伤害
      * @param calculatedDamage 计算后的伤害
      * @param armorMultiplier 护甲倍率
-     * @return 事件处理后的伤害，如果取消则返回原始伤害
+     * @return 伤害计算事件结果（含取消标记与事件处理后的真实伤害金额）
      */
-    public static float fireDamageCalculation(LivingEntity attacker, LivingEntity target,
-                                               float originalDamage, float calculatedDamage,
-                                               double armorMultiplier) {
+    public static KubeJSEventTrigger.DamageCalculationResult fireDamageCalculation(
+        LivingEntity attacker, LivingEntity target,
+        float originalDamage, float calculatedDamage, double armorMultiplier) {
         try {
             DamageCalculationEventJS event = new DamageCalculationEventJS(
                 attacker, target, originalDamage, calculatedDamage, armorMultiplier
             );
             DAMAGE_CALCULATION.post(event);
-            if (event.isEventCancelled()) {
-                return originalDamage;
-            }
-            return event.getCalculatedDamage();
+            return new KubeJSEventTrigger.DamageCalculationResult(
+                event.isEventCancelled(), event.getCalculatedDamage()
+            );
         } catch (Exception e) {
             AdaptiveNemesisMod.LOGGER.error("触发 KubeJS 伤害计算事件失败: {}", e.getMessage());
-            return calculatedDamage;
+            return new KubeJSEventTrigger.DamageCalculationResult(false, calculatedDamage);
         }
     }
 

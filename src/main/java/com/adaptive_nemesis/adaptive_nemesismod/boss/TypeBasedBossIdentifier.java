@@ -7,10 +7,11 @@ import net.minecraft.world.entity.monster.warden.Warden;
 
 /**
  * 基于实体类型的Boss识别策略
- * 
+ *
  * 通过 instanceof 检查直接识别原版Boss实体类型。
- * 优先级最高，适用于识别末影龙、凋灵、监守者等原版Boss。
- * 
+ * 在识别链中排序仅次于标签识别（TagBasedBossIdentifier），
+ * 适用于识别末影龙、凋灵、监守者等原版Boss。
+ *
  * @author Adaptive Nemesis Team
  * @version 1.0.0
  */

@@ -1,6 +1,7 @@
 package com.adaptive_nemesis.adaptive_nemesismod.kubejs;
 
 import dev.latvian.mods.kubejs.event.KubeEvent;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.server.level.ServerPlayer;
 
 /**
@@ -186,12 +187,19 @@ public class PlayerStrengthEvaluationEventJS implements KubeEvent {
     /**
      * 检查玩家是否有特定物品
      *
-     * @param itemId 物品ID
+     * 使用注册表 ID 精确比较而非 Item.toString()（F-50）：
+     * 后者的返回格式无契约保证，itemId 应形如 "minecraft:diamond_sword"。
+     * 仅检查主物品栏（不含盔甲与副手）。
+     *
+     * @param itemId 物品ID，形如 "minecraft:diamond_sword"
      * @return 如果有返回 true
      */
     public boolean hasItem(String itemId) {
         for (var item : player.getInventory().items) {
-            if (!item.isEmpty() && item.getItem().toString().equals(itemId)) {
+            if (item.isEmpty()) {
+                continue;
+            }
+            if (BuiltInRegistries.ITEM.getKey(item.getItem()).toString().equals(itemId)) {
                 return true;
             }
         }

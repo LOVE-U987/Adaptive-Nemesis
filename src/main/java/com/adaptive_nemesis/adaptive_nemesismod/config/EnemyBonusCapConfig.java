@@ -52,6 +52,11 @@ public class EnemyBonusCapConfig {
     */
     public final ModConfigSpec.DoubleValue MAX_STAMINA_MULTIPLIER;
 
+    /**
+     * 构造敌人加成上限配置
+     *
+     * @param builder 配置构建器，由 Config 聚合类统一传入
+     */
     public EnemyBonusCapConfig(ModConfigSpec.Builder builder) {
         builder.push("enemyBonusCaps");
         ENABLE_ENEMY_BONUS_CAP = builder.comment("是否启用敌人加成上限 - 防止敌人属性无限增长").comment("Enable enemy bonus cap - prevents enemy stats from growing indefinitely").define("enableEnemyBonusCap", true);

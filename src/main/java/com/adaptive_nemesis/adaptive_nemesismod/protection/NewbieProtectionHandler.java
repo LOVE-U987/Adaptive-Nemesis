@@ -9,6 +9,7 @@ import com.adaptive_nemesis.adaptive_nemesismod.Config;
 import com.adaptive_nemesis.adaptive_nemesismod.player.PlayerStrengthEvaluator;
 
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.entity.monster.Enemy;
 import net.minecraft.world.entity.player.Player;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.neoforge.event.entity.living.LivingDeathEvent;
@@ -17,12 +18,21 @@ import net.neoforged.neoforge.event.tick.PlayerTickEvent;
 
 /**
  * 新手保护处理器
- * 
+ *
  * 为低强度玩家提供保护机制：
  * - 玩家综合强度 < 阈值 → 怪物属性 -30%
  * - 首次死亡 → 保护时间 +10分钟
  * - 连续死亡 3 次 → 强制开启保护直至击杀任一敌人
- * 
+ *
+ * 持久化评估结论（2026-11-07，计划项 F-23）：
+ * 强制保护状态与连续死亡计数仅保存在内存，不持久化到存档。理由：
+ * - 强制保护由"连续死亡达到阈值"触发，作用是帮助玩家度过低谷，
+ *   重启后重新计数即可再次触发，行为偏差可接受；
+ * - 死亡计数为低频数据，持久化需引入 SavedData 与存档 IO，收益低于成本；
+ * - 服务器运行期内玩家重登不会丢失数据（Map 条目保留）。
+ * 如未来需要跨重启保留保护状态，建议挂 overworld SavedData 并在
+ * 玩家登入时读回，同时在登出时序列化落盘。
+ *
  * @author Adaptive Nemesis Team
  * @version 1.0.0
  */
@@ -99,7 +109,9 @@ public class NewbieProtectionHandler {
     
     /**
      * 处理玩家死亡事件
-     * 
+     *
+     * 仅处理玩家自身死亡；死亡计数只统计玩家，非玩家实体死亡不进入本方法逻辑。
+     *
      * @param event 玩家死亡事件（通过LivingDeathEvent检测）
      */
     @SubscribeEvent
@@ -128,17 +140,21 @@ public class NewbieProtectionHandler {
         // 检查是否达到连续死亡阈值
         if (data.getDeathCount() >= Config.DEATH_STREAK_THRESHOLD.get()) {
             data.forceEnableProtection();
-            
+
             AdaptiveNemesisMod.LOGGER.debug(
+                "玩家 {} 连续死亡 {} 次，已强制开启新手保护",
                 player.getName().getString(),
                 data.getDeathCount()
             );
         }
     }
-    
+
     /**
      * 处理玩家击杀事件 - 重置死亡计数
-     * 
+     *
+     * 仅统计对敌对生物（Enemy）的击杀，杀牛羊村民等和平生物不计入，
+     * 避免通过反复屠宰牲畜解除强制保护。
+     *
      * @param event 生物死亡事件
      */
     @SubscribeEvent
@@ -146,7 +162,12 @@ public class NewbieProtectionHandler {
         if (event.getSource() == null || event.getSource().getEntity() == null) {
             return;
         }
-        
+
+        // 限定敌对生物：非 Enemy 实体（动物、村民等）的死亡不重置死亡计数
+        if (!(event.getEntity() instanceof Enemy)) {
+            return;
+        }
+
         if (!(event.getSource().getEntity() instanceof ServerPlayer player)) {
             return;
         }
@@ -242,7 +263,7 @@ public class NewbieProtectionHandler {
     
     /**
      * 获取玩家的保护减免比例
-     * 
+     *
      * @param playerId 玩家UUID
      * @return 减免比例（0.0 - 1.0）
      */
@@ -251,6 +272,18 @@ public class NewbieProtectionHandler {
             return 0.0;
         }
         return Config.NEWBIE_PROTECTION_REDUCTION.get();
+    }
+
+    /**
+     * 强制启用指定玩家的新手保护（无过期时间，直至击杀敌对生物解除）
+     *
+     * 供管理命令（ProtectionCommand executeEnable）等外部调用方使用，
+     * 与连续死亡触发的内部强制保护共用同一 ProtectionData 状态。
+     *
+     * @param playerId 目标玩家UUID
+     */
+    public void forceEnableProtection(UUID playerId) {
+        getOrCreateProtectionData(playerId).forceEnableProtection();
     }
     
     /**

@@ -6,13 +6,13 @@ import com.adaptive_nemesis.adaptive_nemesismod.boss.BossDamageCapHandler;
 import com.adaptive_nemesis.adaptive_nemesismod.boss.BossIdentificationService;
 import com.adaptive_nemesis.adaptive_nemesismod.command.InvasionCommand;
 import com.adaptive_nemesis.adaptive_nemesismod.command.ModCommands;
+import com.adaptive_nemesis.adaptive_nemesismod.damage.ModDamageTypes;
 import com.adaptive_nemesis.adaptive_nemesismod.damage.TrueDamageHandler;
 import com.adaptive_nemesis.adaptive_nemesismod.enemy.EnemyScalingHandler;
 import com.adaptive_nemesis.adaptive_nemesismod.enemy.DifficultyTracker;
 import com.adaptive_nemesis.adaptive_nemesismod.enemy.EnchantmentScalingHandler;
 import com.adaptive_nemesis.adaptive_nemesismod.enemy.WorldStageManager;
 import com.adaptive_nemesis.adaptive_nemesismod.event.ModEventHandler;
-import com.adaptive_nemesis.adaptive_nemesismod.invasion.InvasionKubeJsSupport;
 import com.adaptive_nemesis.adaptive_nemesismod.invasion.InvasionSystem;
 import com.adaptive_nemesis.adaptive_nemesismod.memory.NemesisMemorySystem;
 import com.adaptive_nemesis.adaptive_nemesismod.network.ModNetworking;
@@ -29,6 +29,7 @@ import net.neoforged.fml.ModContainer;
 import net.neoforged.fml.event.config.ModConfigEvent;
 import net.neoforged.fml.event.lifecycle.FMLCommonSetupEvent;
 import net.neoforged.neoforge.common.NeoForge;
+import net.neoforged.neoforge.event.server.ServerStartedEvent;
 
 import org.apache.logging.log4j.Level;
 import org.apache.logging.log4j.core.LoggerContext;
@@ -78,12 +79,15 @@ public class AdaptiveNemesisMod {
     public AdaptiveNemesisMod(IEventBus modEventBus, ModContainer modContainer) {
         // 注册通用设置监听器
         modEventBus.addListener(this::commonSetup);
-        
+
         // 注册配置事件监听器（用于保存引用和输出配置信息）
         modEventBus.addListener(this::onModConfigEvent);
-        
+
         // 注册网络系统
         ModNetworking.register(modEventBus);
+
+        // 注册模组伤害类型（真实伤害机制）
+        ModDamageTypes.register(modEventBus);
         
         // 注册配置
         // 使用 COMMON 类型：配置文件位于 config/ 目录，游戏启动即加载，全局生效。
@@ -95,42 +99,61 @@ public class AdaptiveNemesisMod {
         // 注册游戏事件处理器
         registerEventHandlers();
         
-        LOGGER.info("🛡️ Adaptive Nemesis (自适应宿敌) 模组已加载");
+        LOGGER.info("Adaptive Nemesis (自适应宿敌) 模组已加载");
+    }
+
+    /**
+     * 检查模组配置是否已加载完成
+     * 供各子系统在配置加载前后的安全判定使用，替代反射读取私有字段
+     *
+     * @return 如果配置已加载（Loading 事件已触发）返回 true
+     */
+    public static boolean isConfigLoaded() {
+        return configLoaded;
     }
 
     /**
      * 配置加载/重载事件处理
      * 保存 ModConfig 引用用于后续保存操作，并在配置加载完成后输出配置信息
+     *
+     * @param event 配置加载或重载事件
      */
     private void onModConfigEvent(ModConfigEvent event) {
-        if (event.getConfig().getSpec() == Config.SPEC) {
-            Config.MOD_CONFIG = event.getConfig();
-            
-            // 仅在配置首次加载时输出配置信息（避免每次重载都输出日志）
-            if (event instanceof ModConfigEvent.Loading) {
-                // 先设置 configLoaded 标志，确保后续方法可以安全读取配置
-                configLoaded = true;
-                LOGGER.info("========================================");
-                LOGGER.info("📜 Adaptive Nemesis 配置已加载");
-                LOGGER.info("========================================");
-                LOGGER.info("📊 难度系数基准：{}", Config.DIFFICULTY_BASE_MULTIPLIER.get());
-                LOGGER.info("🗡️ 真实伤害机制：{}", Config.ENABLE_TRUE_DAMAGE.get() ? "已启用" : "已禁用");
-                LOGGER.info("🛡️ 新手保护机制：{}", Config.ENABLE_NEWBIE_PROTECTION.get() ? "已启用" : "已禁用");
-                LOGGER.info("👑 Boss 伤害上限：{}", Config.ENABLE_BOSS_DAMAGE_CAP.get() ? "已启用" : "已禁用");
-                LOGGER.info("📈 敌人加成上限：{}", Config.ENABLE_ENEMY_BONUS_CAP.get() ? "已启用" : "已禁用");
-                LOGGER.info("🔍 看门狗服务：{}", Config.ENABLE_WATCHDOG.get() ? "已启用" : "已禁用");
-                LOGGER.info("========================================");
-                
-                // 配置加载完成后，初始化调试日志文件（确保配置已加载）
-                initDebugLogFile();
-                
-                // 配置加载完成后，初始化 Boss 识别服务（确保配置已加载）
-                BossIdentificationService.initialize();
-                
-                // 配置加载完成后，启动看门狗服务（配置已加载完毕，可以安全读取 Config 值）
-                if (Config.ENABLE_WATCHDOG.get()) {
-                    WatchdogService.getInstance().start();
-                }
+        if (event.getConfig().getSpec() != Config.SPEC) {
+            return;
+        }
+        Config.MOD_CONFIG = event.getConfig();
+
+        // 仅在配置首次加载时输出配置信息（避免每次重载都输出日志）
+        if (event instanceof ModConfigEvent.Loading) {
+            // 先设置 configLoaded 标志，确保后续方法可以安全读取配置
+            configLoaded = true;
+            LOGGER.info("========================================");
+            LOGGER.info("Adaptive Nemesis 配置已加载");
+            LOGGER.info("========================================");
+            LOGGER.info("难度系数基准：{}", Config.DIFFICULTY_BASE_MULTIPLIER.get());
+            LOGGER.info("真实伤害机制：{}", Config.ENABLE_TRUE_DAMAGE.get() ? "已启用" : "已禁用");
+            LOGGER.info("新手保护机制：{}", Config.ENABLE_NEWBIE_PROTECTION.get() ? "已启用" : "已禁用");
+            LOGGER.info("Boss 伤害上限：{}", Config.ENABLE_BOSS_DAMAGE_CAP.get() ? "已启用" : "已禁用");
+            LOGGER.info("敌人加成上限：{}", Config.ENABLE_ENEMY_BONUS_CAP.get() ? "已启用" : "已禁用");
+            LOGGER.info("看门狗服务：{}", Config.ENABLE_WATCHDOG.get() ? "已启用" : "已禁用");
+            LOGGER.info("========================================");
+
+            // 配置加载完成后，初始化调试日志文件（确保配置已加载）
+            initDebugLogFile();
+
+            // 配置加载完成后，初始化 Boss 识别服务（确保配置已加载）
+            BossIdentificationService.initialize();
+
+            // 配置加载完成后，标记真实伤害处理器可用（F-01）
+            TrueDamageHandler.markInitialized();
+        } else if (event instanceof ModConfigEvent.Reloading) {
+            // 配置热重载：刷新真实伤害初始化标记，并让 Boss 识别服务按新配置重建策略链
+            TrueDamageHandler.markInitialized();
+
+            if (configLoaded) {
+                BossIdentificationService.reinitialize();
+                BossDamageCapHandler.getInstance().clearBossCache();
             }
         }
     }
@@ -144,9 +167,9 @@ public class AdaptiveNemesisMod {
      */
     private void commonSetup(FMLCommonSetupEvent event) {
         LOGGER.info("========================================");
-        LOGGER.info("⚔️ Adaptive Nemesis 正在初始化...");
+        LOGGER.info("Adaptive Nemesis 正在初始化...");
         LOGGER.info("========================================");
-        
+
         // 初始化各子系统（不读取配置值）
         event.enqueueWork(() -> {
             PlayerStrengthEvaluator.getInstance().initialize();
@@ -155,21 +178,19 @@ public class AdaptiveNemesisMod {
             // Boss 识别服务已在配置加载完成后初始化
             // 如果配置还未加载完成，BossIdentificationService 会懒加载
 
-            LOGGER.info("👹 宿敌日常生成系统已初始化");
+            LOGGER.info("宿敌日常生成系统已初始化");
 
             // 初始化入侵事件系统
             InvasionSystem invasionSystem = new InvasionSystem();
             InvasionCommand.setInvasionSystem(invasionSystem);
-            
-            // 初始化 KubeJS 支持
-            new InvasionKubeJsSupport(invasionSystem);
-            LOGGER.info("⚔️ 入侵事件系统已初始化");
 
-            LOGGER.info("✅ 各子系统初始化完成！");
+            LOGGER.info("入侵事件系统已初始化");
+
+            LOGGER.info("各子系统初始化完成！");
         });
-        
+
         LOGGER.info("========================================");
-        LOGGER.info("✅ Adaptive Nemesis 初始化完成！");
+        LOGGER.info("Adaptive Nemesis 初始化完成！");
         LOGGER.info("========================================");
     }
 
@@ -214,7 +235,7 @@ public class AdaptiveNemesisMod {
             loggerConfig.addAppender(appender, Level.DEBUG, null);
             context.updateLoggers();
 
-            LOGGER.info("📝 调试日志文件已初始化：{}", Config.DEBUG_LOG_FILE_PATH.get());
+            LOGGER.info("调试日志文件已初始化：{}", Config.DEBUG_LOG_FILE_PATH.get());
         } catch (Exception e) {
             LOGGER.error("初始化调试日志文件失败：{}", e.getMessage());
         }
@@ -226,8 +247,13 @@ public class AdaptiveNemesisMod {
     private void registerEventHandlers() {
         IEventBus eventBus = NeoForge.EVENT_BUS;
 
+        // 注册看门狗启动接线：ServerStartedEvent 触发时按配置开关与侧别启用（F-09）
+        // 启动时机从配置加载事件移到服务器启动完成事件，解决单机换档后无法重启的问题，
+        // 且仅专用服务器启用（单机集成服务端生命周期复杂、误报风险高）
+        eventBus.addListener(this::onServerStarted);
+
         // 注册宿敌日常生成系统
-        // ⚠️ 必须先于敌人强化处理器注册：
+        // 必须先于敌人强化处理器注册：
         // 同一个 EntityJoinLevelEvent 中，宿敌转化（打宿敌标记）需先于自适应缩放执行，
         // 铁魔法兼容层才能识别宿敌并应用法术抗性/强度加成；
         // 若顺序颠倒，宿敌会被当作普通怪处理而拿不到法术类加成。
@@ -265,7 +291,21 @@ public class AdaptiveNemesisMod {
         
         // 注册命令系统
         eventBus.register(new ModCommands());
-        
-        LOGGER.debug("📋 所有事件处理器已注册");
+
+        LOGGER.debug("所有事件处理器已注册");
+    }
+
+    /**
+     * 服务器启动完成事件处理：按配置开关与侧别启动看门狗服务
+     * 仅专用服务器启用（单机集成服务端随暂停/存档切换生命周期复杂、误报风险高）；
+     * 此时机配置必然已加载，可安全读取开关；停止仍由 ServerStoppingEvent 负责，
+     * 专用服务器重启后会再次触发本事件，看门狗可恢复工作
+     *
+     * @param event 服务器启动完成事件
+     */
+    private void onServerStarted(ServerStartedEvent event) {
+        if (Config.ENABLE_WATCHDOG.get() && event.getServer().isDedicatedServer()) {
+            WatchdogService.getInstance().start();
+        }
     }
 }

@@ -17,6 +17,11 @@ public class EpicFightScalingConfig {
     */
     public final ModConfigSpec.DoubleValue WEIGHT_PER_MULTIPLIER;
 
+    /**
+     * 构造史诗战斗缩放配置
+     *
+     * @param builder 配置构建器，由 Config 聚合类统一传入
+     */
     public EpicFightScalingConfig(ModConfigSpec.Builder builder) {
         builder.push("epicFightScaling");
         WEIGHT_MIN_BONUS = builder.comment("重量最小加值 (15.0) - 怪物重量至少比原值增加多少，防止史诗战斗模式被击飞").comment("Minimum weight bonus (15.0) - minimum weight added to prevent knockback in Epic Fight mode").defineInRange("weightMinBonus", 15.0, 0.0, 100.0);

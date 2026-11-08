@@ -32,6 +32,11 @@ public class ModCompatConfig {
     */
     public final ModConfigSpec.BooleanValue MOD_COMPAT_APOTHEOSIS_ENABLED;
 
+    /**
+     * 构造模组兼容开关配置
+     *
+     * @param builder 配置构建器，由 Config 聚合类统一传入
+     */
     public ModCompatConfig(ModConfigSpec.Builder builder) {
         builder.push("modCompatibility");
         MOD_COMPAT_L2HOSTILITY_ENABLED = builder.comment("是否启用 L2Hostility (莱特兰恶意) 兼容模式").comment("启用后跳过血量与速度缩放，防止 ADD_MULTIPLIED_TOTAL 导致血量爆炸").comment("Enable L2Hostility compat mode - skips health/speed scaling to prevent HP explosion").define("modCompatL2HostilityEnabled", true);

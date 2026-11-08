@@ -1,6 +1,7 @@
 package com.adaptive_nemesis.adaptive_nemesismod.kubejs;
 
 import dev.latvian.mods.kubejs.event.KubeEvent;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.world.entity.Mob;
 
 /**
@@ -56,10 +57,13 @@ public class EntityScaleEventJS implements KubeEvent {
     /**
      * 获取实体ID
      *
-     * @return 实体ID字符串
+     * 使用注册表 ID 而非 EntityType.toString()（F-50）：
+     * 后者的返回格式无契约保证，注册 ID（如 "minecraft:zombie"）才是稳定标识。
+     *
+     * @return 实体ID字符串，形如 "minecraft:zombie"
      */
     public String getEntityId() {
-        return entity.getType().toString();
+        return BuiltInRegistries.ENTITY_TYPE.getKey(entity.getType()).toString();
     }
 
     /**

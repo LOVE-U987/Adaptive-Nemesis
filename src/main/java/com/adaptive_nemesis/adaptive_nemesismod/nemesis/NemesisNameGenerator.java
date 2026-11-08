@@ -1,10 +1,13 @@
 package com.adaptive_nemesis.adaptive_nemesismod.nemesis;
 
+import com.adaptive_nemesis.adaptive_nemesismod.AdaptiveNemesisMod;
 import com.adaptive_nemesis.adaptive_nemesismod.Config;
+import com.adaptive_nemesis.adaptive_nemesismod.memory.NemesisConfigData;
+import com.adaptive_nemesis.adaptive_nemesismod.memory.NemesisDataLoader;
 import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.entity.EntityType;
-import net.minecraft.world.entity.monster.Monster;
+import net.minecraft.world.entity.Mob;
 
 import java.util.*;
 
@@ -15,10 +18,19 @@ import java.util.*;
  * 称号文本从语言文件中读取，支持多语言本地化
  * 如："法师克星—弑神者"、"近战克星—暗影领主"等
  *
+ * 称号翻译键数量探测（F-40）带最大探测上限，防止语言文件异常时探测过深；
+ * 探测结果缓存可在服务器启动时失效重探（{@link #invalidateTranslationCache()}）。
+ *
  * @author Adaptive Nemesis Team
- * @version 1.1.0
+ * @version 1.2.0
  */
 public class NemesisNameGenerator {
+
+    /**
+     * 单个基础键的最大翻译条目探测数量（纯技术常量，不入配置）
+     * 正常称号池远小于该值；语言文件损坏产生大量连续键时探测到此即停
+     */
+    private static final int MAX_TRANSLATION_PROBE = 64;
 
     /**
      * 近战类型实体列表
@@ -97,7 +109,7 @@ public class NemesisNameGenerator {
      * @param multiplier 强化倍率
      * @return 格式化的宿敌名称组件
      */
-    public Component generateNemesisName(Monster entity, double multiplier) {
+    public Component generateNemesisName(Mob entity, double multiplier) {
         if (!Config.SHOW_NEMESIS_NAME.get()) {
             return Component.empty();
         }
@@ -114,7 +126,7 @@ public class NemesisNameGenerator {
      * @param entity 敌人实体
      * @return 称号前缀组件
      */
-    private Component determinePrefix(Monster entity) {
+    private Component determinePrefix(Mob entity) {
         EntityType<?> type = entity.getType();
         List<String> availableConfigPrefixes = new ArrayList<>();
 
@@ -166,6 +178,8 @@ public class NemesisNameGenerator {
      * 根据强化倍率决定称号后缀
      * 倍率越高，称号越强大
      *
+     * 档位阈值（史诗/传说）从宿敌全局配置读取（F-44：原硬编码 3.0/2.5）
+     *
      * @param multiplier 强化倍率
      * @return 称号后缀组件
      */
@@ -176,10 +190,11 @@ public class NemesisNameGenerator {
             return Component.literal(suffixes.get(random.nextInt(suffixes.size())));
         }
 
+        NemesisConfigData config = NemesisDataLoader.getInstance().getConfig();
         String tierKey;
-        if (multiplier >= 3.0) {
+        if (multiplier >= config.getSuffixEpicThreshold()) {
             tierKey = SUFFIX_EPIC_KEY;
-        } else if (multiplier >= 2.5) {
+        } else if (multiplier >= config.getSuffixLegendaryThreshold()) {
             tierKey = SUFFIX_LEGENDARY_KEY;
         } else {
             tierKey = SUFFIX_NORMAL_KEY;
@@ -193,7 +208,11 @@ public class NemesisNameGenerator {
     }
 
     /**
-     * 获取指定基础键下的翻译条目数量
+     * 获取指定基础键下的翻译条目数量（F-40）
+     *
+     * 探测结果缓存在 translationCounts；探测设上限
+     * {@link #MAX_TRANSLATION_PROBE}，达到上限时输出 warn
+     * （防止语言文件异常导致探测过深）。
      *
      * @param baseKey 基础翻译键
      * @return 可用条目数量
@@ -205,7 +224,7 @@ public class NemesisNameGenerator {
         }
 
         int count = 0;
-        while (true) {
+        while (count < MAX_TRANSLATION_PROBE) {
             String key = baseKey + "." + count;
             String resolved = Component.translatable(key).getString();
             if (resolved.equals(key)) {
@@ -213,8 +232,27 @@ public class NemesisNameGenerator {
             }
             count++;
         }
+
+        if (count >= MAX_TRANSLATION_PROBE) {
+            AdaptiveNemesisMod.LOGGER.warn(
+                "宿敌称号翻译键 {} 的探测达到上限 {}，超出部分将被忽略，请检查语言文件是否异常",
+                baseKey, MAX_TRANSLATION_PROBE
+            );
+        }
+
         translationCounts.put(baseKey, count);
         return count;
+    }
+
+    /**
+     * 失效称号翻译计数缓存（F-40）
+     *
+     * 语言环境可能随资源重载或客户端语言切换而变化，缓存的探测结果会过期；
+     * 当前语言重载无可用服务端回调，改为在每次服务器启动时调用本方法失效缓存，
+     * 首次生成宿敌名称时重新探测一次。
+     */
+    public void invalidateTranslationCache() {
+        translationCounts.clear();
     }
 
     /**

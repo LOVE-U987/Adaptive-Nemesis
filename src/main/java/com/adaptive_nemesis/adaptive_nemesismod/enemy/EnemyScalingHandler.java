@@ -16,6 +16,7 @@ import com.adaptive_nemesis.adaptive_nemesismod.kubejs.KubeJSEventTrigger;
 import com.adaptive_nemesis.adaptive_nemesismod.memory.NemesisMemorySystem;
 import com.adaptive_nemesis.adaptive_nemesismod.player.PlayerStrengthData;
 import com.adaptive_nemesis.adaptive_nemesismod.player.PlayerStrengthEvaluator;
+import com.adaptive_nemesis.adaptive_nemesismod.protection.NewbieProtectionHandler;
 import com.adaptive_nemesis.adaptive_nemesismod.watchdog.WatchdogService;
 
 import net.minecraft.core.Holder;
@@ -147,6 +148,12 @@ public class EnemyScalingHandler {
      * 注意：LUCK属性只承载"是否已缩放"这一布尔信息，
      * 不编码具体倍率。灵魂石释放后实体保留缩放后的属性值，
      * 因此无需恢复旧倍率，只需避免重复缩放即可。
+     *
+     * 容差说明：LUCK 属性默认基值为 0，标记值取 0.0420。
+     * {@link #hasScaledMarker(Mob)} 以 0.001 容差比对特征值，
+     * 若其他模组恰好将 LUCK 基值设为 0.041-0.043 区间内的数值，
+     * 存在被误判为已缩放的理论窗口；该窗口极窄且此类用法罕见，
+     * 概率极低，属可接受的已知边界（计划明确不修项）。
      */
     private static final double LUCK_MARKER_VALUE = 0.0420;
 
@@ -195,6 +202,10 @@ public class EnemyScalingHandler {
 
     /**
      * 实体加入世界事件 - 对新生成的敌人应用强化
+     *
+     * 本方法仅负责流程编排：前置过滤、已缩放检测、缩放执行与异常兜底
+     * 分别拆分到各子方法中。
+     *
      * 检测链路（按可靠性排序）：
      * 1. NBT标记 SCALED_TAG（最快，NBT存活时）
      * 2. LUCK属性标记（灵魂石释放后NBT被清，但属性值存活）
@@ -208,168 +219,242 @@ public class EnemyScalingHandler {
             return;
         }
 
-        // 只处理敌对生物
-        if (!(event.getEntity() instanceof Mob mob)) {
-            return;
-        }
-
-        // 将敌对生物判断前置：非敌对 Mob 直接返回，避免后续黑名单/超时/看门狗等检查浪费性能
-        if (!(mob instanceof Enemy)) {
+        // 只处理敌对生物（非敌对 Mob 直接返回，避免后续黑名单/超时/看门狗等检查浪费性能）
+        if (!(event.getEntity() instanceof Mob mob) || !(mob instanceof Enemy)) {
             return;
         }
 
         try {
-            // 检查黑名单 - 被ban的实体跳过所有自适应缩放
-            if (EntityFilterHelper.getInstance().isBlocked(mob)) {
-                if (Config.ENABLE_DEBUG_LOG.get()) {
-                    AdaptiveNemesisMod.LOGGER.debug(
-                        "🚫 实体 {} 在黑名单中，跳过自适应缩放",
-                        mob.getType().getDescriptionId()
-                    );
-                }
+            // 前置过滤：黑名单、缩放超时标记、看门狗问题实体集
+            if (shouldSkipScaling(mob)) {
                 return;
             }
 
-            // 检查缩放超时标记 - 此前缩放中可能触发了区块加载死锁
-            //（如 Cataclysm 炽燃遗魂在低版本中会导致服务端 getChunk 死锁）
-            if (mob.getPersistentData().getBoolean(SCALE_TIMEOUT_TAG)) {
-                if (Config.ENABLE_DEBUG_LOG.get()) {
-                    AdaptiveNemesisMod.LOGGER.debug(
-                        "⏱️ 实体 {} 有缩放超时标记，跳过缩放处理（防止死锁）",
-                        mob.getType().getDescriptionId()
-                    );
-                }
+            // 已缩放检测：NBT 标记与 LUCK 属性标记
+            if (hasScalingMarkers(mob)) {
                 return;
             }
 
-            // 检查看门狗问题实体集 — 前一轮卡死中该实体被标记为"可能引起来源"
-            if (Config.ENABLE_WATCHDOG.get()) {
-                String entityKey = WatchdogService.makeEntityKey(
-                    mob.getName().getString(), mob.getX(), mob.getY(), mob.getZ()
-                );
-                if (WatchdogService.getInstance().isEntityProblematic(entityKey)) {
-                    AdaptiveNemesisMod.LOGGER.warn(
-                        "🐕 实体 {} 在看门狗问题实体集中，跳过缩放防止死锁",
-                        mob.getType().getDescriptionId()
-                    );
-                    // 同时标记 NBT，确保后续世界加入也跳过
-                    mob.getPersistentData().putBoolean(SCALE_TIMEOUT_TAG, true);
-                    return;
-                }
-            }
-
-            // === 灵魂石调试日志：打印每次检测的详细数值 ===
-            if (Config.ENABLE_DEBUG_LOG.get()) {
-                AttributeInstance luckAttr = mob.getAttribute(Attributes.LUCK);
-                double luckValue = luckAttr != null ? luckAttr.getBaseValue() : Double.NaN;
-                boolean hasScaledTag = mob.getPersistentData().getBoolean(SCALED_TAG);
-                boolean hasLuckMarker = hasScaledMarker(mob);
-                double scaledTagRaw = mob.getPersistentData().contains(SCALED_TAG)
-                    ? (mob.getPersistentData().getBoolean(SCALED_TAG) ? 1.0 : 0.0) : -1.0;
-                AdaptiveNemesisMod.LOGGER.debug(
-                    "🔍 [灵魂石检测] 实体={}, 类型={}, UUID={}, UUIDhex={}, "
-                        + "NBT-SCALED_TAG存在={}, SCALED_TAG值={}, "
-                        + "LUCK属性值={}, LUCK标记值={}, hasLuckMarker={}, "
-                        + "当前血量={}, 最终判定={}",
-                    mob.getName().getString(),
-                    mob.getType().getDescriptionId(),
-                    mob.getUUID(),
-                    mob.getUUID().toString(),
-                    mob.getPersistentData().contains(SCALED_TAG),
-                    mob.getPersistentData().getBoolean(SCALED_TAG),
-                    String.format("%.6f", luckValue),
-                    LUCK_MARKER_VALUE,
-                    hasLuckMarker,
-                    String.format("%.1f", mob.getAttribute(Attributes.MAX_HEALTH) != null
-                        ? mob.getAttribute(Attributes.MAX_HEALTH).getBaseValue() : -1.0),
-                    hasScaledTag || hasLuckMarker ? "跳过(已缩放)" : "首次缩放"
-                );
-            }
-            // === 调试日志结束 ===
-
-            // 检测链路 1: NBT标记（标准路径）
-            if (mob.getPersistentData().getBoolean(SCALED_TAG)) {
-                return;
-            }
-
-            // 检测链路 2: LUCK属性标记（灵魂石路径 — 属性值穿越了NBT清除）
-            if (hasScaledMarker(mob)) {
-                if (Config.ENABLE_DEBUG_LOG.get()) {
-                    AdaptiveNemesisMod.LOGGER.debug(
-                        "🔮 敌人 {} 命中LUCK属性标记（灵魂石场景），跳过重复缩放",
-                        mob.getName().getString()
-                    );
-                }
-                // 恢复NBT标记，后续不再经过此路径
-                mob.getPersistentData().putBoolean(SCALED_TAG, true);
-                return;
-            }
-
-            // 应用强化
-            if (Config.ENABLE_DEBUG_LOG.get()) {
-                // 记录实体模组来源（用于排查第三方模组兼容性问题，如 Cataclysm）
-                ResourceLocation entityId = net.minecraft.core.registries.BuiltInRegistries.ENTITY_TYPE.getKey(mob.getType());
-                String modNamespace = entityId != null ? entityId.getNamespace() : "unknown";
-                long tickTime = mob.level().getGameTime();
-                AdaptiveNemesisMod.LOGGER.debug(
-                    "⏳ [缩放入口] 实体={}, 类型={}, 模组来源={}, 维度={}, " +
-                    "当前gameTick={}, 当前位置=[{:.0f}, {:.0f}, {:.0f}]",
-                    mob.getName().getString(),
-                    mob.getType().getDescriptionId(),
-                    modNamespace,
-                    mob.level().dimension().location(),
-                    tickTime,
-                    mob.getX(), mob.getY(), mob.getZ()
-                );
-            }
-            // 注入看门狗：记录正在处理的实体信息
-            if (Config.ENABLE_WATCHDOG.get()) {
-                WatchdogService.getInstance().updateEntityProcessing(
-                    mob.getName().getString(),
-                    mob.getType().getDescriptionId(),
-                    "applyScaling",
-                    String.format("[%.0f, %.0f, %.0f]", mob.getX(), mob.getY(), mob.getZ()),
-                    mob.level().dimension().location().toString()
-                );
-            }
-            applyScaling(mob);
-            if (Config.ENABLE_DEBUG_LOG.get()) {
-                AdaptiveNemesisMod.LOGGER.debug(
-                    "✅ [缩放完成] 实体={}, 缩放结束",
-                    mob.getName().getString()
-                );
-            }
+            // 应用强化（含看门狗注入与入口/完成日志）
+            applyScalingWithWatchdog(mob);
         } catch (IllegalArgumentException | IllegalStateException | NullPointerException | ArithmeticException e) {
-            // ⚠️ 业务异常：属性/NBT/状态等已知业务逻辑错误
+            // 业务异常：属性/NBT/状态等已知业务逻辑错误
             // 记录后继续处理下一个实体，避免单个问题实体导致服务端崩溃
-            AdaptiveNemesisMod.LOGGER.error(
-                "缩放实体 {} (类型: {}) 时发生业务异常: {} - {}",
-                mob.getName().getString(),
-                mob.getType().getDescriptionId(),
-                e.getClass().getSimpleName(),
-                e.getMessage()
-            );
-            if (Config.ENABLE_DEBUG_LOG.get()) {
-                AdaptiveNemesisMod.LOGGER.error("业务异常堆栈:", e);
-            }
+            logScalingBusinessException(mob, e);
         } catch (Exception e) {
-            // 🛡️ 未知异常：第三方模组实体可能触发未预期错误
+            // 未知异常：第三方模组实体可能触发未预期错误
             // 默认记录完整堆栈并吞掉，防止异常传播导致服务器崩溃
-            AdaptiveNemesisMod.LOGGER.error(
-                "缩放实体 {} (类型: {}) 时发生未知异常: {} - {}",
-                mob.getName().getString(),
-                mob.getType().getDescriptionId(),
-                e.getClass().getSimpleName(),
-                e.getMessage(),
-                e
-            );
+            logScalingUnexpectedException(mob, e);
         }
         // 注：缩放超时（如 Cataclysm 触发的区块加载死锁）由 ScalingContext.checkStage()
         // 内部检测并处理，会设置 NBT 超时标记 SCALE_TIMEOUT_TAG，不会到达此处 catch。
     }
 
     /**
+     * 缩放前置过滤：判断该实体是否应跳过缩放
+     *
+     * 依次检查：
+     * 1. 实体黑名单（被 ban 的实体跳过所有自适应缩放）
+     * 2. 缩放超时标记（此前缩放中可能触发了区块加载死锁）
+     * 3. 看门狗问题实体集（前一轮卡死中被标记为"可能引起来源"）
+     *
+     * @param mob 目标生物
+     * @return 如果应跳过缩放返回 true
+     */
+    private boolean shouldSkipScaling(Mob mob) {
+        // 检查黑名单 - 被ban的实体跳过所有自适应缩放
+        if (EntityFilterHelper.getInstance().isBlocked(mob)) {
+            if (Config.ENABLE_DEBUG_LOG.get()) {
+                AdaptiveNemesisMod.LOGGER.debug(
+                    "实体 {} 在黑名单中，跳过自适应缩放",
+                    mob.getType().getDescriptionId()
+                );
+            }
+            return true;
+        }
+
+        // 检查缩放超时标记 - 此前缩放中可能触发了区块加载死锁
+        //（如 Cataclysm 炽燃遗魂在低版本中会导致服务端 getChunk 死锁）
+        if (mob.getPersistentData().getBoolean(SCALE_TIMEOUT_TAG)) {
+            if (Config.ENABLE_DEBUG_LOG.get()) {
+                AdaptiveNemesisMod.LOGGER.debug(
+                    "实体 {} 有缩放超时标记，跳过缩放处理（防止死锁）",
+                    mob.getType().getDescriptionId()
+                );
+            }
+            return true;
+        }
+
+        // 检查看门狗问题实体集 — 前一轮卡死中该实体被标记为"可能引起来源"
+        if (Config.ENABLE_WATCHDOG.get()) {
+            String entityKey = WatchdogService.makeEntityKey(
+                mob.getName().getString(), mob.getX(), mob.getY(), mob.getZ()
+            );
+            if (WatchdogService.getInstance().isEntityProblematic(entityKey)) {
+                AdaptiveNemesisMod.LOGGER.warn(
+                    "实体 {} 在看门狗问题实体集中，跳过缩放防止死锁",
+                    mob.getType().getDescriptionId()
+                );
+                // 同时标记 NBT，确保后续世界加入也跳过
+                mob.getPersistentData().putBoolean(SCALE_TIMEOUT_TAG, true);
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * 检测实体是否已被缩放（NBT 标记或 LUCK 属性标记）
+     *
+     * 命中 LUCK 标记（灵魂石场景）时会恢复 NBT 标记，
+     * 后续不再经过该检测路径。
+     *
+     * @param mob 目标生物
+     * @return 如果已被缩放过返回 true
+     */
+    private boolean hasScalingMarkers(Mob mob) {
+        // === 灵魂石调试日志：打印每次检测的详细数值 ===
+        if (Config.ENABLE_DEBUG_LOG.get()) {
+            logSoulstoneDetection(mob);
+        }
+
+        // 检测链路 1: NBT标记（标准路径）
+        if (mob.getPersistentData().getBoolean(SCALED_TAG)) {
+            return true;
+        }
+
+        // 检测链路 2: LUCK属性标记（灵魂石路径 — 属性值穿越了NBT清除）
+        if (hasScaledMarker(mob)) {
+            if (Config.ENABLE_DEBUG_LOG.get()) {
+                AdaptiveNemesisMod.LOGGER.debug(
+                    "敌人 {} 命中LUCK属性标记（灵魂石场景），跳过重复缩放",
+                    mob.getName().getString()
+                );
+            }
+            // 恢复NBT标记，后续不再经过此路径
+            mob.getPersistentData().putBoolean(SCALED_TAG, true);
+            return true;
+        }
+
+        return false;
+    }
+
+    /**
+     * 输出灵魂石检测的详细调试日志
+     *
+     * @param mob 目标生物
+     */
+    private void logSoulstoneDetection(Mob mob) {
+        AttributeInstance luckAttr = mob.getAttribute(Attributes.LUCK);
+        double luckValue = luckAttr != null ? luckAttr.getBaseValue() : Double.NaN;
+        boolean hasScaledTag = mob.getPersistentData().getBoolean(SCALED_TAG);
+        boolean hasLuckMarker = hasScaledMarker(mob);
+        AdaptiveNemesisMod.LOGGER.debug(
+            "[灵魂石检测] 实体={}, 类型={}, UUID={}, UUIDhex={}, "
+                + "NBT-SCALED_TAG存在={}, SCALED_TAG值={}, "
+                + "LUCK属性值={}, LUCK标记值={}, hasLuckMarker={}, "
+                + "当前血量={}, 最终判定={}",
+            mob.getName().getString(),
+            mob.getType().getDescriptionId(),
+            mob.getUUID(),
+            mob.getUUID().toString(),
+            mob.getPersistentData().contains(SCALED_TAG),
+            mob.getPersistentData().getBoolean(SCALED_TAG),
+            String.format("%.6f", luckValue),
+            LUCK_MARKER_VALUE,
+            hasLuckMarker,
+            String.format("%.1f", mob.getAttribute(Attributes.MAX_HEALTH) != null
+                ? mob.getAttribute(Attributes.MAX_HEALTH).getBaseValue() : -1.0),
+            hasScaledTag || hasLuckMarker ? "跳过(已缩放)" : "首次缩放"
+        );
+    }
+
+    /**
+     * 应用强化并注入看门狗上下文
+     *
+     * @param mob 目标生物
+     */
+    private void applyScalingWithWatchdog(Mob mob) {
+        if (Config.ENABLE_DEBUG_LOG.get()) {
+            // 记录实体模组来源（用于排查第三方模组兼容性问题，如 Cataclysm）
+            ResourceLocation entityId = net.minecraft.core.registries.BuiltInRegistries.ENTITY_TYPE.getKey(mob.getType());
+            String modNamespace = entityId != null ? entityId.getNamespace() : "unknown";
+            long tickTime = mob.level().getGameTime();
+            AdaptiveNemesisMod.LOGGER.debug(
+                "[缩放入口] 实体={}, 类型={}, 模组来源={}, 维度={}, " +
+                "当前gameTick={}, 当前位置=[{}, {}, {}]",
+                mob.getName().getString(),
+                mob.getType().getDescriptionId(),
+                modNamespace,
+                mob.level().dimension().location(),
+                tickTime,
+                mob.getX(), mob.getY(), mob.getZ()
+            );
+        }
+
+        // 注入看门狗：记录正在处理的实体信息
+        if (Config.ENABLE_WATCHDOG.get()) {
+            WatchdogService.getInstance().updateEntityProcessing(
+                mob.getName().getString(),
+                mob.getType().getDescriptionId(),
+                "applyScaling",
+                String.format("[%.0f, %.0f, %.0f]", mob.getX(), mob.getY(), mob.getZ()),
+                mob.level().dimension().location().toString()
+            );
+        }
+
+        applyScaling(mob);
+
+        if (Config.ENABLE_DEBUG_LOG.get()) {
+            AdaptiveNemesisMod.LOGGER.debug(
+                "[缩放完成] 实体={}, 缩放结束",
+                mob.getName().getString()
+            );
+        }
+    }
+
+    /**
+     * 记录缩放业务异常
+     *
+     * @param mob 目标生物
+     * @param e 业务异常
+     */
+    private void logScalingBusinessException(Mob mob, Exception e) {
+        AdaptiveNemesisMod.LOGGER.error(
+            "缩放实体 {} (类型: {}) 时发生业务异常: {} - {}",
+            mob.getName().getString(),
+            mob.getType().getDescriptionId(),
+            e.getClass().getSimpleName(),
+            e.getMessage()
+        );
+        if (Config.ENABLE_DEBUG_LOG.get()) {
+            AdaptiveNemesisMod.LOGGER.error("业务异常堆栈:", e);
+        }
+    }
+
+    /**
+     * 记录缩放未知异常
+     *
+     * @param mob 目标生物
+     * @param e 未知异常
+     */
+    private void logScalingUnexpectedException(Mob mob, Exception e) {
+        AdaptiveNemesisMod.LOGGER.error(
+            "缩放实体 {} (类型: {}) 时发生未知异常: {} - {}",
+            mob.getName().getString(),
+            mob.getType().getDescriptionId(),
+            e.getClass().getSimpleName(),
+            e.getMessage(),
+            e
+        );
+    }
+
+    /**
      * 对指定生物应用属性强化
+     *
+     * 本方法仅负责流程编排：玩家强度采集、倍率计算、KubeJS 事件介入
+     * 与标记落盘分别拆分到各子方法中。
      *
      * @param mob 目标生物
      */
@@ -381,7 +466,7 @@ public class EnemyScalingHandler {
         if (Config.ENABLE_DEBUG_LOG.get()) {
             ResourceLocation dimId = mob.level().dimension().location();
             AdaptiveNemesisMod.LOGGER.debug(
-                "▶️ [applyScaling] 开始处理实体={}, 类型={}, 维度={}, 位置=[{:.0f}, {:.0f}, {:.0f}]",
+                "[applyScaling] 开始处理实体={}, 类型={}, 维度={}, 位置=[{}, {}, {}]",
                 mob.getName().getString(),
                 mob.getType().getDescriptionId(),
                 dimId,
@@ -389,47 +474,30 @@ public class EnemyScalingHandler {
             );
         }
 
-        // 获取附近玩家的平均强度
-        double avgStrength = getNearbyPlayerStrength(mob);
+        // 获取附近玩家与平均强度
+        List<ServerPlayer> nearbyPlayers = getNearbyPlayersInRange(mob);
+        double avgStrength = computeAverageStrength(mob, nearbyPlayers);
 
         if (avgStrength <= 0) {
             return;
         }
 
-        // 计算强化倍率
-        double multiplier = calculateMultiplier(mob, avgStrength);
+        // 计算强化倍率（含新手保护减免）
+        double multiplier = calculateMultiplier(mob, avgStrength, nearbyPlayers);
 
-        // 触发 KubeJS 实体强化事件
+        // 触发 KubeJS 实体强化事件；返回负值表示事件取消了强化
         double modifiedMultiplier = KubeJSEventTrigger.triggerEntityScale(mob, multiplier);
-
-        // 如果事件取消了强化，则直接返回
         if (modifiedMultiplier < 0) {
-            if (Config.ENABLE_DEBUG_LOG.get()) {
-                AdaptiveNemesisMod.LOGGER.debug(
-                    "敌人 {} 的强化被 KubeJS 事件取消",
-                    mob.getName().getString()
-                );
-            }
-            // 仍然标记为已处理，避免重复触发
-            mob.getPersistentData().putBoolean(SCALED_TAG, true);
-            mob.getPersistentData().putDouble(SCALE_MULTIPLIER_TAG, 1.0);
-            applyScaledMarker(mob);
+            markScalingCancelled(mob);
             return;
         }
-
-        // 使用 KubeJS 修改后的倍率
         multiplier = modifiedMultiplier;
 
         // 应用属性加成
         applyAttributeBonuses(mob, multiplier);
 
         // 标记为已强化
-        mob.getPersistentData().putBoolean(SCALED_TAG, true);
-        mob.getPersistentData().putDouble(SCALE_MULTIPLIER_TAG, multiplier);
-
-        // 打上LUCK属性标记（灵魂石穿越标记）
-        // 这个标记会随着实体的核心属性一起被灵魂石保存和释放
-        applyScaledMarker(mob);
+        markScaled(mob, multiplier);
 
         if (Config.ENABLE_DEBUG_LOG.get()) {
             AdaptiveNemesisMod.LOGGER.debug(
@@ -439,6 +507,59 @@ public class EnemyScalingHandler {
                 String.format("%.2f", avgStrength)
             );
         }
+    }
+
+    /**
+     * 标记 KubeJS 取消的缩放
+     *
+     * 仍标记为已处理，避免重复触发事件。
+     *
+     * @param mob 目标生物
+     */
+    private void markScalingCancelled(Mob mob) {
+        if (Config.ENABLE_DEBUG_LOG.get()) {
+            AdaptiveNemesisMod.LOGGER.debug(
+                "敌人 {} 的强化被 KubeJS 事件取消",
+                mob.getName().getString()
+            );
+        }
+        mob.getPersistentData().putBoolean(SCALED_TAG, true);
+        mob.getPersistentData().putDouble(SCALE_MULTIPLIER_TAG, 1.0);
+        applyScaledMarker(mob);
+    }
+
+    /**
+     * 缩放完成后写入已处理标记与倍率
+     *
+     * @param mob 目标生物
+     * @param multiplier 最终应用的倍率
+     */
+    private void markScaled(Mob mob, double multiplier) {
+        mob.getPersistentData().putBoolean(SCALED_TAG, true);
+        mob.getPersistentData().putDouble(SCALE_MULTIPLIER_TAG, multiplier);
+
+        // 打上LUCK属性标记（灵魂石穿越标记）
+        // 这个标记会随着实体的核心属性一起被灵魂石保存和释放
+        applyScaledMarker(mob);
+    }
+
+    /**
+     * 计算装备难度倍率（供装备/附魔缩放系统使用的公共出口）
+     *
+     * 与敌人属性缩放完全同源：共享玩家空间索引、玩家强度评估、
+     * 浮动层、缓动层、世界阶段加成、新手保护减免与硬上限/配置上限，
+     * 保证装备难度与属性难度公式不脱节。
+     *
+     * @param mob 目标怪物
+     * @return 难度倍率（附近无玩家时返回 1.0，下限 1.0）
+     */
+    public double calculateDifficultyMultiplier(Mob mob) {
+        List<ServerPlayer> nearbyPlayers = getNearbyPlayersInRange(mob);
+        double avgStrength = computeAverageStrength(mob, nearbyPlayers);
+        if (avgStrength <= 0) {
+            return 1.0;
+        }
+        return calculateMultiplier(mob, avgStrength, nearbyPlayers);
     }
 
     /**
@@ -537,37 +658,49 @@ public class EnemyScalingHandler {
     }
 
     /**
-     * 获取生物附近玩家的平均强度
+     * 获取生物附近范围内的玩家列表
+     *
+     * 使用玩家空间索引 + 距离平方检查，不触发区块加载：
+     * AABB + getEntitiesOfClass 会触发范围内所有区块的加载，
+     * 在 EntityJoinLevelEvent / FinalizeSpawnEvent 中可能导致区块加载死锁。
      *
      * @param mob 目标生物
-     * @return 平均强度值
+     * @return 附近玩家列表（可能为空）
      */
-    private double getNearbyPlayerStrength(Mob mob) {
+    private List<ServerPlayer> getNearbyPlayersInRange(Mob mob) {
         if (!(mob.level() instanceof ServerLevel serverLevel)) {
-            return 0.0;
+            return List.of();
         }
 
         Vec3 pos = mob.position();
         double range = Config.AREA_SYNC_RANGE.get() * 16; // 区块转格数
 
-        // 获取范围内玩家 - 使用玩家列表迭代替代 AABB 扫描
-        // 🛡️ AABB + getEntitiesOfClass 会触发范围内所有区块的加载，
-        // 在 EntityJoinLevelEvent / FinalizeSpawnEvent 中可能导致区块加载死锁。
-        // 使用玩家列表遍历 + 距离平方检查，不触发新的区块加载。
         long scanStart = System.nanoTime();
         List<ServerPlayer> nearbyPlayers = getNearbyPlayersFromIndex(serverLevel, pos, range);
         long scanElapsedUs = (System.nanoTime() - scanStart) / 1000;
 
+        if (nearbyPlayers.isEmpty() && Config.ENABLE_DEBUG_LOG.get() && scanElapsedUs > 1000) {
+            // 扫描耗时 > 1ms 时才记录，避免刷屏
+            AdaptiveNemesisMod.LOGGER.debug(
+                "[Player扫描] 实体={}, 范围={}格, 耗时={}微秒, 附近无玩家",
+                mob.getName().getString(),
+                String.format("%.0f", range),
+                scanElapsedUs
+            );
+        }
+
+        return nearbyPlayers;
+    }
+
+    /**
+     * 计算玩家列表的平均强度
+     *
+     * @param mob 目标生物（用于调试日志）
+     * @param nearbyPlayers 附近玩家列表
+     * @return 平均强度值，无有效玩家时返回 0.0
+     */
+    private double computeAverageStrength(Mob mob, List<ServerPlayer> nearbyPlayers) {
         if (nearbyPlayers.isEmpty()) {
-            if (Config.ENABLE_DEBUG_LOG.get() && scanElapsedUs > 1000) {
-                // 扫描耗时 > 1ms 时才记录，避免刷屏
-                AdaptiveNemesisMod.LOGGER.debug(
-                    "📡 [Player扫描] 实体={}, 范围={}格, 耗时={}μs, 附近无玩家",
-                    mob.getName().getString(),
-                    String.format("%.0f", range),
-                    scanElapsedUs
-                );
-            }
             return 0.0;
         }
 
@@ -589,14 +722,11 @@ public class EnemyScalingHandler {
 
         if (Config.ENABLE_DEBUG_LOG.get()) {
             AdaptiveNemesisMod.LOGGER.debug(
-                "📡 [Player扫描] 实体={}, 范围={}格, 附近玩家={}人, " +
-                "有效玩家={}人, 平均强度={}, 扫描耗时={}μs",
+                "[Player扫描] 实体={}, 附近玩家={}人, 有效玩家={}人, 平均强度={}",
                 mob.getName().getString(),
-                String.format("%.0f", range),
                 nearbyPlayers.size(),
                 validPlayers,
-                String.format("%.2f", avgStrength),
-                scanElapsedUs
+                String.format("%.2f", avgStrength)
             );
         }
 
@@ -606,11 +736,15 @@ public class EnemyScalingHandler {
     /**
      * 计算强化倍率
      *
+     * 流程：基础倍率 → 浮动层 → 缓动层 → 世界阶段 → 硬上限/配置上限 → 新手保护减免。
+     * 本方法仅负责流程编排，各层计算拆分到子方法。
+     *
      * @param mob 目标生物
      * @param playerStrength 玩家平均强度
+     * @param nearbyPlayers 附近玩家列表（用于新手保护判定）
      * @return 强化倍率
      */
-    private double calculateMultiplier(Mob mob, double playerStrength) {
+    private double calculateMultiplier(Mob mob, double playerStrength, List<ServerPlayer> nearbyPlayers) {
         // 基础倍率 = 1 + (玩家强度 * 难度系数 / 100)
         double baseMultiplier = 1.0 + (playerStrength * Config.DIFFICULTY_BASE_MULTIPLIER.get() / 100.0);
 
@@ -619,19 +753,43 @@ public class EnemyScalingHandler {
             ? AdaptiveFloatSystem.getInstance().getFloatMultiplier(serverLevel, mob.position())
             : AdaptiveFloatSystem.getInstance().getFloatMultiplier();
 
-        double preEase = baseMultiplier * floatMultiplier;
-
         // 应用难度缓动
-        double easedMultiplier = DifficultyTracker.getInstance().getEasedMultiplier(preEase);
+        double easedMultiplier = DifficultyTracker.getInstance().getEasedMultiplier(baseMultiplier * floatMultiplier);
 
         // 应用世界阶段加成
-        double worldStageMultiplier = 1.0;
-        if (Config.ENABLE_WORLD_STAGE.get()) {
-            worldStageMultiplier = WorldStageManager.getInstance().getWorldStageMultiplier();
+        double worldStageMultiplier = resolveWorldStageMultiplier();
+
+        // 硬上限与配置上限
+        double cappedMultiplier = applyMultiplierCaps(easedMultiplier * worldStageMultiplier);
+
+        // 新手保护减免：附近任一玩家受保护时降低倍率
+        double finalMultiplier = applyNewbieProtection(cappedMultiplier, nearbyPlayers);
+
+        logMultiplierBreakdown(playerStrength, baseMultiplier, floatMultiplier, easedMultiplier,
+            worldStageMultiplier, cappedMultiplier, finalMultiplier);
+
+        return finalMultiplier;
+    }
+
+    /**
+     * 解析世界阶段加成倍率
+     *
+     * @return 世界阶段倍率，功能未启用时返回 1.0
+     */
+    private double resolveWorldStageMultiplier() {
+        if (!Config.ENABLE_WORLD_STAGE.get()) {
+            return 1.0;
         }
+        return WorldStageManager.getInstance().getWorldStageMultiplier();
+    }
 
-        double preCap = easedMultiplier * worldStageMultiplier;
-
+    /**
+     * 应用倍率硬上限与配置上限
+     *
+     * @param preCap 上限应用前的倍率
+     * @return 钳制后的倍率（下限 1.0）
+     */
+    private double applyMultiplierCaps(double preCap) {
         // 硬上限
         double afterHardCap = Math.min(preCap, MAX_TOTAL_MULTIPLIER);
 
@@ -641,32 +799,99 @@ public class EnemyScalingHandler {
             finalMultiplier = Math.min(finalMultiplier, Config.MAX_HEALTH_MULTIPLIER.get());
         }
 
-        finalMultiplier = Math.max(1.0, finalMultiplier);
+        return Math.max(1.0, finalMultiplier);
+    }
 
-        if (Config.ENABLE_DEBUG_LOG.get()) {
-            AdaptiveNemesisMod.LOGGER.debug(
-                "📊 [缩放日志] playerStrength={}, DIFFICULTY_BASE_MULTIPLIER={}, " +
-                "baseMultiplier={}, floatMultiplier={}, preEase={}, " +
-                "easedMultiplier={}, worldStageMultiplier={}, preCap={}, " +
-                "afterHardCap={}, MAX_TOTAL_MULTIPLIER={}, ENABLE_BONUS_CAP={}, " +
-                "MAX_HEALTH_MULTIPLIER={}, finalMultiplier={}",
-                String.format("%.2f", playerStrength),
-                String.format("%.2f", Config.DIFFICULTY_BASE_MULTIPLIER.get()),
-                String.format("%.2f", baseMultiplier),
-                String.format("%.2f", floatMultiplier),
-                String.format("%.2f", preEase),
-                String.format("%.2f", easedMultiplier),
-                String.format("%.2f", worldStageMultiplier),
-                String.format("%.2f", preCap),
-                String.format("%.2f", afterHardCap),
-                MAX_TOTAL_MULTIPLIER,
-                Config.ENABLE_ENEMY_BONUS_CAP.get(),
-                String.format("%.2f", Config.MAX_HEALTH_MULTIPLIER.get()),
-                String.format("%.2f", finalMultiplier)
-            );
+    /**
+     * 应用新手保护倍率减免
+     *
+     * 附近任一玩家处于新手保护状态（自动阈值触发或命令强制开启）时，
+     * 将缩放倍率乘以 (1 - NEWBIE_PROTECTION_REDUCTION)。
+     *
+     * @param multiplier 减免前倍率
+     * @param nearbyPlayers 附近玩家列表
+     * @return 减免后倍率
+     */
+    private double applyNewbieProtection(double multiplier, List<ServerPlayer> nearbyPlayers) {
+        boolean anyProtected = hasProtectedNearbyPlayer(nearbyPlayers);
+        return applyNewbieProtectionMultiplier(
+            multiplier, anyProtected, Config.NEWBIE_PROTECTION_REDUCTION.get()
+        );
+    }
+
+    /**
+     * 检查附近玩家中是否存在处于新手保护状态的玩家
+     *
+     * @param nearbyPlayers 附近玩家列表
+     * @return 如果任一玩家受保护返回 true
+     */
+    private boolean hasProtectedNearbyPlayer(List<ServerPlayer> nearbyPlayers) {
+        NewbieProtectionHandler protectionHandler = NewbieProtectionHandler.getInstance();
+        for (ServerPlayer player : nearbyPlayers) {
+            if (protectionHandler.isProtected(player.getUUID())) {
+                return true;
+            }
         }
+        return false;
+    }
 
-        return finalMultiplier;
+    /**
+     * 应用新手保护倍率减免 - 纯计算版本，可测试
+     *
+     * 受保护时倍率乘以 (1 - 减免比例)，并钳制不低于 1.0
+     * （保护只降低缩放幅度，不产生低于"不缩放"的负缩放）。
+     *
+     * @param multiplier 原倍率
+     * @param anyProtected 是否存在受保护玩家
+     * @param reduction 减免比例（0.0-1.0）
+     * @return 调整后的倍率
+     */
+    static double applyNewbieProtectionMultiplier(double multiplier, boolean anyProtected, double reduction) {
+        if (!anyProtected) {
+            return multiplier;
+        }
+        return Math.max(1.0, multiplier * (1.0 - reduction));
+    }
+
+    /**
+     * 输出倍率计算过程的调试日志
+     *
+     * @param playerStrength 玩家平均强度
+     * @param baseMultiplier 基础倍率
+     * @param floatMultiplier 浮动倍率
+     * @param easedMultiplier 缓动后倍率
+     * @param worldStageMultiplier 世界阶段倍率
+     * @param cappedMultiplier 上限钳制后倍率
+     * @param finalMultiplier 最终倍率
+     */
+    private void logMultiplierBreakdown(
+        double playerStrength,
+        double baseMultiplier,
+        double floatMultiplier,
+        double easedMultiplier,
+        double worldStageMultiplier,
+        double cappedMultiplier,
+        double finalMultiplier
+    ) {
+        if (!Config.ENABLE_DEBUG_LOG.get()) {
+            return;
+        }
+        AdaptiveNemesisMod.LOGGER.debug(
+            "[缩放日志] playerStrength={}, DIFFICULTY_BASE_MULTIPLIER={}, " +
+            "baseMultiplier={}, floatMultiplier={}, easedMultiplier={}, " +
+            "worldStageMultiplier={}, MAX_TOTAL_MULTIPLIER={}, ENABLE_BONUS_CAP={}, " +
+            "MAX_HEALTH_MULTIPLIER={}, finalMultiplier={}",
+            String.format("%.2f", playerStrength),
+            String.format("%.2f", Config.DIFFICULTY_BASE_MULTIPLIER.get()),
+            String.format("%.2f", baseMultiplier),
+            String.format("%.2f", floatMultiplier),
+            String.format("%.2f", easedMultiplier),
+            String.format("%.2f", worldStageMultiplier),
+            MAX_TOTAL_MULTIPLIER,
+            Config.ENABLE_ENEMY_BONUS_CAP.get(),
+            String.format("%.2f", Config.MAX_HEALTH_MULTIPLIER.get()),
+            String.format("%.2f", finalMultiplier)
+        );
     }
 
     /**
@@ -730,7 +955,7 @@ public class EnemyScalingHandler {
         double originalHealth = alreadyScaled ? data.getDouble(ORIGINAL_HEALTH_TAG) : currentHealth;
 
         AdaptiveNemesisMod.LOGGER.debug(
-            "🔍 [缩放入口] mob={}({}), UUID={}, alreadyScaled={}, " +
+            "[缩放入口] mob={}({}), UUID={}, alreadyScaled={}, " +
             "currentHealth={}, originalHealth={}, multiplier={}, " +
             "SCALED_TAG={}, dim={}",
             mob.getName().getString(),
@@ -857,9 +1082,9 @@ public class EnemyScalingHandler {
         double origH = data.contains(ORIGINAL_HEALTH_TAG) ? data.getDouble(ORIGINAL_HEALTH_TAG) : -1;
 
         AdaptiveNemesisMod.LOGGER.debug(
-            "✅ [缩放结果] mob={}, origHealth={}, finalHealth={}, " +
+            "[缩放结果] mob={}, origHealth={}, finalHealth={}, " +
             "finalDamage={}, finalArmor={}, healthRF={}, damageRF={}, " +
-            "armorRF={}, hasOriginalValues={}, 耗时={}μs",
+            "armorRF={}, hasOriginalValues={}, 耗时={}微秒",
             mob.getName().getString(),
             String.format("%.2f", origH),
             finalHealth != null ? String.format("%.2f", finalHealth.getBaseValue()) : "N/A",
@@ -907,23 +1132,29 @@ public class EnemyScalingHandler {
     }
 
     /**
-     * 获取或存储原始属性值
-     * 确保每次缩放都从原始值开始，防止重复缩放导致属性爆炸
-     * 
-     * 注意：此方法不处理 NBT 标记丢失的情况（灵魂石等工具抓取后重置），
-     * 对于血量属性请使用 applyHealthBonus 中的 DefaultAttributes 回退机制
+     * 获取或存储原始属性基础值 - 纯计算版本，可测试
+     *
+     * NBT 标签存在时直接读取（保证幂等，重复缩放不叠加）；
+     * 标签丢失时（灵魂石、魂符等工具重置 NBT）使用实体类型默认属性值
+     * 作为"真·原始值"并写入标签，防止已缩放的高属性值被当作原始值
+     * 再次缩放导致指数级爆炸。
+     *
+     * @param data 实体持久化数据
+     * @param tagKey 原始值存储的NBT标签键
+     * @param defaultBase 实体类型的默认属性值（标签缺失时使用）
+     * @return 原始属性基础值
      */
-    private double getOrStoreOriginal(CompoundTag data, String tagKey, double currentValue) {
+    static double getOrStoreOriginalBase(CompoundTag data, String tagKey, double defaultBase) {
         if (data.contains(tagKey)) {
             return data.getDouble(tagKey);
         }
-        data.putDouble(tagKey, currentValue);
-        return currentValue;
+        data.putDouble(tagKey, defaultBase);
+        return defaultBase;
     }
 
     /**
      * 获取实体类型的默认属性基础值
-     * 
+     *
      * 通过 DefaultAttributes 查询该实体类型注册时的默认属性值。
      * 用于 NBT 标记丢失时（如灵魂石抓取后重置）获取真正的原始值，
      * 防止已缩放的高血量被当作"原始值"再次缩放导致指数级爆炸。
@@ -939,7 +1170,7 @@ public class EnemyScalingHandler {
 
         if (Config.ENABLE_DEBUG_LOG.get()) {
             AdaptiveNemesisMod.LOGGER.debug(
-                "📡 [DefaultAttributes] 开始查询: 实体={}, 类型={}, 属性={}, 回退值={}",
+                "[DefaultAttributes] 开始查询: 实体={}, 类型={}, 属性={}, 回退值={}",
                 mob.getName().getString(), mobTypeDesc, attributeKey,
                 String.format("%.2f", fallbackValue)
             );
@@ -955,7 +1186,7 @@ public class EnemyScalingHandler {
                 double result = supplier.getBaseValue(attribute);
                 if (Config.ENABLE_DEBUG_LOG.get()) {
                     AdaptiveNemesisMod.LOGGER.debug(
-                        "📡 [DefaultAttributes] 查询成功: 实体={}, 属性={}, 原始值={}",
+                        "[DefaultAttributes] 查询成功: 实体={}, 属性={}, 原始值={}",
                         mob.getName().getString(), attributeKey,
                         String.format("%.2f", result)
                     );
@@ -964,7 +1195,7 @@ public class EnemyScalingHandler {
             } else {
                 if (Config.ENABLE_DEBUG_LOG.get()) {
                     AdaptiveNemesisMod.LOGGER.debug(
-                        "📡 [DefaultAttributes] 未找到 Supplier: 实体={}, 类型={}, 使用回退值={}",
+                        "[DefaultAttributes] 未找到 Supplier: 实体={}, 类型={}, 使用回退值={}",
                         mob.getName().getString(), mobTypeDesc,
                         String.format("%.2f", fallbackValue)
                     );
@@ -1001,7 +1232,7 @@ public class EnemyScalingHandler {
         if (elapsedNanos > SCALE_TIMEOUT_NANOS) {
             long elapsedMs = elapsedNanos / 1_000_000;
             AdaptiveNemesisMod.LOGGER.error(
-                "⏱️ [缩放超时] 实体 {} (阶段: {}) 处理耗时 {}ms，超过阈值 {}ms！" +
+                "[缩放超时] 实体 {} (阶段: {}) 处理耗时 {}ms，超过阈值 {}ms！" +
                 "标记为问题实体并跳过后续缩放阶段",
                 mob.getName().getString(), stage, elapsedMs,
                 SCALE_TIMEOUT_NANOS / 1_000_000
@@ -1026,64 +1257,124 @@ public class EnemyScalingHandler {
      * - 清除 Invulnerable 标签
      * - 修复 NaN/Infinity 属性值
      * - 验证血量有效性
+     *
+     * 死亡或未存活的实体直接跳过，禁止把 0 血实体拉满复活。
+     *
+     * @param mob 目标生物
      */
     private void validateMobState(Mob mob) {
-        // 检查并清除实体真正的无敌标志（isInvulnerable/setInvulnerable 操作 Entity.invulnerable 字段）
-        // ⚠️ 注意：getPersistentData().getBoolean("Invulnerable") 是模组自定义数据，和实体无敌无关！
+        // 0 血/死亡实体防护：不存活时禁止修复，避免把 0 血实体拉满
+        if (!mob.isAlive()) {
+            return;
+        }
+
+        sanitizeInvulnerableFlag(mob);
+        sanitizeAttributeValues(mob);
+        ensureCurrentHealthValid(mob);
+    }
+
+    /**
+     * 清除实体真正的无敌标志（isInvulnerable/setInvulnerable 操作 Entity.invulnerable 字段）
+     *
+     * 注意：getPersistentData().getBoolean("Invulnerable") 是模组自定义数据，和实体无敌无关
+     *
+     * @param mob 目标生物
+     */
+    private void sanitizeInvulnerableFlag(Mob mob) {
         if (mob.isInvulnerable()) {
             mob.setInvulnerable(false);
             if (Config.ENABLE_DEBUG_LOG.get()) {
                 AdaptiveNemesisMod.LOGGER.warn(
-                    "🔧 缩放后修复怪物 {} 的 Invulnerable 标志",
+                    "缩放后修复怪物 {} 的 Invulnerable 标志",
                     mob.getName().getString()
                 );
             }
         }
+    }
 
-        // 检查关键属性是否为 NaN/Infinity，修复为安全值
+    /**
+     * 修复关键属性的非法值（NaN/Infinity/越界）
+     *
+     * @param mob 目标生物
+     */
+    private void sanitizeAttributeValues(Mob mob) {
+        sanitizeHealthAttribute(mob);
+        sanitizeDamageAttribute(mob);
+        sanitizeArmorAttribute(mob);
+    }
+
+    /**
+     * 修复血量上限属性的非法值
+     *
+     * @param mob 目标生物
+     */
+    private void sanitizeHealthAttribute(Mob mob) {
         var healthAttr = mob.getAttribute(Attributes.MAX_HEALTH);
-        if (healthAttr != null) {
-            double health = healthAttr.getBaseValue();
-            if (Double.isNaN(health) || Double.isInfinite(health) || health < 1.0) {
-                healthAttr.setBaseValue(20.0); // 直接设为默认20点血量
-                if (Config.ENABLE_DEBUG_LOG.get()) {
-                    AdaptiveNemesisMod.LOGGER.warn(
-                        "🔧 修复怪物 {} 的无效 MaxHealth: {}",
-                        mob.getName().getString(), health
-                    );
-                }
+        if (healthAttr == null) {
+            return;
+        }
+        double health = healthAttr.getBaseValue();
+        if (Double.isNaN(health) || Double.isInfinite(health) || health < 1.0) {
+            healthAttr.setBaseValue(20.0); // 直接设为默认20点血量
+            if (Config.ENABLE_DEBUG_LOG.get()) {
+                AdaptiveNemesisMod.LOGGER.warn(
+                    "修复怪物 {} 的无效 MaxHealth: {}",
+                    mob.getName().getString(), health
+                );
             }
         }
+    }
 
+    /**
+     * 修复攻击伤害属性的非法值
+     *
+     * @param mob 目标生物
+     */
+    private void sanitizeDamageAttribute(Mob mob) {
         var damageAttr = mob.getAttribute(Attributes.ATTACK_DAMAGE);
-        if (damageAttr != null) {
-            double dmg = damageAttr.getBaseValue();
-            if (Double.isNaN(dmg) || Double.isInfinite(dmg)) {
-                damageAttr.setBaseValue(1.0); // 默认1点伤害
-                if (Config.ENABLE_DEBUG_LOG.get()) {
-                    AdaptiveNemesisMod.LOGGER.warn(
-                        "🔧 修复怪物 {} 的无效 AttackDamage: {}",
-                        mob.getName().getString(), dmg
-                    );
-                }
+        if (damageAttr == null) {
+            return;
+        }
+        double dmg = damageAttr.getBaseValue();
+        if (Double.isNaN(dmg) || Double.isInfinite(dmg)) {
+            damageAttr.setBaseValue(1.0); // 默认1点伤害
+            if (Config.ENABLE_DEBUG_LOG.get()) {
+                AdaptiveNemesisMod.LOGGER.warn(
+                    "修复怪物 {} 的无效 AttackDamage: {}",
+                    mob.getName().getString(), dmg
+                );
             }
         }
+    }
 
+    /**
+     * 修复护甲属性的非法值
+     *
+     * @param mob 目标生物
+     */
+    private void sanitizeArmorAttribute(Mob mob) {
         var armorAttr = mob.getAttribute(Attributes.ARMOR);
-        if (armorAttr != null) {
-            double armor = armorAttr.getBaseValue();
-            if (Double.isNaN(armor) || Double.isInfinite(armor) || armor < 0) {
-                armorAttr.setBaseValue(0.0); // 默认0护甲
-                if (Config.ENABLE_DEBUG_LOG.get()) {
-                    AdaptiveNemesisMod.LOGGER.warn(
-                        "🔧 修复怪物 {} 的无效 Armor: {}",
-                        mob.getName().getString(), armor
-                    );
-                }
+        if (armorAttr == null) {
+            return;
+        }
+        double armor = armorAttr.getBaseValue();
+        if (Double.isNaN(armor) || Double.isInfinite(armor) || armor < 0) {
+            armorAttr.setBaseValue(0.0); // 默认0护甲
+            if (Config.ENABLE_DEBUG_LOG.get()) {
+                AdaptiveNemesisMod.LOGGER.warn(
+                    "修复怪物 {} 的无效 Armor: {}",
+                    mob.getName().getString(), armor
+                );
             }
         }
+    }
 
-        // 确保怪物当前血量有效
+    /**
+     * 确保怪物当前血量有效（NaN/Infinity/非正值时拉满至最大血量）
+     *
+     * @param mob 目标生物
+     */
+    private void ensureCurrentHealthValid(Mob mob) {
         float currentHealth = mob.getHealth();
         if (Double.isNaN(currentHealth) || Double.isInfinite(currentHealth) || currentHealth <= 0) {
             mob.setHealth(mob.getMaxHealth());
@@ -1109,6 +1400,10 @@ public class EnemyScalingHandler {
     /**
      * 通用的属性加成方法
      *
+     * 原始值来源：NBT 标签存在时读取标签（幂等）；
+     * 标签丢失时以实体类型默认属性值回退（{@link #getDefaultAttributeBase}），
+     * 防止清 NBT 后二次缩放叠加。
+     *
      * @param mob 目标生物
      * @param attribute 属性类型
      * @param multiplier 基础倍率
@@ -1132,7 +1427,10 @@ public class EnemyScalingHandler {
         }
 
         CompoundTag data = mob.getPersistentData();
-        double originalValue = getOrStoreOriginal(data, originalTag, attrInstance.getBaseValue());
+        double originalValue = getOrStoreOriginalBase(
+            data, originalTag,
+            getDefaultAttributeBase(mob, attribute, attrInstance.getBaseValue())
+        );
         double effectiveMultiplier = multiplier * randomFactor;
 
         if (maxMultiplier != null) {
@@ -1170,7 +1468,14 @@ public class EnemyScalingHandler {
 
     /**
      * 应用血量加成（带随机分布）
-     * 使用原始值确保幂等性 - 防止重复缩放
+     *
+     * 本方法仅负责流程编排：L2Hostility 兼容检查、原始血量解析、
+     * 属性写入与延迟填满血量分别拆分到各子方法中。
+     * 使用原始值确保幂等性 - 防止重复缩放。
+     *
+     * @param mob 目标生物
+     * @param multiplier 强化倍率
+     * @param randomFactor 随机因子
      */
     private void applyHealthBonus(Mob mob, double multiplier, double randomFactor) {
         // 当 L2Hostility 加载且兼容模式启用时，其 TANK 特质使用 ADD_MULTIPLIED_TOTAL 修改 MAX_HEALTH，
@@ -1188,73 +1493,99 @@ public class EnemyScalingHandler {
         }
 
         AttributeInstance healthAttr = mob.getAttribute(Attributes.MAX_HEALTH);
-        if (healthAttr != null) {
-            CompoundTag data = mob.getPersistentData();
-
-            // 🛡️ 防血量爆炸核心逻辑：
-            //
-            // 原始血量计算分两步：
-            // 1. 如果已有 NBT 标记（ORIGINAL_HEALTH_TAG），直接从标记中读取
-            //    —— 这是正常情况，保证幂等性（重复触发不重复加成）
-            // 2. 如果 NBT 标记丢失（灵魂石、魂符、生物套索等工具抓取后重置 NBT），
-            //    使用 DefaultAttributes 查询该实体类型注册时的默认血量作为"真·原始值"
-            //    —— 防止已经缩放过的高血量被当作原始值再次缩放，导致指数级爆炸 💥
-            double originalBase;
-            if (data.contains(ORIGINAL_HEALTH_TAG)) {
-                originalBase = data.getDouble(ORIGINAL_HEALTH_TAG);
-            } else {
-                originalBase = getDefaultAttributeBase(mob, Attributes.MAX_HEALTH, healthAttr.getBaseValue());
-                data.putDouble(ORIGINAL_HEALTH_TAG, originalBase);
-                if (Config.ENABLE_DEBUG_LOG.get()) {
-                    AdaptiveNemesisMod.LOGGER.debug(
-                        "🛡️ 防血量爆炸: {} 的 NBT 标记丢失，" +
-                        "使用实体类型默认血量 {} (当前基础血量={})",
-                        mob.getName().getString(),
-                        String.format("%.2f", originalBase),
-                        String.format("%.2f", healthAttr.getBaseValue())
-                    );
-                }
-            }
-
-            double effectiveMultiplier = Math.min(multiplier * randomFactor, Config.MAX_HEALTH_MULTIPLIER.get());
-            double newMax = originalBase * effectiveMultiplier;
-            if (newMax < originalBase) {
-                newMax = originalBase;
-            }
-            healthAttr.setBaseValue(newMax);
-
-            // 立即尝试设置满血
-            mob.setHealth(mob.getMaxHealth());
-
-            // 延迟到下一个 tick 再填满血量（关键！）
-            // 解决 setBaseValue 后属性未立即传播，setHealth 被 clamp 在旧最大值的问题
-            if (!mob.level().isClientSide() && mob.level() instanceof ServerLevel serverLevel) {
-                if (!data.getBoolean(HEALTH_FIX_SCHEDULED_TAG)) {
-                    data.putBoolean(HEALTH_FIX_SCHEDULED_TAG, true);
-                    serverLevel.getServer().execute(() -> {
-                        data.putBoolean(HEALTH_FIX_SCHEDULED_TAG, false);
-                        if (!mob.isRemoved() && mob.isAlive()) {
-                            mob.setHealth(mob.getMaxHealth());
-                        }
-                    });
-                }
-            }
-
-            if (Config.ENABLE_DEBUG_LOG.get() && randomFactor != 1.0) {
-                AdaptiveNemesisMod.LOGGER.debug(
-                    "敌人 {} 血量加成: 基础倍率={}, 随机因子={}, 最终倍率={}",
-                    mob.getName().getString(),
-                    String.format("%.2f", multiplier),
-                    String.format("%.2f", randomFactor),
-                    String.format("%.2f", effectiveMultiplier)
-                );
-            }
+        if (healthAttr == null) {
+            return;
         }
+
+        CompoundTag data = mob.getPersistentData();
+        double originalBase = resolveOriginalHealthBase(mob, data, healthAttr);
+
+        double effectiveMultiplier = Math.min(multiplier * randomFactor, Config.MAX_HEALTH_MULTIPLIER.get());
+        double newMax = originalBase * effectiveMultiplier;
+        if (newMax < originalBase) {
+            newMax = originalBase;
+        }
+        healthAttr.setBaseValue(newMax);
+
+        // 立即尝试设置满血
+        mob.setHealth(mob.getMaxHealth());
+
+        // 延迟到下一个 tick 再填满血量（关键！）
+        scheduleDelayedHealthFix(mob, data);
+
+        if (Config.ENABLE_DEBUG_LOG.get() && randomFactor != 1.0) {
+            AdaptiveNemesisMod.LOGGER.debug(
+                "敌人 {} 血量加成: 基础倍率={}, 随机因子={}, 最终倍率={}",
+                mob.getName().getString(),
+                String.format("%.2f", multiplier),
+                String.format("%.2f", randomFactor),
+                String.format("%.2f", effectiveMultiplier)
+            );
+        }
+    }
+
+    /**
+     * 解析原始基础血量
+     *
+     * NBT 标记存在时直接读取（幂等）；标记丢失（灵魂石、魂符、生物套索等
+     * 工具抓取后重置 NBT）时使用 DefaultAttributes 查询实体类型注册时的默认血量
+     * 作为"真·原始值"，防止已经缩放过的高血量被当作原始值再次缩放导致指数级爆炸。
+     *
+     * @param mob 目标生物
+     * @param data 实体持久化数据
+     * @param healthAttr 血量属性实例
+     * @return 原始基础血量
+     */
+    private double resolveOriginalHealthBase(Mob mob, CompoundTag data, AttributeInstance healthAttr) {
+        boolean tagMissing = !data.contains(ORIGINAL_HEALTH_TAG);
+        double originalBase = getOrStoreOriginalBase(
+            data, ORIGINAL_HEALTH_TAG,
+            getDefaultAttributeBase(mob, Attributes.MAX_HEALTH, healthAttr.getBaseValue())
+        );
+
+        if (tagMissing && Config.ENABLE_DEBUG_LOG.get()) {
+            AdaptiveNemesisMod.LOGGER.debug(
+                "防血量爆炸: {} 的 NBT 标记丢失，使用实体类型默认血量 {} (当前基础血量={})",
+                mob.getName().getString(),
+                String.format("%.2f", originalBase),
+                String.format("%.2f", healthAttr.getBaseValue())
+            );
+        }
+
+        return originalBase;
+    }
+
+    /**
+     * 延迟到下一个 tick 填满血量
+     *
+     * 解决 setBaseValue 后属性未立即传播，setHealth 被 clamp 在旧最大值的问题。
+     *
+     * @param mob 目标生物
+     * @param data 实体持久化数据
+     */
+    private void scheduleDelayedHealthFix(Mob mob, CompoundTag data) {
+        if (mob.level().isClientSide() || !(mob.level() instanceof ServerLevel serverLevel)) {
+            return;
+        }
+        if (data.getBoolean(HEALTH_FIX_SCHEDULED_TAG)) {
+            return;
+        }
+        data.putBoolean(HEALTH_FIX_SCHEDULED_TAG, true);
+        serverLevel.getServer().execute(() -> {
+            data.putBoolean(HEALTH_FIX_SCHEDULED_TAG, false);
+            if (!mob.isRemoved() && mob.isAlive()) {
+                mob.setHealth(mob.getMaxHealth());
+            }
+        });
     }
 
     /**
      * 应用伤害加成（带随机分布）
      * 使用原始值确保幂等性 - 防止重复缩放
+     *
+     * @param mob 目标生物
+     * @param multiplier 强化倍率
+     * @param randomFactor 随机因子
      */
     private void applyDamageBonus(Mob mob, double multiplier, double randomFactor) {
         applyAttributeBonus(
@@ -1271,6 +1602,10 @@ public class EnemyScalingHandler {
     /**
      * 应用护甲加成（带随机分布）
      * 使用原始值确保幂等性 - 防止重复缩放
+     *
+     * @param mob 目标生物
+     * @param multiplier 强化倍率
+     * @param randomFactor 随机因子
      */
     private void applyArmorBonus(Mob mob, double multiplier, double randomFactor) {
         applyAttributeBonus(
@@ -1286,7 +1621,13 @@ public class EnemyScalingHandler {
 
     /**
      * 应用护甲韧性加成（带随机分布）
-     * 使用原始值确保幂等性 - 防止重复缩放
+     * 使用原始值确保幂等性 - 防止重复缩放。
+     * 韧性作为防御属性，上限复用护甲倍率上限（MAX_ARMOR_MULTIPLIER），
+     * 避免无上限的韧性在极端倍率下失控。
+     *
+     * @param mob 目标生物
+     * @param multiplier 强化倍率
+     * @param randomFactor 随机因子
      */
     private void applyToughnessBonus(Mob mob, double multiplier, double randomFactor) {
         applyAttributeBonus(
@@ -1294,7 +1635,7 @@ public class EnemyScalingHandler {
             Attributes.ARMOR_TOUGHNESS,
             multiplier,
             randomFactor,
-            null,
+            Config.MAX_ARMOR_MULTIPLIER.get(),
             null,
             ORIGINAL_TOUGHNESS_TAG
         );
@@ -1303,6 +1644,9 @@ public class EnemyScalingHandler {
     /**
      * 应用移动速度加成（原版，不带随机分布）
      * 使用原始值确保幂等性
+     *
+     * @param mob 目标生物
+     * @param multiplier 强化倍率
      */
     private void applySpeedBonus(Mob mob, double multiplier) {
         // L2Hostility 加载且兼容模式启用时，其 SPEEDY 特质使用 ADD_MULTIPLIED_TOTAL 修改 MOVEMENT_SPEED，
@@ -1337,6 +1681,10 @@ public class EnemyScalingHandler {
     /**
      * 应用攻击速度加成 - 防止史诗战斗无限硬直（带随机分布）
      * 使用原始值确保幂等性
+     *
+     * @param mob 目标生物
+     * @param multiplier 强化倍率
+     * @param randomFactor 随机因子
      */
     private void applyAttackSpeedBonus(Mob mob, double multiplier, double randomFactor) {
         applyAttributeBonus(
@@ -1368,7 +1716,7 @@ public class EnemyScalingHandler {
         Vec3 pos = mob.position();
         double range = Config.AREA_SYNC_RANGE.get() * 16;
 
-        // 🛡️ 使用玩家列表迭代替代 AABB 扫描，避免触发区块加载死锁
+        // 使用玩家列表迭代替代 AABB 扫描，避免触发区块加载死锁
         List<ServerPlayer> nearbyPlayers = getNearbyPlayersFromIndex(serverLevel, pos, range);
         if (nearbyPlayers.isEmpty()) {
             return;
@@ -1383,8 +1731,20 @@ public class EnemyScalingHandler {
         }
 
         var profile = NemesisMemorySystem.getInstance().getProfile(nearestPlayer.getUUID());
-        if (profile == null) return;
+        if (profile == null) {
+            return;
+        }
 
+        applyNemesisProfileBonuses(mob, profile);
+    }
+
+    /**
+     * 将宿敌档案加成写入属性
+     *
+     * @param mob 目标生物
+     * @param profile 宿敌档案（最近玩家的）
+     */
+    private void applyNemesisProfileBonuses(Mob mob, com.adaptive_nemesis.adaptive_nemesismod.memory.NemesisProfile profile) {
         // 应用攻击加成
         double attackBonus = profile.getAttackBonus();
         var damageAttr = mob.getAttribute(Attributes.ATTACK_DAMAGE);
@@ -1422,9 +1782,19 @@ public class EnemyScalingHandler {
      * 获取生物的强化倍率
      *
      * @param mob 目标生物
-     * @return 强化倍率，如果未强化返回1.0
+     * @return 强化倍率，未强化或 NBT 标签缺失时返回 1.0
      */
     public double getScaleMultiplier(Mob mob) {
-        return mob.getPersistentData().getDouble(SCALE_MULTIPLIER_TAG);
+        return getScaleMultiplierFromTag(mob.getPersistentData());
+    }
+
+    /**
+     * 从 NBT 读取强化倍率 - 纯计算版本，可测试
+     *
+     * @param data 实体持久化数据
+     * @return 强化倍率，标签缺失时返回 1.0
+     */
+    static double getScaleMultiplierFromTag(CompoundTag data) {
+        return data.contains(SCALE_MULTIPLIER_TAG) ? data.getDouble(SCALE_MULTIPLIER_TAG) : 1.0;
     }
 }

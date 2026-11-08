@@ -42,6 +42,11 @@ public class EquipmentScalingConfig {
     */
     public final ModConfigSpec.ConfigValue<String> EQUIPMENT_BLACKLIST;
 
+    /**
+     * 构造装备生成缩放配置
+     *
+     * @param builder 配置构建器，由 Config 聚合类统一传入
+     */
     public EquipmentScalingConfig(ModConfigSpec.Builder builder) {
         builder.push("equipmentScaling");
         EQUIPMENT_BASE_CHANCE = builder.comment("装备生成基础概率 (0.15 = 15%) - 怪物空手时自动生成装备的基础概率").comment("Equipment base spawn chance (0.15 = 15%)").defineInRange("equipmentBaseChance", 0.15, 0.0, 1.0);

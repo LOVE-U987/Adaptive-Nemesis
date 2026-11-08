@@ -2,6 +2,8 @@ package com.adaptive_nemesis.adaptive_nemesismod.nemesis;
 
 import com.adaptive_nemesis.adaptive_nemesismod.Config;
 import com.adaptive_nemesis.adaptive_nemesismod.AdaptiveNemesisMod;
+import com.adaptive_nemesis.adaptive_nemesismod.boss.BossIdentificationService;
+import com.adaptive_nemesis.adaptive_nemesismod.memory.NemesisDataLoader;
 import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.effect.MobEffectInstance;
@@ -10,6 +12,7 @@ import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.ai.attributes.Attributes;
+import net.minecraft.world.entity.monster.Enemy;
 import net.minecraft.world.entity.monster.Monster;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.ResourceKey;
@@ -25,7 +28,9 @@ import net.minecraft.world.level.storage.loot.parameters.LootContextParams;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.event.entity.EntityJoinLevelEvent;
+import net.neoforged.neoforge.event.entity.EntityLeaveLevelEvent;
 import net.neoforged.neoforge.event.entity.living.LivingDeathEvent;
+import net.neoforged.neoforge.event.server.ServerStartedEvent;
 import net.neoforged.neoforge.event.tick.EntityTickEvent;
 
 import java.util.ArrayList;
@@ -36,12 +41,12 @@ import java.util.Random;
 
 /**
  * 宿敌日常生成系统
- * 
+ *
  * 捕获原版自然生成的敌人，将其转化为宿敌
  * 宿敌拥有自定义名称、强化属性，并受全局难度影响
- * 
+ *
  * @author Adaptive Nemesis Team
- * @version 1.0.0
+ * @version 1.1.0
  */
 public class NemesisSystem {
 
@@ -51,6 +56,13 @@ public class NemesisSystem {
      * 普通怪物（非宿敌）不再获得法术抗性/法术强度加成，避免法师打群怪被过度限制。
      */
     public static final String NEMESIS_TAG = "adaptive_nemesis_nemesis";
+
+    /**
+     * 宿敌生成时间 NBT 标记键（F-22）
+     * 写入实体 persistentData 随实体持久化，服务器重启后计时不重置；
+     * nemesisSpawnTimes 内存 Map 仅是运行缓存
+     */
+    public static final String NEMESIS_SPAWN_TIME_TAG = "adaptive_nemesis_spawn_time";
 
     /**
      * 检查实体是否为宿敌（带 NBT 标记）
@@ -73,10 +85,11 @@ public class NemesisSystem {
 
     private final NemesisNameGenerator nameGenerator;
     private final Random random;
-    
+
     /**
-     * 宿敌生成时间追踪
-     * 记录每个宿敌的生成时间戳（用于自动消失功能）
+     * 宿敌生成时间运行缓存（F-22）
+     * 权威数据在实体 persistentData（NEMESIS_SPAWN_TIME_TAG，随实体持久化），
+     * 此缓存仅用于加速运行期读取；宿敌死亡/离开世界时清理，保证内存有界
      * Key: 实体 UUID (字符串形式), Value: 生成时间戳 (毫秒)
      */
     private final Map<String, Long> nemesisSpawnTimes;
@@ -93,9 +106,26 @@ public class NemesisSystem {
     }
 
     /**
+     * 服务器启动事件处理（F-40）
+     *
+     * 语言环境可能随资源重载或客户端语言切换而变化，
+     * 每次服务器启动失效称号翻译计数缓存，首次生成名称时重新探测一次。
+     *
+     * @param event 服务器启动事件
+     */
+    @SubscribeEvent
+    public void onServerStarted(ServerStartedEvent event) {
+        nameGenerator.invalidateTranslationCache();
+    }
+
+    /**
      * 实体加入世界事件处理
      * 捕获原版生成的敌人并尝试转化为宿敌
-     * 
+     *
+     * 防重复转化守卫（F-04）：
+     * - loadedFromDisk：区块卸载重载、跨维度往返时实体从磁盘加载，跳过转化
+     * - isNemesis：已带宿敌标记的实体直接跳过，避免属性二次叠加
+     *
      * @param event 实体加入事件
      */
     @SubscribeEvent
@@ -104,13 +134,34 @@ public class NemesisSystem {
             return;
         }
 
-        if (!(event.getEntity() instanceof Monster)) {
+        // 客户端判断前置：服务端以外的分支无需消耗随机数与后续检查
+        if (event.getLevel().isClientSide()) {
             return;
         }
 
-        Monster monster = (Monster) event.getEntity();
+        // 磁盘加载守卫：仅处理新生成的实体
+        if (event.loadedFromDisk()) {
+            return;
+        }
 
-        if (isBoss(monster)) {
+        // 敌对生物判定与 EnemyScalingHandler.onEntityJoinLevel 口径对齐：
+        // Mob + Enemy（接口），而非 Monster（类）。
+        // 铁魔法等模组的施法怪（如 AbstractSpellCastingMob 系）继承 PathfinderMob 而非 Monster，
+        // 旧判定会导致这类怪永远无法转化为宿敌，进而永远拿不到法术类加成。
+        if (!(event.getEntity() instanceof Mob mob)) {
+            return;
+        }
+
+        // 已是宿敌的实体不再重复转化（配合 loadedFromDisk 双保险）
+        if (isNemesis(mob)) {
+            return;
+        }
+
+        if (!(mob instanceof Enemy)) {
+            return;
+        }
+
+        if (isBoss(mob)) {
             return;
         }
 
@@ -118,27 +169,44 @@ public class NemesisSystem {
             return;
         }
 
-        if (event.getLevel().isClientSide()) {
-            return;
-        }
-
-        if (!hasRequiredAttributes(monster)) {
+        if (!hasRequiredAttributes(mob)) {
             if (Config.ENABLE_DEBUG_LOG.get()) {
                 AdaptiveNemesisMod.LOGGER.debug(
                     "宿敌生成跳过: {} 缺少攻击力属性",
-                    monster.getType().getDescriptionId()
+                    mob.getType().getDescriptionId()
                 );
             }
             return;
         }
 
-        convertToNemesis(monster);
+        convertToNemesis(mob);
+    }
+
+    /**
+     * 实体离开世界事件处理（F-22）
+     *
+     * 宿敌死亡、被移除或区块卸载时清理生成时间运行缓存；
+     * 权威时间戳保存在实体 persistentData 中，缓存清理不影响已持久化的计时。
+     *
+     * @param event 实体离开事件
+     */
+    @SubscribeEvent
+    public void onEntityLeaveLevel(EntityLeaveLevelEvent event) {
+        if (event.getLevel().isClientSide()) {
+            return;
+        }
+
+        if (!(event.getEntity() instanceof LivingEntity entity) || !isNemesis(entity)) {
+            return;
+        }
+
+        nemesisSpawnTimes.remove(entity.getUUID().toString());
     }
 
     /**
      * 判断是否应该将敌人转化为宿敌
      * 根据配置的生成概率决定
-     * 
+     *
      * @return 是否转化
      */
     private boolean shouldConvertToNemesis() {
@@ -149,7 +217,7 @@ public class NemesisSystem {
     /**
      * 检查敌人是否具有宿敌转化所需的属性
      * 当配置要求攻击力属性时，缺少 generic.attack_damage 的生物会被剔除
-     * 
+     *
      * @param monster 敌人实体
      * @return 是否具有所需属性
      */
@@ -163,7 +231,11 @@ public class NemesisSystem {
     /**
      * 判断敌人是否为Boss
      * Boss不会被转化为宿敌
-     * 
+     *
+     * 判定链：原硬编码 Boss 名单（凋灵/末影龙/远古守卫者）优先，
+     * 追加全局 Boss 识别服务（标签/类型/名称/血量阈值策略链），
+     * 覆盖死灵之王、火焰领主等模组 Boss，防止其被转化为宿敌。
+     *
      * @param entity 实体
      * @return 是否为Boss
      */
@@ -174,7 +246,11 @@ public class NemesisSystem {
                 return true;
             }
         }
-        return false;
+
+        // 全局 Boss 识别服务可能未初始化（配置未加载时 getInstance 返回 null），
+        // 此时退回硬编码名单判定，保证 null 安全
+        BossIdentificationService bossService = BossIdentificationService.getInstance();
+        return bossService != null && bossService.isBoss(entity);
     }
 
     /**
@@ -183,11 +259,12 @@ public class NemesisSystem {
      * 1. 计算强化倍率（受全局难度影响）
      * 2. 应用属性强化
      * 3. 设置自定义名称
-     * 4. 添加发光效果
-     * 
-     * @param monster 要转化的敌人
+     * 4. 打宿敌标记并记录生成时间（F-22：随实体持久化）
+     * 5. 通知附近玩家（F-48：单次扫描）
+     *
+     * @param monster 要转化的敌人（Mob 级，兼容非 Monster 类的模组施法怪）
      */
-    private void convertToNemesis(Monster monster) {
+    private void convertToNemesis(Mob monster) {
         double multiplier = calculateNemesisMultiplier();
 
         if (Config.ENABLE_DEBUG_LOG.get()) {
@@ -204,42 +281,70 @@ public class NemesisSystem {
         monster.setCustomName(nemesisName);
         monster.setCustomNameVisible(Config.NEMESIS_NAME_ALWAYS_VISIBLE.get());
 
-        // 打上宿敌标记，供铁魔法等兼容层识别（仅宿敌应用法术抗性/强度加成）
+        markNemesis(monster);
+
+        notifyNearbyPlayers(monster, nemesisName);
+    }
+
+    /**
+     * 应用宿敌公共标记（自然生成与手动转化的共用尾部流程）
+     *
+     * 1. 打宿敌 NBT 标记（供铁魔法等兼容层识别，宿敌应用法术抗性加成，施法怪另获法术强度加成）
+     * 2. 发光效果受配置开关控制
+     * 3. 记录生成时间（F-22）：写入实体 persistentData 随实体持久化，
+     *    内存 Map 仅作运行缓存；自动消失功能关闭时不写入
+     *
+     * @param monster 要标记的敌人
+     */
+    private void markNemesis(Mob monster) {
         monster.getPersistentData().putBoolean(NEMESIS_TAG, true);
-        
-        // 记录生成时间（用于自动消失功能）
-        String entityUuid = monster.getUUID().toString();
-        nemesisSpawnTimes.put(entityUuid, System.currentTimeMillis());
 
         // 发光效果受配置开关控制
         if (Config.ENABLE_NEMESIS_GLOW.get()) {
             monster.addEffect(new MobEffectInstance(MobEffects.GLOWING, Integer.MAX_VALUE));
         }
 
-        if (monster.level().getNearestPlayer(monster, 32.0) != null) {
-            Player player = monster.level().getNearestPlayer(monster, 32.0);
-            player.sendSystemMessage(Component.translatable("adaptive_nemesis.nemesis.appearance_warning").withStyle(ChatFormatting.RED));
-            player.sendSystemMessage(nemesisName.copy().withStyle(ChatFormatting.YELLOW));
+        // 仅在自动消失功能开启时记录生成时间（关闭时不写入）
+        if (Config.NEMESIS.ENABLE_NEMESIS_AUTO_DISAPPEAR.get()) {
+            long now = System.currentTimeMillis();
+            monster.getPersistentData().putLong(NEMESIS_SPAWN_TIME_TAG, now);
+            nemesisSpawnTimes.put(monster.getUUID().toString(), now);
         }
+    }
+
+    /**
+     * 通知附近玩家宿敌出现（F-48：单次扫描复用；F-44：半径走数据包配置）
+     *
+     * @param monster 宿敌实体
+     * @param nemesisName 宿敌名称组件
+     */
+    private void notifyNearbyPlayers(Mob monster, Component nemesisName) {
+        double radius = NemesisDataLoader.getInstance().getConfig().getNotificationRadius();
+        Player player = monster.level().getNearestPlayer(monster, radius);
+        if (player == null) {
+            return;
+        }
+        player.sendSystemMessage(Component.translatable("adaptive_nemesis.nemesis.appearance_warning").withStyle(ChatFormatting.RED));
+        player.sendSystemMessage(nemesisName.copy().withStyle(ChatFormatting.YELLOW));
     }
 
     /**
      * 计算宿敌强化倍率
      * 基础倍率 + 全局难度加成
-     * 
+     *
      * @return 最终强化倍率
      */
     private double calculateNemesisMultiplier() {
         double baseMultiplier = Config.NEMESIS_BASE_MULTIPLIER.get();
         double globalDifficulty = Config.DIFFICULTY_BASE_MULTIPLIER.get();
-        
+
         double finalMultiplier = baseMultiplier * globalDifficulty;
-        
+
         double minMultiplier = Config.NEMESIS_MIN_MULTIPLIER.get();
         double maxMultiplier = Config.NEMESIS_MAX_MULTIPLIER.get();
-        
+
         finalMultiplier = Math.max(minMultiplier, Math.min(maxMultiplier, finalMultiplier));
-        
+
         return finalMultiplier;
     }
 
@@ -247,7 +352,7 @@ public class NemesisSystem {
      * 应用属性强化
      * 包括生命值、攻击力、护甲等
      * 对缺失的属性进行空指针保护，避免非攻击型生物或模组生物导致崩溃
-     * 
+     *
      * @param monster 敌人实体
      * @param multiplier 强化倍率
      */
@@ -288,7 +393,7 @@ public class NemesisSystem {
 
     /**
      * 获取宿敌名称生成器
-     * 
+     *
      * @return 名称生成器
      */
     public NemesisNameGenerator getNameGenerator() {
@@ -297,7 +402,7 @@ public class NemesisSystem {
 
     /**
      * 手动将敌人转化为宿敌（用于命令或脚本）
-     * 
+     *
      * @param monster 敌人实体
      * @param customMultiplier 自定义倍率（null则使用默认计算）
      * @return 是否转化成功
@@ -318,25 +423,15 @@ public class NemesisSystem {
         monster.setCustomName(nemesisName);
         monster.setCustomNameVisible(Config.NEMESIS_NAME_ALWAYS_VISIBLE.get());
 
-        // 打上宿敌标记，供铁魔法等兼容层识别（仅宿敌应用法术抗性/强度加成）
-        monster.getPersistentData().putBoolean(NEMESIS_TAG, true);
-        
-        // 记录生成时间（用于自动消失功能）
-        String entityUuid = monster.getUUID().toString();
-        nemesisSpawnTimes.put(entityUuid, System.currentTimeMillis());
-
-        // 发光效果受配置开关控制
-        if (Config.ENABLE_NEMESIS_GLOW.get()) {
-            monster.addEffect(new MobEffectInstance(MobEffects.GLOWING, Integer.MAX_VALUE));
-        }
+        markNemesis(monster);
 
         return true;
     }
-    
+
     /**
      * 实体tick事件处理
-     * 定期检查宿敌是否存在时间过长，如果是则将其从世界中移除
-     * 
+     * 定期检查宿敌是否存在时间过长，如果是则将其从世界中移除（F-41：骨架拆分）
+     *
      * @param event 实体 tick 事件
      */
     @SubscribeEvent
@@ -344,61 +439,82 @@ public class NemesisSystem {
         if (!Config.NEMESIS.ENABLE_NEMESIS_AUTO_DISAPPEAR.get() || event.getEntity().level().isClientSide()) {
             return;
         }
-        
-        if (!(event.getEntity() instanceof Monster monster)) {
+
+        if (!(event.getEntity() instanceof Monster monster) || !isNemesis(monster)) {
             return;
         }
-        
-        // 检查是否为宿敌
-        if (!monster.getPersistentData().getBoolean(NEMESIS_TAG)) {
+
+        long elapsedSeconds = resolveAliveSeconds(monster);
+        if (elapsedSeconds < Config.NEMESIS.NEMESIS_AUTO_DISAPPEAR_SECONDS.get()) {
             return;
         }
-        
-        String entityUuid = event.getEntity().getUUID().toString();
-        
-        // 如果未记录生成时间，则记录当前时间
-        if (!nemesisSpawnTimes.containsKey(entityUuid)) {
-            nemesisSpawnTimes.put(entityUuid, System.currentTimeMillis());
-            return;
+
+        discardNemesis(monster, elapsedSeconds);
+    }
+
+    /**
+     * 解析宿敌已存活秒数（F-41 自 onEntityTick 拆分；F-22 计时随实体持久化）
+     *
+     * 读取优先级：内存运行缓存 → 实体 persistentData（服务器重启后由此恢复，
+     * 计时不重置）→ 当前时间作为起点（无任何记录的兜底路径，并回写两处记录）。
+     *
+     * @param monster 宿敌实体
+     * @return 已存活秒数
+     */
+    private long resolveAliveSeconds(Monster monster) {
+        String entityUuid = monster.getUUID().toString();
+
+        Long cachedSpawnTime = nemesisSpawnTimes.get(entityUuid);
+        if (cachedSpawnTime != null) {
+            return (System.currentTimeMillis() - cachedSpawnTime) / 1000;
         }
-        
-        long spawnTime = nemesisSpawnTimes.get(entityUuid);
-        long currentTime = System.currentTimeMillis();
-        long elapsedSeconds = (currentTime - spawnTime) / 1000;
-        
-        int disappearSeconds = Config.NEMESIS.NEMESIS_AUTO_DISAPPEAR_SECONDS.get();
-        
-        // 如果存活时间超过配置值，移除宿敌
-        if (elapsedSeconds >= disappearSeconds) {
-            if (Config.NEMESIS.NEMESIS_DISAPPEAR_MESSAGE.get()) {
-                Player nearestPlayer = event.getEntity().level().getNearestPlayer(event.getEntity(), 32.0);
-                if (nearestPlayer != null) {
-                    Component disappearMessage = Component.translatable("adaptive_nemesis.nemesis.disappear")
-                        .append(" ")
-                        .append(monster.getDisplayName())
-                        .withStyle(ChatFormatting.GRAY);
-                    nearestPlayer.sendSystemMessage(disappearMessage);
-                }
+
+        long persistedTime = monster.getPersistentData().getLong(NEMESIS_SPAWN_TIME_TAG);
+        long spawnTime = persistedTime > 0 ? persistedTime : System.currentTimeMillis();
+
+        // 同步内存缓存与持久化标记，保证下次加载仍可恢复
+        nemesisSpawnTimes.put(entityUuid, spawnTime);
+        monster.getPersistentData().putLong(NEMESIS_SPAWN_TIME_TAG, spawnTime);
+
+        return (System.currentTimeMillis() - spawnTime) / 1000;
+    }
+
+    /**
+     * 宿敌超时消失处理（F-41 自 onEntityTick 拆分）
+     * 广播消失消息（半径走数据包配置）、清理运行缓存并移除实体
+     *
+     * @param monster 宿敌实体
+     * @param elapsedSeconds 已存活秒数（仅用于日志）
+     */
+    private void discardNemesis(Monster monster, long elapsedSeconds) {
+        if (Config.NEMESIS.NEMESIS_DISAPPEAR_MESSAGE.get()) {
+            double radius = NemesisDataLoader.getInstance().getConfig().getNotificationRadius();
+            Player nearestPlayer = monster.level().getNearestPlayer(monster, radius);
+            if (nearestPlayer != null) {
+                Component disappearMessage = Component.translatable("adaptive_nemesis.nemesis.disappear")
+                    .append(" ")
+                    .append(monster.getDisplayName())
+                    .withStyle(ChatFormatting.GRAY);
+                nearestPlayer.sendSystemMessage(disappearMessage);
             }
-            
-            // 从追踪 map 中移除
-            nemesisSpawnTimes.remove(entityUuid);
-            
-            // 移除实体
-            event.getEntity().discard();
-            
-            if (Config.ENABLE_DEBUG_LOG.get()) {
-                AdaptiveNemesisMod.LOGGER.debug(
-                    "宿敌自动消失：{} 存活时间：{} 秒",
-                    monster.getType().getDescriptionId(),
-                    elapsedSeconds
-                );
-            }
+        }
+
+        // 从内存运行缓存移除（实体移除时 EntityLeaveLevelEvent 兜底清理）
+        nemesisSpawnTimes.remove(monster.getUUID().toString());
+
+        monster.discard();
+
+        if (Config.ENABLE_DEBUG_LOG.get()) {
+            AdaptiveNemesisMod.LOGGER.debug(
+                "宿敌自动消失：{} 存活时间：{} 秒",
+                monster.getType().getDescriptionId(),
+                elapsedSeconds
+            );
         }
     }
 
     /**
-     * 宿敌死亡事件处理 - 发放额外自定义掉落
+     * 宿敌死亡事件处理 - 发放额外自定义掉落（F-41：骨架拆分）
      *
      * 触发条件（全部满足）：
      * 1. 配置启用额外掉落（nemesisLootEnabled）
@@ -436,47 +552,77 @@ public class NemesisSystem {
             return;
         }
 
-        DamageSource source = event.getSource();
-        int totalItems = 0;
-
-        for (ResourceLocation tableId : lootTables) {
-            try {
-                ResourceKey<LootTable> lootKey = ResourceKey.create(Registries.LOOT_TABLE, tableId);
-                LootTable lootTable = serverLevel.getServer().reloadableRegistries().getLootTable(lootKey);
-                if (lootTable == LootTable.EMPTY) {
-                    AdaptiveNemesisMod.LOGGER.warn("[宿敌] 找不到额外掉落战利品表: {}", tableId);
-                    continue;
-                }
-
-                // 使用 ENTITY 参数集构建掉落上下文（实体掉落语义）
-                LootParams lootParams = new LootParams.Builder(serverLevel)
-                    .withParameter(LootContextParams.THIS_ENTITY, deadEntity)
-                    .withParameter(LootContextParams.ORIGIN, deadEntity.position())
-                    .withParameter(LootContextParams.DAMAGE_SOURCE, source)
-                    .withLuck(0.0F)
-                    .create(LootContextParamSets.ENTITY);
-
-                List<ItemStack> items = lootTable.getRandomItems(lootParams);
-                for (ItemStack stack : items) {
-                    if (!stack.isEmpty()) {
-                        deadEntity.spawnAtLocation(stack);
-                        totalItems++;
-                    }
-                }
-            } catch (Exception e) {
-                // 单张战利品表解析/roll 失败不影响其他表
-                AdaptiveNemesisMod.LOGGER.error(
-                    "[宿敌] 处理额外掉落战利品表 {} 时发生异常: {} - {}",
-                    tableId, e.getClass().getSimpleName(), e.getMessage()
-                );
-            }
-        }
+        int totalItems = rollLootTables(serverLevel, deadEntity, event.getSource(), lootTables);
 
         if (Config.ENABLE_DEBUG_LOG.get()) {
             AdaptiveNemesisMod.LOGGER.debug(
                 "[宿敌] {} 死亡，额外掉落: 战利品表={} 张, 物品={} 件",
                 deadEntity.getName().getString(), lootTables.size(), totalItems
             );
+        }
+    }
+
+    /**
+     * 逐表 roll 宿敌额外掉落（F-41 自 onNemesisDeath 拆分）
+     *
+     * @param serverLevel 服务端世界
+     * @param deadEntity 死亡的宿敌
+     * @param source 致死伤害来源
+     * @param lootTables 战利品表列表
+     * @return 掉落物品总数
+     */
+    private int rollLootTables(ServerLevel serverLevel, LivingEntity deadEntity,
+                               DamageSource source, List<ResourceLocation> lootTables) {
+        int totalItems = 0;
+        for (ResourceLocation tableId : lootTables) {
+            totalItems += rollSingleLootTable(serverLevel, deadEntity, source, tableId);
+        }
+        return totalItems;
+    }
+
+    /**
+     * roll 单张战利品表并掉落产物（F-41 自 onNemesisDeath 拆分）
+     * 单表解析/roll 失败返回 0，不影响其他表
+     *
+     * @param serverLevel 服务端世界
+     * @param deadEntity 死亡的宿敌
+     * @param source 致死伤害来源
+     * @param tableId 战利品表 ID
+     * @return 该表掉落的物品数
+     */
+    private int rollSingleLootTable(ServerLevel serverLevel, LivingEntity deadEntity,
+                                    DamageSource source, ResourceLocation tableId) {
+        try {
+            ResourceKey<LootTable> lootKey = ResourceKey.create(Registries.LOOT_TABLE, tableId);
+            LootTable lootTable = serverLevel.getServer().reloadableRegistries().getLootTable(lootKey);
+            if (lootTable == LootTable.EMPTY) {
+                AdaptiveNemesisMod.LOGGER.warn("[宿敌] 找不到额外掉落战利品表: {}", tableId);
+                return 0;
+            }
+
+            // 使用 ENTITY 参数集构建掉落上下文（实体掉落语义）
+            LootParams lootParams = new LootParams.Builder(serverLevel)
+                .withParameter(LootContextParams.THIS_ENTITY, deadEntity)
+                .withParameter(LootContextParams.ORIGIN, deadEntity.position())
+                .withParameter(LootContextParams.DAMAGE_SOURCE, source)
+                .withLuck(0.0F)
+                .create(LootContextParamSets.ENTITY);
+
+            int droppedCount = 0;
+            for (ItemStack stack : lootTable.getRandomItems(lootParams)) {
+                if (!stack.isEmpty()) {
+                    deadEntity.spawnAtLocation(stack);
+                    droppedCount++;
+                }
+            }
+            return droppedCount;
+        } catch (Exception e) {
+            // 单张战利品表解析/roll 失败不影响其他表
+            AdaptiveNemesisMod.LOGGER.error(
+                "[宿敌] 处理额外掉落战利品表 {} 时发生异常: {} - {}",
+                tableId, e.getClass().getSimpleName(), e.getMessage()
+            );
+            return 0;
         }
     }
 

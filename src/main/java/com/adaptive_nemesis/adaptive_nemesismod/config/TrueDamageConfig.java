@@ -47,6 +47,11 @@ public class TrueDamageConfig {
     */
     public final ModConfigSpec.DoubleValue TURTLE_TRUE_DAMAGE_PERCENT;
 
+    /**
+     * 构造真实伤害配置
+     *
+     * @param builder 配置构建器，由 Config 聚合类统一传入
+     */
     public TrueDamageConfig(ModConfigSpec.Builder builder) {
         builder.push("trueDamage");
         ENABLE_TRUE_DAMAGE = builder.comment("是否启用真实伤害转化 - 针对高护甲玩家的铁乌龟终结者机制").comment("Enable true damage conversion - anti-turtle mechanism for high armor players").define("enableTrueDamage", true);

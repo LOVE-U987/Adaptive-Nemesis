@@ -179,7 +179,19 @@ public class InvasionRewardData {
     }
 
     /**
+     * 检查药水效果 ID 是否可用（F-38 容错判定，纯逻辑供单元测试直接验证）
+     * 仅做非空校验；格式与注册表合法性由 ResourceLocation.tryParse 与注册表查询兜底
+     *
+     * @param effectId 效果 ID 字符串
+     * @return ID 非空时返回 true
+     */
+    static boolean isValidEffectId(String effectId) {
+        return effectId != null && !effectId.isEmpty();
+    }
+
+    /**
      * 解析药水效果字符串
+     * 入口对缺失/空白 ID 返回 null（F-38：不再因缺 id 抛 NPE，坏条目由调用侧跳过并 warn）
      *
      * @param effectId 效果 ID
      * @param duration 持续时间（秒）
@@ -187,6 +199,9 @@ public class InvasionRewardData {
      * @return 药水效果实例，解析失败返回 null
      */
     public static MobEffectInstance parseEffect(String effectId, int duration, int amplifier) {
+        if (!isValidEffectId(effectId)) {
+            return null;
+        }
         ResourceLocation id = ResourceLocation.tryParse(effectId);
         if (id == null) {
             return null;

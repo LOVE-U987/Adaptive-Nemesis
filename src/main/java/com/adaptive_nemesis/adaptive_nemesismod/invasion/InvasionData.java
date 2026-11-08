@@ -56,7 +56,7 @@ public class InvasionData {
      * @param id 入侵类型标识符
      */
     public InvasionData(ResourceLocation id) {
-        this(id, null, 6, 60, new ArrayList<>(), new InvasionRewardData());
+        this(id, null, 6, 70, new ArrayList<>(), new InvasionRewardData());
     }
 
     /**

@@ -45,6 +45,13 @@ public class WorldStageDataLoader extends SimpleJsonResourceReloadListener {
     private Map<Integer, WorldStageDataConfig> stages = ImmutableMap.of();
 
     /**
+     * 未命中数据包配置时的默认实例缓存（F-37）
+     * 按阶段缓存默认空配置，热路径（每 tick 多次调用）不再重复分配；
+     * 数据包重载时清空
+     */
+    private final Map<Integer, WorldStageDataConfig> defaultStageCache = new HashMap<>();
+
+    /**
      * 单例实例
      */
     private static WorldStageDataLoader INSTANCE;
@@ -70,12 +77,17 @@ public class WorldStageDataLoader extends SimpleJsonResourceReloadListener {
 
     /**
      * 根据阶段编号获取配置
+     * 数据包未配置该阶段时返回按阶段缓存的默认实例（F-37：避免热路径重复分配）
      *
      * @param stage 阶段编号
      * @return 阶段配置，不存在时返回默认空配置
      */
-    public WorldStageDataConfig getStageConfig(int stage) {
-        return stages.getOrDefault(stage, new WorldStageDataConfig(stage));
+    public synchronized WorldStageDataConfig getStageConfig(int stage) {
+        WorldStageDataConfig config = stages.get(stage);
+        if (config != null) {
+            return config;
+        }
+        return defaultStageCache.computeIfAbsent(stage, WorldStageDataConfig::new);
     }
 
     /**
@@ -89,14 +101,15 @@ public class WorldStageDataLoader extends SimpleJsonResourceReloadListener {
 
     /**
      * 资源重载回调
+     * 重载后清空默认实例缓存，保持与最新数据包状态一致
      *
      * @param object 解析后的 JSON 对象映射
      * @param resourceManager 资源管理器
      * @param profiler 性能分析器
      */
     @Override
-    protected void apply(Map<ResourceLocation, JsonElement> object, ResourceManager resourceManager,
-                         ProfilerFiller profiler) {
+    protected synchronized void apply(Map<ResourceLocation, JsonElement> object, ResourceManager resourceManager,
+                                      ProfilerFiller profiler) {
         Map<Integer, WorldStageDataConfig> loaded = new HashMap<>();
 
         for (Map.Entry<ResourceLocation, JsonElement> entry : object.entrySet()) {
@@ -116,6 +129,7 @@ public class WorldStageDataLoader extends SimpleJsonResourceReloadListener {
         }
 
         this.stages = ImmutableMap.copyOf(loaded);
+        defaultStageCache.clear();
         AdaptiveNemesisMod.LOGGER.info("已加载 {} 个世界阶段数据包配置", loaded.size());
     }
 

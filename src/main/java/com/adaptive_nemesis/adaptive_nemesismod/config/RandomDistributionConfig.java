@@ -27,6 +27,11 @@ public class RandomDistributionConfig {
     */
     public final ModConfigSpec.BooleanValue FIX_SPEED_BONUS_TO_ZERO;
 
+    /**
+     * 构造随机分布配置
+     *
+     * @param builder 配置构建器，由 Config 聚合类统一传入
+     */
     public RandomDistributionConfig(ModConfigSpec.Builder builder) {
         builder.push("randomDistribution");
         ENABLE_RANDOM_DISTRIBUTION = builder.comment("是否启用属性随机分布 - 让每次生成的怪物属性有随机波动").comment("Enable random distribution of attributes - adds variation to each spawned mob").define("enableRandomDistribution", true);

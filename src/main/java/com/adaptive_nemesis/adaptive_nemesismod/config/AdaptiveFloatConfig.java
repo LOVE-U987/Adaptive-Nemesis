@@ -55,6 +55,11 @@ public class AdaptiveFloatConfig {
     public final ModConfigSpec.IntValue IDLE_DECAY_CHECK_INTERVAL;
 
     /**
+    * 空闲衰减阈值（秒）- 玩家超过该时长未战斗才开始衰减
+    */
+    public final ModConfigSpec.IntValue IDLE_DECAY_THRESHOLD_SECONDS;
+
+    /**
     * 是否启用基于时间的空闲衰减（推荐启用）
     */
     public final ModConfigSpec.BooleanValue ENABLE_IDLE_DECAY;
@@ -74,6 +79,7 @@ public class AdaptiveFloatConfig {
         ENABLE_IDLE_DECAY = builder.comment("是否启用基于时间的空闲衰减").define("enableIdleDecay", true);
         IDLE_DECAY_RATE = builder.comment("空闲衰减速率 - 每分钟自动降低的倍率 (0.02 = 每分钟降低2%)").defineInRange("idleDecayRate", 0.02, 0.0, 0.5);
         IDLE_DECAY_CHECK_INTERVAL = builder.comment("空闲衰减检查间隔（秒）").defineInRange("idleDecayCheckInterval", 5, 1, 60);
+        IDLE_DECAY_THRESHOLD_SECONDS = builder.comment("空闲衰减阈值（秒）- 玩家超过该时长未战斗才开始衰减 (60 = 60秒)").defineInRange("idleDecayThresholdSeconds", 60, 1, 3600);
         ENABLE_EFFICIENCY_ADJUSTMENT = builder.comment("是否启用基于战斗效率的难度调整").define("enableEfficiencyAdjustment", true);
         COMBAT_EFFICIENCY_THRESHOLD = builder.comment("战斗效率阈值 - 低于此值时触发难度下调 (0.3 = 30%命中率)").defineInRange("combatEfficiencyThreshold", 0.3, 0.0, 1.0);
         EFFICIENCY_BASED_DECREASE = builder.comment("基于效率的难度下调量").defineInRange("efficiencyBasedDecrease", 0.05, 0.0, 0.5);

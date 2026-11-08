@@ -12,10 +12,17 @@ public class GeneralConfig {
      */
     public final ModConfigSpec.DoubleValue DIFFICULTY_BASE_MULTIPLIER;
 
+    /**
+     * 构造基础难度配置
+     *
+     * @param builder 配置构建器，由 Config 聚合类统一传入
+     */
     public GeneralConfig(ModConfigSpec.Builder builder) {
+        builder.push("general");
         DIFFICULTY_BASE_MULTIPLIER = builder
             .comment("难度系数基准 - 控制整体难度倍数")
             .comment("Difficulty base multiplier - controls overall difficulty scaling")
             .defineInRange("difficultyBaseMultiplier", 0.5, 0.1, 20.0);
+        builder.pop();
     }
 }
